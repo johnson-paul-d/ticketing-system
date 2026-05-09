@@ -401,7 +401,10 @@ Please review and approve.
     // ======================================
     // UPDATE TICKET
     // ======================================
-    tickets[index] = {
+   // ======================================
+// UPDATE TICKET
+// ======================================
+const updatedTicket = {
   ...oldTicket,
   ...req.body,
 
@@ -419,68 +422,86 @@ Please review and approve.
     ),
 };
 
+tickets[index] =
+  updatedTicket;
+
+
+// ======================================
+// SAVE FIRST
+// ======================================
+writeTickets(tickets);
+
 
 // ======================================
 // ASSIGNMENT EMAIL
 // ======================================
-if (
-  req.body.assigned &&
-  req.body.assigned !==
-    oldTicket.assigned &&
-  req.body.assigned !==
-    "Unassigned"
-) {
-
-  const users =
-    readUsers();
-
-  const assignedUser =
-    users.find(
-      (u) =>
-        u.name ===
-        req.body.assigned
-    );
+try {
 
   if (
-    assignedUser?.email
+    req.body.assigned &&
+    req.body.assigned !==
+      oldTicket.assigned &&
+    req.body.assigned !==
+      "Unassigned"
   ) {
 
-    await sendMail({
-      to:
-        assignedUser.email,
+    const users =
+      readUsers();
 
-      subject:
-        `New Ticket Assigned - ${tickets[index].title}`,
+    const assignedUser =
+      users.find(
+        (u) =>
+          u.name ===
+          req.body.assigned
+      );
 
-      text: `
+    if (
+      assignedUser?.email
+    ) {
+
+      await sendMail({
+        to:
+          assignedUser.email,
+
+        subject:
+          `New Ticket Assigned - ${updatedTicket.title}`,
+
+        text: `
 A ticket has been assigned to you.
 
 Ticket:
-${tickets[index].title}
+${updatedTicket.title}
 
 Ticket ID:
-${tickets[index].id}
+${updatedTicket.id}
 
 Priority:
-${tickets[index].priority}
+${updatedTicket.priority}
 
 Assigned By:
 ${req.body.changedBy}
 
 Status:
-${tickets[index].status}
+${updatedTicket.status}
 
 Open Ticket:
-https://mktg-ticketing-system.vercel.app/tickets/${tickets[index].id}
-      `,
-    });
+https://mktg-ticketing-system.vercel.app/tickets/${updatedTicket.id}
+        `,
+      });
 
-    console.log(
-      "Assignment email sent"
-    );
+      console.log(
+        "Assignment email sent"
+      );
+    }
   }
-}
 
+} catch (mailError) {
+
+  console.log(
+    "ASSIGNMENT MAIL ERROR:",
+    mailError
+  );
+}
 writeTickets(tickets);
     if (req.io) {
       req.io.emit(
