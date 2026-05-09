@@ -663,7 +663,7 @@ export default function TicketDetails() {
 
               {ticket.attachment ? (
                 <a
-                  href={`http://localhost:5000/uploads/${ticket.attachment}`}
+                  href={`https://ticketing-backend-6azk.onrender.com/uploads/${ticket.attachment}`}
                   target="_blank"
                   rel="noreferrer"
                   className="text-blue-600 underline block mb-4"
