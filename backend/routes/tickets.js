@@ -9,6 +9,10 @@ const {
   writeTickets,
 } = require("../services/excelService");
 
+const {
+  readUsers,
+} = require("../services/userService");
+
 const sendMail = require(
   "../services/mailService"
 );
@@ -398,25 +402,86 @@ Please review and approve.
     // UPDATE TICKET
     // ======================================
     tickets[index] = {
-      ...oldTicket,
-      ...req.body,
+  ...oldTicket,
+  ...req.body,
 
-      resolvedAt,
+  resolvedAt,
 
-      updatedAt:
-        new Date().toLocaleString(),
+  updatedAt:
+    new Date().toLocaleString(),
 
-      history:
-        JSON.stringify(history),
+  history:
+    JSON.stringify(history),
 
-      dueDateHistory:
-        JSON.stringify(
-          dueDateHistory
-        ),
-    };
+  dueDateHistory:
+    JSON.stringify(
+      dueDateHistory
+    ),
+};
 
-    writeTickets(tickets);
 
+// ======================================
+// ASSIGNMENT EMAIL
+// ======================================
+if (
+  req.body.assigned &&
+  req.body.assigned !==
+    oldTicket.assigned &&
+  req.body.assigned !==
+    "Unassigned"
+) {
+
+  const users =
+    readUsers();
+
+  const assignedUser =
+    users.find(
+      (u) =>
+        u.name ===
+        req.body.assigned
+    );
+
+  if (
+    assignedUser?.email
+  ) {
+
+    await sendMail({
+      to:
+        assignedUser.email,
+
+      subject:
+        `New Ticket Assigned - ${tickets[index].title}`,
+
+      text: `
+A ticket has been assigned to you.
+
+Ticket:
+${tickets[index].title}
+
+Ticket ID:
+${tickets[index].id}
+
+Priority:
+${tickets[index].priority}
+
+Assigned By:
+${req.body.changedBy}
+
+Status:
+${tickets[index].status}
+
+Open Ticket:
+https://mktg-ticketing-system.vercel.app/tickets/${tickets[index].id}
+      `,
+    });
+
+    console.log(
+      "Assignment email sent"
+    );
+  }
+}
+
+writeTickets(tickets);
     if (req.io) {
       req.io.emit(
         "ticketUpdated",
