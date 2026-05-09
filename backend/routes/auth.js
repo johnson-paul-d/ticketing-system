@@ -1,281 +1,124 @@
-const express = require(
-  "express"
-);
+const express = require("express");
 
-const {
-  readUsers,
-  writeUsers,
-} = require(
-  "../services/userService"
-);
+const router = express.Router();
 
-const router =
-  express.Router();
+const User = require("../models/User");
 
 
-// ======================================
+// ==============================
 // LOGIN
-// ======================================
-router.post(
-  "/login",
-  (req, res) => {
-    try {
-      const {
+// ==============================
+router.post("/login", async (req, res) => {
+
+  try {
+
+    const {
+      email,
+      password,
+    } = req.body;
+
+    const user =
+      await User.findOne({
         email,
-        password,
-      } = req.body;
-
-      const users =
-        readUsers();
-
-      const user =
-        users.find(
-          (u) =>
-            u.email
-              ?.trim()
-              .toLowerCase() ===
-              email
-                ?.trim()
-                .toLowerCase() &&
-            u.password
-              ?.trim() ===
-              password?.trim()
-        );
-
-      // INVALID
-      if (!user) {
-        return res
-          .status(401)
-          .json({
-            message:
-              "Invalid credentials",
-          });
-      }
-
-      // DISABLED
-      if (
-        user.active ===
-        false
-      ) {
-        return res
-          .status(403)
-          .json({
-            message:
-              "User disabled by admin",
-          });
-      }
-
-      // UPDATE ACTIVITY
-      const updatedUsers =
-        users.map((u) => {
-          if (
-            u.id === user.id
-          ) {
-            return {
-              ...u,
-
-              lastLogin:
-                new Date().toLocaleString(),
-
-              activityCount:
-                (u.activityCount ||
-                  0) + 1,
-            };
-          }
-
-          return u;
-        });
-
-      writeUsers(
-        updatedUsers
-      );
-
-      // UPDATED USER
-      const updatedUser =
-        updatedUsers.find(
-          (u) =>
-            u.id ===
-            user.id
-        );
-
-      res.json({
-        message:
-          "Login successful",
-
-        user: updatedUser,
       });
-    } catch (error) {
-      console.log(error);
 
-      res
-        .status(500)
-        .json({
-          message:
-            "Login failed",
-        });
+    if (!user) {
+
+      return res.status(401).json({
+        message:
+          "Invalid email",
+      });
     }
+
+    if (
+      user.password !== password
+    ) {
+
+      return res.status(401).json({
+        message:
+          "Invalid password",
+      });
+    }
+
+    res.json(user);
+
+  } catch (error) {
+
+    console.log(error);
+
+    res.status(500).json({
+      message:
+        "Login failed",
+    });
   }
-);
+});
 
 
-// ======================================
-// GET TEAM MEMBERS
-// ======================================
+// ==============================
+// TEAM MEMBERS
+// IMPORTANT FIX
+// ==============================
 router.get(
   "/team-members",
-  (req, res) => {
-    try {
-      const users =
-        readUsers();
+  async (req, res) => {
 
-      const members =
-        users.filter(
-          (u) =>
-            u.role ===
-              "Team Member" &&
-            u.active !==
-              false
+    try {
+
+      const users =
+        await User.find({
+          role: "Agent",
+        }).select(
+          "name email role"
         );
 
-      res.json(
-        members
-      );
+      res.json(users);
+
     } catch (error) {
+
       console.log(error);
 
-      res
-        .status(500)
-        .json({
-          message:
-            "Failed to fetch team members",
-        });
+      res.status(500).json({
+        message:
+          "Failed to fetch team members",
+      });
     }
   }
 );
 
 
-// ======================================
-// GET ACTIVE USERS
-// ======================================
-router.get(
-  "/active-users",
-  (req, res) => {
-    try {
-      const users =
-        readUsers();
+// ==============================
+// GET USER BY ID
+// KEEP THIS BELOW TEAM-MEMBERS
+// ==============================
+router.get("/:id", async (req, res) => {
 
-      const activeUsers =
-        users.filter(
-          (u) =>
-            u.active !==
-            false
-        );
+  try {
 
-      res.json(
-        activeUsers
+    const user =
+      await User.findById(
+        req.params.id
       );
-    } catch (error) {
-      console.log(error);
 
-      res
-        .status(500)
-        .json({
-          message:
-            "Failed to fetch active users",
-        });
+    if (!user) {
+
+      return res.status(404).json({
+        message:
+          "User not found",
+      });
     }
+
+    res.json(user);
+
+  } catch (error) {
+
+    console.log(error);
+
+    res.status(500).json({
+      message:
+        "Failed to fetch user",
+    });
   }
-);
+});
 
 
-// ======================================
-// GET USERS BY DIVISION
-// ======================================
-router.get(
-  "/division/:division",
-  (req, res) => {
-    try {
-      const users =
-        readUsers();
-
-      const filtered =
-        users.filter(
-          (u) =>
-            u.division ===
-              req.params
-                .division &&
-            u.active !==
-              false
-        );
-
-      res.json(
-        filtered
-      );
-    } catch (error) {
-      console.log(error);
-
-      res
-        .status(500)
-        .json({
-          message:
-            "Failed to fetch division users",
-        });
-    }
-  }
-);
-
-
-// ======================================
-// USER ACTIVITY SUMMARY
-// ======================================
-router.get(
-  "/activity-summary",
-  (req, res) => {
-    try {
-      const users =
-        readUsers();
-
-      const summary =
-        users.map(
-          (u) => ({
-            id: u.id,
-
-            name: u.name,
-
-            role: u.role,
-
-            division:
-              u.division,
-
-            activityCount:
-              u.activityCount ||
-              0,
-
-            lastLogin:
-              u.lastLogin ||
-              "Never",
-
-            active:
-              u.active !==
-              false,
-          })
-        );
-
-      res.json(
-        summary
-      );
-    } catch (error) {
-      console.log(error);
-
-      res
-        .status(500)
-        .json({
-          message:
-            "Failed to fetch activity summary",
-        });
-    }
-  }
-);
-
-module.exports =
-  router;
+module.exports = router;
