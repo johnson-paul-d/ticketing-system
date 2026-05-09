@@ -5,9 +5,9 @@ const router = express.Router();
 const Ticket = require("../models/Ticket");
 
 
-// ==============================
+// =====================================
 // GET ALL TICKETS
-// ==============================
+// =====================================
 router.get("/", async (req, res) => {
 
   try {
@@ -31,24 +31,55 @@ router.get("/", async (req, res) => {
 });
 
 
-// ==============================
+// =====================================
 // GET SINGLE TICKET
-// IMPORTANT FIX
-// ==============================
+// SUPPORTS UUID + MONGO _id
+// =====================================
 router.get("/:id", async (req, res) => {
 
   try {
 
+    const ticketId =
+      req.params.id;
+
     console.log(
       "Fetching ticket:",
-      req.params.id
+      ticketId
     );
 
-    const ticket =
+    let ticket = null;
+
+    // =====================================
+    // TRY UUID FIELD
+    // =====================================
+    ticket =
       await Ticket.findOne({
-        id: req.params.id,
+        id: ticketId,
       });
 
+    // =====================================
+    // TRY MONGO _id
+    // =====================================
+    if (!ticket) {
+
+      try {
+
+        ticket =
+          await Ticket.findById(
+            ticketId
+          );
+
+      } catch (err) {
+
+        console.log(
+          "Not Mongo ObjectId"
+        );
+      }
+    }
+
+    // =====================================
+    // NOT FOUND
+    // =====================================
     if (!ticket) {
 
       return res.status(404).json({
@@ -71,22 +102,26 @@ router.get("/:id", async (req, res) => {
 });
 
 
-// ==============================
+// =====================================
 // CREATE TICKET
-// ==============================
+// =====================================
 router.post("/", async (req, res) => {
 
   try {
 
     const ticket =
-      await Ticket.create(req.body);
+      await Ticket.create(
+        req.body
+      );
 
     req.io.emit(
       "ticketCreated",
       ticket
     );
 
-    res.status(201).json(ticket);
+    res.status(201).json(
+      ticket
+    );
 
   } catch (error) {
 
@@ -100,18 +135,55 @@ router.post("/", async (req, res) => {
 });
 
 
-// ==============================
+// =====================================
 // UPDATE TICKET
-// ==============================
+// SUPPORTS UUID + MONGO _id
+// =====================================
 router.put("/:id", async (req, res) => {
 
   try {
 
-    const ticket =
+    const ticketId =
+      req.params.id;
+
+    console.log(
+      "Updating ticket:",
+      ticketId
+    );
+
+    let ticket = null;
+
+    // =====================================
+    // TRY UUID FIELD
+    // =====================================
+    ticket =
       await Ticket.findOne({
-        id: req.params.id,
+        id: ticketId,
       });
 
+    // =====================================
+    // TRY MONGO _id
+    // =====================================
+    if (!ticket) {
+
+      try {
+
+        ticket =
+          await Ticket.findById(
+            ticketId
+          );
+
+      } catch (err) {
+
+        console.log(
+          "Not Mongo ObjectId"
+        );
+      }
+    }
+
+    // =====================================
+    // NOT FOUND
+    // =====================================
     if (!ticket) {
 
       return res.status(404).json({
@@ -120,6 +192,9 @@ router.put("/:id", async (req, res) => {
       });
     }
 
+    // =====================================
+    // UPDATE FIELDS
+    // =====================================
     Object.assign(
       ticket,
       req.body
@@ -146,18 +221,55 @@ router.put("/:id", async (req, res) => {
 });
 
 
-// ==============================
+// =====================================
 // DELETE TICKET
-// ==============================
+// SUPPORTS UUID + MONGO _id
+// =====================================
 router.delete("/:id", async (req, res) => {
 
   try {
 
-    const ticket =
-      await Ticket.findOneAndDelete({
-        id: req.params.id,
+    const ticketId =
+      req.params.id;
+
+    console.log(
+      "Deleting ticket:",
+      ticketId
+    );
+
+    let ticket = null;
+
+    // =====================================
+    // TRY UUID FIELD
+    // =====================================
+    ticket =
+      await Ticket.findOne({
+        id: ticketId,
       });
 
+    // =====================================
+    // TRY MONGO _id
+    // =====================================
+    if (!ticket) {
+
+      try {
+
+        ticket =
+          await Ticket.findById(
+            ticketId
+          );
+
+      } catch (err) {
+
+        console.log(
+          "Not Mongo ObjectId"
+        );
+      }
+    }
+
+    // =====================================
+    // NOT FOUND
+    // =====================================
     if (!ticket) {
 
       return res.status(404).json({
@@ -166,14 +278,16 @@ router.delete("/:id", async (req, res) => {
       });
     }
 
+    await ticket.deleteOne();
+
     req.io.emit(
       "ticketDeleted",
-      ticket.id
+      ticketId
     );
 
     res.json({
       message:
-        "Ticket deleted",
+        "Ticket deleted successfully",
     });
 
   } catch (error) {
