@@ -2,30 +2,40 @@ const fs = require("fs");
 
 const path = require("path");
 
-const filePath = path.join(
+const usersPath = path.join(
   __dirname,
   "../database/users.json"
 );
 
-const readUsers = () => {
+
+// ======================================
+// READ USERS
+// ======================================
+function readUsers() {
+
   try {
+
+    // CREATE FILE IF MISSING
     if (
-      !fs.existsSync(filePath)
+      !fs.existsSync(usersPath)
     ) {
+
       fs.writeFileSync(
-        filePath,
-        JSON.stringify([])
+        usersPath,
+        "[]"
       );
     }
 
     const data =
       fs.readFileSync(
-        filePath,
-        "utf-8"
+        usersPath,
+        "utf8"
       );
 
     return JSON.parse(data);
+
   } catch (error) {
+
     console.log(
       "READ USERS ERROR:",
       error
@@ -33,20 +43,35 @@ const readUsers = () => {
 
     return [];
   }
-};
+}
 
-const writeUsers = (
-  users
-) => {
-  fs.writeFileSync(
-    filePath,
-    JSON.stringify(
-      users,
-      null,
-      2
-    )
-  );
-};
+
+// ======================================
+// WRITE USERS
+// ======================================
+function writeUsers(users) {
+
+  try {
+
+    fs.writeFileSync(
+      usersPath,
+
+      JSON.stringify(
+        users,
+        null,
+        2
+      )
+    );
+
+  } catch (error) {
+
+    console.log(
+      "WRITE USERS ERROR:",
+      error
+    );
+  }
+}
+
 
 module.exports = {
   readUsers,
