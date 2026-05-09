@@ -451,8 +451,7 @@ try {
     const assignedUser =
       users.find(
         (u) =>
-          u.name ===
-          req.body.assigned
+          u.email === req.body.assigned
       );
 
     if (
@@ -501,7 +500,7 @@ https://mktg-ticketing-system.vercel.app/tickets/${updatedTicket.id}
     "ASSIGNMENT MAIL ERROR:",
     mailError
   );
-}
+} 
 writeTickets(tickets);
     if (req.io) {
       req.io.emit(
