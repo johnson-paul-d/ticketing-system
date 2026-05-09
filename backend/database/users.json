@@ -1,0 +1,50 @@
+[
+  {
+    "id": "1",
+    "name": "Johnson",
+    "email": "mktganalyst@siegerglobal.net",
+    "password": "123456",
+    "role": "Admin",
+    "division": "CPS",
+    "active": true,
+    "createdAt": "2026-05-08",
+    "lastLogin": "9/5/2026, 10:49:12 am",
+    "activityCount": 4
+  },
+  {
+    "id": "2",
+    "name": "kavin",
+    "email": "digitalmarketing@siegerglobal.net",
+    "password": "123456",
+    "role": "Team Member",
+    "division": "CPS",
+    "active": true,
+    "createdAt": "2026-05-08",
+    "lastLogin": "9/5/2026, 9:12:56 am",
+    "activityCount": 3
+  },
+  {
+    "id": "3",
+    "name": "Ramenaathan",
+    "email": "ramenaathan@siegerglobal.net",
+    "password": "123456",
+    "role": "Admin",
+    "division": "CPS",
+    "active": true,
+    "createdAt": "2026-05-08",
+    "lastLogin": "8/5/2026, 5:16:27 pm",
+    "activityCount": 1
+  },
+  {
+    "id": "36c3628a-b0f5-4b1d-91f5-cdd6a48c1cd6",
+    "name": "Manish",
+    "email": "manish.chhonker@siegerglobal.net",
+    "password": "123456",
+    "role": "Team Member",
+    "division": "CPS",
+    "active": true,
+    "createdAt": "8/5/2026, 5:32:04 pm",
+    "lastLogin": "9/5/2026, 10:31:16 am",
+    "activityCount": 2
+  }
+]
