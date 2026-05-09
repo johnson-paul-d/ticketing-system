@@ -1,21 +1,12 @@
 require("dotenv").config();
-const express = require(
-  "express"
-);
 
-const cors = require(
-  "cors"
-);
+const express = require("express");
 
-const http = require(
-  "http"
-);
+const cors = require("cors");
 
-const {
-  Server,
-} = require("socket.io");
+const http = require("http");
 
-require("dotenv").config();
+const { Server } = require("socket.io");
 
 
 // ROUTES
@@ -41,11 +32,38 @@ const server =
   http.createServer(app);
 
 
+// CORS
+app.use(
+  cors({
+    origin: "*",
+
+    methods: [
+      "GET",
+      "POST",
+      "PUT",
+      "DELETE",
+    ],
+
+    credentials: true,
+  })
+);
+
+
+// BODY PARSER
+app.use(express.json());
+
+
+// STATIC FILES
+app.use(
+  "/uploads",
+  express.static("uploads")
+);
+
+
 // SOCKET IO
 const io = new Server(server, {
   cors: {
-    origin:
-      "",
+    origin: "*",
 
     methods: [
       "GET",
@@ -57,25 +75,9 @@ const io = new Server(server, {
 });
 
 
-// MIDDLEWARE
-app.use(
-  cors({
-    origin:"",
-
-    credentials: true,
-  })
-);
-
-app.use(express.json());
-
-app.use(
-  "/uploads",
-  express.static("uploads")
-);
-
-
 // SOCKET ACCESS
 app.use((req, res, next) => {
+
   req.io = io;
 
   next();
@@ -101,6 +103,7 @@ app.use(
 
 // ROOT
 app.get("/", (req, res) => {
+
   res.send(
     "Ticketing Backend Running"
   );
@@ -111,6 +114,7 @@ app.get("/", (req, res) => {
 io.on(
   "connection",
   (socket) => {
+
     console.log(
       "User connected:",
       socket.id
@@ -119,6 +123,7 @@ io.on(
     socket.on(
       "disconnect",
       () => {
+
         console.log(
           "User disconnected"
         );
@@ -135,6 +140,7 @@ const PORT =
 
 // START SERVER
 server.listen(PORT, () => {
+
   console.log(
     `Server running on port ${PORT}`
   );
