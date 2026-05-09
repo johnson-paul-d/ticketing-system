@@ -25,13 +25,13 @@ function App() {
 
         {/* DASHBOARD */}
         <Route
-          path="/dashboard"
+          path="/Dashboard"
           element={<Dashboard />}
         />
 
         {/* TICKETS */}
         <Route
-          path="/tickets"
+          path="/Tickets"
           element={<Tickets />}
         />
 
@@ -49,19 +49,19 @@ function App() {
 
         {/* KANBAN */}
         <Route
-          path="/kanban"
+          path="/Kanban"
           element={<Kanban />}
         />
 
         {/* REPORTS */}
         <Route
-          path="/reports"
+          path="/Reports"
           element={<Reports />}
         />
 
         {/* ADMIN PANEL */}
         <Route
-          path="/admin"
+          path="/AdminPanel"
           element={<AdminPanel />}
         />
       </Routes>
