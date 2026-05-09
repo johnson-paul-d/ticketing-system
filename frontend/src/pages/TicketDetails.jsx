@@ -25,28 +25,57 @@ export default function TicketDetails() {
   const [selectedMember, setSelectedMember] =
     useState("");
 
-  // =========================
+  const [loading, setLoading] =
+    useState(true);
+
+  const [error, setError] =
+    useState("");
+
+  // =====================================
   // FETCH TICKET
-  // =========================
+  // =====================================
   const fetchTicket = async () => {
 
     try {
 
+      console.log(
+        "Fetching ticket:",
+        id
+      );
+
       const res = await api.get(
         `/api/tickets/${id}`
+      );
+
+      console.log(
+        "Ticket response:",
+        res.data
       );
 
       setTicket(res.data);
 
     } catch (error) {
 
-      console.log(error);
+      console.log(
+        "Ticket fetch error:",
+        error
+      );
+
+      setError(
+        error?.response?.data
+          ?.message ||
+          "Failed to load ticket"
+      );
+
+    } finally {
+
+      setLoading(false);
     }
   };
 
-  // =========================
+  // =====================================
   // FETCH TEAM MEMBERS
-  // =========================
+  // =====================================
   const fetchTeamMembers =
     async () => {
 
@@ -57,13 +86,34 @@ export default function TicketDetails() {
             "/api/auth/team-members"
           );
 
-        setTeamMembers(
+        console.log(
+          "Team members:",
           res.data
         );
 
+        if (
+          Array.isArray(
+            res.data
+          )
+        ) {
+
+          setTeamMembers(
+            res.data
+          );
+
+        } else {
+
+          setTeamMembers([]);
+        }
+
       } catch (error) {
 
-        console.log(error);
+        console.log(
+          "Team member error:",
+          error
+        );
+
+        setTeamMembers([]);
       }
     };
 
@@ -75,27 +125,22 @@ export default function TicketDetails() {
 
   }, []);
 
-  // =========================
+  // =====================================
   // ASSIGN TICKET
-  // =========================
+  // =====================================
   const assignTicket =
     async () => {
 
       if (!selectedMember) {
 
         alert(
-          "Please select team member"
+          "Select team member"
         );
 
         return;
       }
 
       try {
-
-        console.log(
-          "Assigning:",
-          selectedMember
-        );
 
         await api.put(
           `/api/tickets/${id}`,
@@ -112,10 +157,8 @@ export default function TicketDetails() {
         );
 
         alert(
-          "Ticket assigned successfully"
+          "Ticket assigned"
         );
-
-        setSelectedMember("");
 
         fetchTicket();
 
@@ -124,16 +167,14 @@ export default function TicketDetails() {
         console.log(error);
 
         alert(
-          error?.response?.data
-            ?.message ||
-            "Assign failed"
+          "Assign failed"
         );
       }
     };
 
-  // =========================
+  // =====================================
   // UNASSIGN
-  // =========================
+  // =====================================
   const unassignTicket =
     async () => {
 
@@ -169,12 +210,43 @@ export default function TicketDetails() {
       }
     };
 
+  // =====================================
+  // LOADING
+  // =====================================
+  if (loading) {
+
+    return (
+      <MainLayout>
+        <div className="p-10">
+          Loading ticket...
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // =====================================
+  // ERROR
+  // =====================================
+  if (error) {
+
+    return (
+      <MainLayout>
+        <div className="p-10 text-red-500">
+          {error}
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // =====================================
+  // NO TICKET
+  // =====================================
   if (!ticket) {
 
     return (
       <MainLayout>
         <div className="p-10">
-          Loading...
+          Ticket not found
         </div>
       </MainLayout>
     );
@@ -185,23 +257,23 @@ export default function TicketDetails() {
 
       <div className="bg-white rounded-2xl shadow-sm p-8">
 
-        {/* TITLE */}
         <div className="mb-10">
 
           <h1 className="text-3xl font-bold">
-            {ticket.title}
+            {ticket?.title}
           </h1>
 
           <p className="text-gray-500 mt-2">
-            Ticket ID: {ticket.id}
+            Ticket ID:
+            {" "}
+            {ticket?._id ||
+              ticket?.id}
           </p>
 
         </div>
 
-        {/* DETAILS */}
         <div className="grid grid-cols-2 gap-10">
 
-          {/* LEFT */}
           <div className="space-y-6">
 
             <div>
@@ -211,7 +283,7 @@ export default function TicketDetails() {
               </h2>
 
               <p>
-                {ticket.description}
+                {ticket?.description}
               </p>
 
             </div>
@@ -223,7 +295,7 @@ export default function TicketDetails() {
               </h2>
 
               <p>
-                {ticket.priority}
+                {ticket?.priority}
               </p>
 
             </div>
@@ -235,14 +307,13 @@ export default function TicketDetails() {
               </h2>
 
               <p>
-                {ticket.category}
+                {ticket?.category}
               </p>
 
             </div>
 
           </div>
 
-          {/* RIGHT */}
           <div className="space-y-6">
 
             <div>
@@ -252,7 +323,7 @@ export default function TicketDetails() {
               </h2>
 
               <p>
-                {ticket.assigned ||
+                {ticket?.assigned ||
                   "Unassigned"}
               </p>
 
@@ -265,7 +336,7 @@ export default function TicketDetails() {
               </h2>
 
               <p>
-                {ticket.status}
+                {ticket?.status}
               </p>
 
             </div>
@@ -277,7 +348,7 @@ export default function TicketDetails() {
               </h2>
 
               <p>
-                {ticket.createdByName}
+                {ticket?.createdByName}
               </p>
 
             </div>
@@ -286,7 +357,6 @@ export default function TicketDetails() {
 
         </div>
 
-        {/* ASSIGN SECTION */}
         {user?.role ===
           "Admin" && (
 
@@ -319,7 +389,7 @@ export default function TicketDetails() {
 
                     <option
                       key={
-                        member.id
+                        member._id
                       }
                       value={
                         member.email
