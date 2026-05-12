@@ -53,7 +53,8 @@ router.get(
         error,
       } = await query;
 
-      if (error) throw error;
+      if (error)
+        throw error;
 
       res.json(data);
 
@@ -96,7 +97,8 @@ router.get(
         )
         .single();
 
-      if (error) throw error;
+      if (error)
+        throw error;
 
       res.json(data);
 
@@ -181,7 +183,8 @@ router.post(
         ])
         .select();
 
-      if (error) throw error;
+      if (error)
+        throw error;
 
       res
         .status(201)
@@ -224,11 +227,10 @@ router.put(
         status,
         category,
         due_date,
-        history,
         comment,
       } = req.body;
 
-      // GET EXISTING TICKET
+      // GET EXISTING
       const {
         data: existing,
         error: fetchError,
@@ -241,13 +243,13 @@ router.put(
       if (fetchError)
         throw fetchError;
 
-      const updatedHistory =
+      let updatedHistory =
         existing.history || [];
 
       /*
-      =====================================
+      =====================================================
       DUE DATE HISTORY
-      =====================================
+      =====================================================
       */
       if (
         due_date &&
@@ -269,17 +271,18 @@ router.put(
             new Date().toLocaleString(),
         });
 
-        // EMAIL TO ADMIN
-        await sendMail({
+        // EMAIL
+        try {
 
-          to:
-            process.env.ADMIN_EMAIL,
+          await sendMail({
+            to:
+              process.env.ADMIN_EMAIL,
 
-          subject:
-            "Ticket Due Date Updated",
+            subject:
+              "Ticket Due Date Updated",
 
-          text:
-            `
+            text:
+              `
 Ticket:
 ${existing.title}
 
@@ -291,14 +294,22 @@ ${due_date}
 
 Comment:
 ${comment || "No comment"}
-            `,
-        });
+              `,
+          });
+
+        } catch (mailError) {
+
+          console.log(
+            "MAIL ERROR:",
+            mailError
+          );
+        }
       }
 
       /*
-      =====================================
+      =====================================================
       STATUS HISTORY
-      =====================================
+      =====================================================
       */
       if (
         status &&
@@ -326,16 +337,17 @@ ${comment || "No comment"}
           "Completed"
         ) {
 
-          await sendMail({
+          try {
 
-            to:
-              process.env.ADMIN_EMAIL,
+            await sendMail({
+              to:
+                process.env.ADMIN_EMAIL,
 
-            subject:
-              "Ticket Completed",
+              subject:
+                "Ticket Completed",
 
-            text:
-              `
+              text:
+                `
 Ticket:
 ${existing.title}
 
@@ -344,10 +356,24 @@ ${req.user.name}
 
 Comment:
 ${comment || "No comment"}
-              `,
-          });
+                `,
+            });
+
+          } catch (mailError) {
+
+            console.log(
+              "MAIL ERROR:",
+              mailError
+            );
+          }
         }
       }
+
+      /*
+      =====================================================
+      UPDATE OBJECT
+      =====================================================
+      */
 
       const updateData = {
 
@@ -381,9 +407,11 @@ ${comment || "No comment"}
         updateData.due_date =
           due_date;
 
-      if (history !== undefined)
-        updateData.history =
-          updatedHistory;
+      /*
+      =====================================================
+      UPDATE DATABASE
+      =====================================================
+      */
 
       const {
         data,
@@ -395,8 +423,21 @@ ${comment || "No comment"}
         .select()
         .single();
 
-      if (error)
-        throw error;
+      if (error) {
+
+        console.log(
+          "SUPABASE UPDATE ERROR:",
+          error
+        );
+
+        return res
+          .status(500)
+          .json({
+            message:
+              "Database update failed",
+            error,
+          });
+      }
 
       res.json(data);
 
@@ -435,7 +476,6 @@ router.put(
         assigned_to_name,
       } = req.body;
 
-      // GET EXISTING
       const {
         data: existing,
       } = await supabase
