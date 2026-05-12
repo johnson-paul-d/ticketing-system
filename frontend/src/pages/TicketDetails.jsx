@@ -232,147 +232,107 @@ export default function TicketDetails() {
   UPDATE DUE DATE
   =====================================================
   */
-  const updateDueDate =
-    async () => {
+ /*
+=====================================================
+UPDATE DUE DATE
+=====================================================
+*/
+const updateDueDate =
+  async () => {
 
-      try {
+    try {
 
-        const existingHistory =
-          ticket.history || [];
+      const res =
+        await api.put(
+          `/tickets/${ticket.id}`,
+          {
+            due_date:
+              dueDate,
 
-        const historyEntry = {
-
-          action:
-            `Due date changed to ${dueDate}`,
-
-          comment:
-            comment,
-
-          user:
-            user?.name,
-
-          date:
-            new Date().toLocaleString(),
-        };
-
-        const updatedHistory = [
-          ...existingHistory,
-          historyEntry,
-        ];
-
-        const res =
-          await api.put(
-            `/tickets/${ticket.id}`,
-            {
-              due_date:
-                dueDate,
-
-              comment:
-                comment,
-
-              history:
-                updatedHistory,
-            }
-          );
-
-        setTicket(res.data);
-
-        setHistory(
-          updatedHistory
+            comment:
+              comment,
+          }
         );
 
-        setComment("");
+      setTicket(res.data);
 
-        alert(
-          "Due date updated"
-        );
+      setHistory(
+        res.data.history || []
+      );
 
-      } catch (error) {
+      setComment("");
 
-        console.log(
-          "DUE DATE ERROR:",
-          error
-        );
+      alert(
+        "Due date updated"
+      );
 
-        alert(
-          "Failed to update due date"
-        );
-      }
-    };
+    } catch (error) {
 
+      console.log(
+        "DUE DATE ERROR:",
+        error.response?.data ||
+        error
+      );
+
+      alert(
+        error.response?.data?.message ||
+        "Failed to update due date"
+      );
+    }
+  };
   /*
   =====================================================
   UPDATE STATUS
   =====================================================
   */
-  const updateStatus =
-    async () => {
+  /*
+=====================================================
+UPDATE STATUS
+=====================================================
+*/
+const updateStatus =
+  async () => {
 
-      try {
+    try {
 
-        const existingHistory =
-          ticket.history || [];
+      const res =
+        await api.put(
+          `/tickets/${ticket.id}`,
+          {
+            status:
+              status,
 
-        const historyEntry = {
-
-          action:
-            `Status changed to ${status}`,
-
-          comment:
-            comment,
-
-          user:
-            user?.name,
-
-          date:
-            new Date().toLocaleString(),
-        };
-
-        const updatedHistory = [
-          ...existingHistory,
-          historyEntry,
-        ];
-
-        const res =
-          await api.put(
-            `/tickets/${ticket.id}`,
-            {
-              status:
-                status,
-
-              comment:
-                comment,
-
-              history:
-                updatedHistory,
-            }
-          );
-
-        setTicket(res.data);
-
-        setHistory(
-          updatedHistory
+            comment:
+              comment,
+          }
         );
 
-        setComment("");
+      setTicket(res.data);
 
-        alert(
-          "Status updated"
-        );
+      setHistory(
+        res.data.history || []
+      );
 
-      } catch (error) {
+      setComment("");
 
-        console.log(
-          "STATUS ERROR:",
-          error
-        );
+      alert(
+        "Status updated"
+      );
 
-        alert(
-          "Failed to update status"
-        );
-      }
-    };
+    } catch (error) {
 
+      console.log(
+        "STATUS ERROR:",
+        error.response?.data ||
+        error
+      );
+
+      alert(
+        error.response?.data?.message ||
+        "Failed to update status"
+      );
+    }
+  };
   /*
   =====================================================
   LOADING

@@ -1,21 +1,27 @@
 import {
   Link,
-  useLocation,
   useNavigate,
 } from "react-router-dom";
 
 import {
+  Menu,
+  X,
   LayoutDashboard,
   Ticket,
-  PlusCircle,
   KanbanSquare,
-  CalendarDays,
-  ShieldCheck,
+  Calendar,
+  Shield,
   BarChart3,
   LogOut,
+  PlusCircle,
 } from "lucide-react";
 
-import useAuthStore from "../store/authStore";
+import {
+  useState,
+} from "react";
+
+import useAuthStore
+  from "../store/authStore";
 
 export default function MainLayout({
   children,
@@ -24,8 +30,8 @@ export default function MainLayout({
   const navigate =
     useNavigate();
 
-  const location =
-    useLocation();
+  const [open, setOpen] =
+    useState(false);
 
   const user =
     useAuthStore(
@@ -37,114 +43,157 @@ export default function MainLayout({
       (state) => state.logout
     );
 
-  const handleLogout =
-    () => {
+  const handleLogout = () => {
 
-      logout();
+    logout();
 
-      navigate("/");
-    };
+    navigate("/");
+  };
 
   const menuItems = [
 
     {
-      name: "Dashboard",
-      icon: LayoutDashboard,
+      label: "Dashboard",
       path: "/dashboard",
+      icon: LayoutDashboard,
     },
 
     {
-      name: "Tickets",
-      icon: Ticket,
+      label: "Tickets",
       path: "/tickets",
+      icon: Ticket,
     },
 
     ...(user?.role !==
     "Team Member"
       ? [
           {
-            name: "Create Ticket",
-            icon: PlusCircle,
-            path: "/create-ticket",
+            label:
+              "Create Ticket",
+            path:
+              "/create-ticket",
+            icon:
+              PlusCircle,
           },
         ]
       : []),
 
     {
-      name: "Kanban",
-      icon: KanbanSquare,
+      label: "Kanban",
       path: "/kanban",
+      icon:
+        KanbanSquare,
     },
 
     {
-      name: "Calendar",
-      icon: CalendarDays,
+      label: "Calendar",
       path: "/calendar",
+      icon: Calendar,
     },
 
     ...(user?.role ===
     "Admin"
       ? [
           {
-            name: "Admin Panel",
-            icon: ShieldCheck,
+            label:
+              "Admin Panel",
             path: "/admin",
+            icon: Shield,
           },
         ]
       : []),
 
     {
-      name: "Reports",
-      icon: BarChart3,
+      label: "Reports",
       path: "/reports",
+      icon: BarChart3,
     },
   ];
 
   return (
 
-    <div className="flex min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-gray-100 flex">
+
+      {/* MOBILE OVERLAY */}
+      {open && (
+        <div
+          onClick={() =>
+            setOpen(false)
+          }
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+        />
+      )}
 
       {/* SIDEBAR */}
-      <div className="w-72 bg-black text-white flex flex-col justify-between p-6 shadow-2xl">
+      <div
+        className={`
+          fixed lg:static
+          z-50
+          top-0 left-0
+          h-full
+          w-72
+          bg-black
+          text-white
+          transition-transform
+          duration-300
+          flex
+          flex-col
+          justify-between
+          p-5
+
+          ${
+            open
+              ? "translate-x-0"
+              : "-translate-x-full lg:translate-x-0"
+          }
+        `}
+      >
 
         <div>
 
-          {/* LOGO */}
-          <div className="mb-10">
+          {/* TOP */}
+          <div className="flex items-center justify-between mb-8">
 
-            <h1 className="text-3xl font-extrabold tracking-tight">
-              Ticket System
-            </h1>
+            <div>
 
-            <p className="text-gray-400 text-sm mt-1">
-              Team Management Portal
-            </p>
+              <h1 className="text-3xl font-bold">
+                Ticket System
+              </h1>
+
+              <p className="text-gray-400 text-sm">
+                Team Management Portal
+              </p>
+
+            </div>
+
+            <button
+              onClick={() =>
+                setOpen(false)
+              }
+              className="lg:hidden"
+            >
+              <X />
+            </button>
 
           </div>
 
-          {/* USER CARD */}
-          <div className="mb-8 bg-gradient-to-r from-zinc-900 to-zinc-800 border border-white/10 rounded-2xl p-5 shadow-lg">
+          {/* USER */}
+          <div className="bg-white/10 rounded-2xl p-4 mb-8 flex items-center gap-4">
 
-            <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-red-600 flex items-center justify-center font-bold text-xl">
+              {user?.name
+                ?.charAt(0)}
+            </div>
 
-              <div className="w-12 h-12 rounded-full bg-red-600 flex items-center justify-center text-xl font-bold uppercase">
+            <div>
 
-                {user?.name
-                  ?.charAt(0)}
+              <h2 className="font-semibold text-lg leading-tight">
+                {user?.name}
+              </h2>
 
-              </div>
-
-              <div>
-
-                <p className="font-semibold text-lg">
-                  {user?.name}
-                </p>
-
-                <p className="text-gray-400 text-sm">
-                  {user?.role}
-                </p>
-
-              </div>
+              <p className="text-gray-400 text-sm">
+                {user?.role}
+              </p>
 
             </div>
 
@@ -159,36 +208,32 @@ export default function MainLayout({
                 const Icon =
                   item.icon;
 
-                const isActive =
-                  location.pathname ===
-                  item.path;
-
                 return (
 
                   <Link
                     key={item.path}
                     to={item.path}
-                    className={`flex items-center gap-4 px-4 py-3 rounded-2xl transition-all duration-200 group
-                      
-                      ${
-                        isActive
-                          ? "bg-red-600 text-white shadow-lg"
-                          : "hover:bg-white/10 text-gray-300"
-                      }
-                    `}
+                    onClick={() =>
+                      setOpen(false)
+                    }
+                    className="
+                      flex
+                      items-center
+                      gap-3
+                      px-4
+                      py-3
+                      rounded-2xl
+                      hover:bg-red-600
+                      transition
+                    "
                   >
 
                     <Icon
                       size={20}
-                      className={`${
-                        isActive
-                          ? "text-white"
-                          : "text-gray-400 group-hover:text-white"
-                      }`}
                     />
 
-                    <span className="font-medium">
-                      {item.name}
+                    <span>
+                      {item.label}
                     </span>
 
                   </Link>
@@ -202,11 +247,24 @@ export default function MainLayout({
 
         {/* LOGOUT */}
         <button
-          onClick={handleLogout}
-          className="flex items-center justify-center gap-3 bg-red-600 hover:bg-red-700 transition-all duration-200 text-white py-4 rounded-2xl font-semibold shadow-lg"
+          onClick={
+            handleLogout
+          }
+          className="
+            bg-red-600
+            hover:bg-red-700
+            transition
+            rounded-2xl
+            py-4
+            flex
+            items-center
+            justify-center
+            gap-2
+            font-semibold
+          "
         >
 
-          <LogOut size={20} />
+          <LogOut size={18} />
 
           Logout
 
@@ -214,10 +272,28 @@ export default function MainLayout({
 
       </div>
 
-      {/* MAIN CONTENT */}
-      <div className="flex-1 overflow-auto">
+      {/* MAIN */}
+      <div className="flex-1 min-w-0">
 
-        <div className="p-8">
+        {/* MOBILE TOPBAR */}
+        <div className="lg:hidden bg-white shadow-sm p-4 flex items-center gap-4 sticky top-0 z-30">
+
+          <button
+            onClick={() =>
+              setOpen(true)
+            }
+          >
+            <Menu />
+          </button>
+
+          <h1 className="font-bold text-lg">
+            Ticket System
+          </h1>
+
+        </div>
+
+        {/* PAGE CONTENT */}
+        <div className="p-4 md:p-6 lg:p-8">
 
           {children}
 
