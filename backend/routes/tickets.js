@@ -1,11 +1,14 @@
 const express = require('express');
-const { v4: uuidv4 } = require('uuid');
-
 const router = express.Router();
 
 const supabase = require('../config/supabase');
 const auth = require('../middleware/auth');
 
+/*
+=====================================================
+GET ALL TICKETS
+=====================================================
+*/
 router.get('/', auth, async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -19,8 +22,9 @@ router.get('/', auth, async (req, res) => {
     if (error) throw error;
 
     res.json(data);
+
   } catch (error) {
-    console.log(error);
+    console.log('GET TICKETS ERROR:', error);
 
     res.status(500).json({
       message: 'Failed to fetch tickets'
@@ -28,8 +32,14 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
+/*
+=====================================================
+GET SINGLE TICKET
+=====================================================
+*/
 router.get('/:id', auth, async (req, res) => {
   try {
+
     const { data, error } = await supabase
       .from('tickets')
       .select('*')
@@ -39,8 +49,9 @@ router.get('/:id', auth, async (req, res) => {
     if (error) throw error;
 
     res.json(data);
+
   } catch (error) {
-    console.log(error);
+    console.log('GET SINGLE TICKET ERROR:', error);
 
     res.status(500).json({
       message: 'Failed to fetch ticket'
@@ -48,8 +59,14 @@ router.get('/:id', auth, async (req, res) => {
   }
 });
 
+/*
+=====================================================
+CREATE TICKET
+=====================================================
+*/
 router.post('/', auth, async (req, res) => {
   try {
+
     const {
       title,
       description,
@@ -95,57 +112,142 @@ router.post('/', auth, async (req, res) => {
     });
   }
 });
-router.put('/:id', auth, async (req, res) => {
+
+/*
+=====================================================
+UPDATE TICKET STATUS
+=====================================================
+*/
+router.put('/:id/status', auth, async (req, res) => {
   try {
-    const payload = {
-      ...req.body,
-      updated_at: new Date().toISOString()
-    };
 
-    const { data, error } = await supabase
-      .from('tickets')
-      .update(payload)
-      .eq('id', req.params.id)
-      .select();
+    const { status } = req.body;
 
-    if (error) throw error;
-
-    req.io.emit('ticketUpdated', data[0]);
-
-    res.json(data[0]);
-  } catch (error) {
-    console.log(error);
-
-    res.status(500).json({
-      message: 'Failed to update ticket'
-    });
-  }
-});
-
-router.delete('/:id', auth, async (req, res) => {
-  try {
     const { data, error } = await supabase
       .from('tickets')
       .update({
-        deleted: true,
-        status: 'Deleted',
-        updated_at: new Date().toISOString()
+        status,
+        updated_at: new Date()
       })
       .eq('id', req.params.id)
       .select();
 
     if (error) throw error;
 
-    req.io.emit('ticketDeleted', data[0]);
+    res.json(data[0]);
 
-    res.json({
-      message: 'Ticket deleted successfully'
-    });
   } catch (error) {
-    console.log(error);
+    console.log('STATUS UPDATE ERROR:', error);
 
     res.status(500).json({
-      message: 'Failed to delete ticket'
+      message: 'Failed to update status'
+    });
+  }
+});
+
+/*
+=====================================================
+ASSIGN TICKET
+=====================================================
+*/
+router.put('/:id/assign', auth, async (req, res) => {
+  try {
+
+    const {
+      assigned_to,
+      assigned_to_name
+    } = req.body;
+
+    const { data, error } = await supabase
+      .from('tickets')
+      .update({
+        assigned_to,
+        assigned_to_name,
+        updated_at: new Date()
+      })
+      .eq('id', req.params.id)
+      .select();
+
+    if (error) {
+      console.log(error);
+      throw error;
+    }
+
+    res.json(data[0]);
+
+  } catch (error) {
+    console.log('ASSIGN ERROR:', error);
+
+    res.status(500).json({
+      message: 'Assignment failed'
+    });
+  }
+});
+
+/*
+=====================================================
+UNASSIGN TICKET
+=====================================================
+*/
+router.put('/:id/unassign', auth, async (req, res) => {
+  try {
+
+    const { data, error } = await supabase
+      .from('tickets')
+      .update({
+        assigned_to: null,
+        assigned_to_name: null,
+        updated_at: new Date()
+      })
+      .eq('id', req.params.id)
+      .select();
+
+    if (error) throw error;
+
+    res.json(data[0]);
+
+  } catch (error) {
+    console.log('UNASSIGN ERROR:', error);
+
+    res.status(500).json({
+      message: 'Unassign failed'
+    });
+  }
+});
+
+/*
+=====================================================
+DELETE TICKET (SOFT DELETE)
+=====================================================
+*/
+router.delete('/:id', auth, async (req, res) => {
+  try {
+
+    if (req.user.role !== 'Admin') {
+      return res.status(403).json({
+        message: 'Access denied'
+      });
+    }
+
+    const { error } = await supabase
+      .from('tickets')
+      .update({
+        deleted: true,
+        updated_at: new Date()
+      })
+      .eq('id', req.params.id);
+
+    if (error) throw error;
+
+    res.json({
+      message: 'Ticket deleted'
+    });
+
+  } catch (error) {
+    console.log('DELETE ERROR:', error);
+
+    res.status(500).json({
+      message: 'Delete failed'
     });
   }
 });
