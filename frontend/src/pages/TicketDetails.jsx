@@ -48,6 +48,7 @@ export default function TicketDetails() {
 
   }, []);
 
+  // FETCH TICKET
   const fetchTicket =
     async () => {
 
@@ -74,6 +75,7 @@ export default function TicketDetails() {
       }
     };
 
+  // FETCH USERS
   const fetchUsers =
     async () => {
 
@@ -90,11 +92,12 @@ export default function TicketDetails() {
       }
     };
 
-  // ASSIGN
+  // ASSIGN TICKET
   const assignTicket =
     async () => {
 
       if (!selectedUser) {
+
         alert(
           "Select a team member"
         );
@@ -137,7 +140,7 @@ export default function TicketDetails() {
       }
     };
 
-  // DELETE
+  // DELETE TICKET
   const deleteTicket =
     async () => {
 
@@ -146,7 +149,8 @@ export default function TicketDetails() {
           "Delete this ticket?"
         );
 
-      if (!confirmDelete) return;
+      if (!confirmDelete)
+        return;
 
       try {
 
@@ -176,37 +180,45 @@ export default function TicketDetails() {
 
       try {
 
-        await api.put(
-          `/tickets/${ticket.id}`,
-          {
-            due_date: dueDate,
-          }
-        );
+        // EXISTING HISTORY
+        const existingHistory =
+          ticket.history || [];
 
-        // ADD HISTORY
-        const newHistory = [
-          ...history,
-          {
-            action:
-              `Due date changed to ${dueDate}`,
+        // NEW HISTORY ENTRY
+        const historyEntry = {
+          action:
+            `Due date changed to ${dueDate}`,
 
-            user:
-              user?.name,
+          user:
+            user?.name,
 
-            date:
-              new Date().toLocaleString(),
-          },
+          date:
+            new Date().toLocaleString(),
+        };
+
+        const updatedHistory = [
+          ...existingHistory,
+          historyEntry,
         ];
 
-        await api.put(
-          `/tickets/${ticket.id}/history`,
-          {
-            history:
-              newHistory,
-          }
-        );
+        // UPDATE TICKET
+        const res =
+          await api.put(
+            `/tickets/${ticket.id}`,
+            {
+              due_date:
+                dueDate,
 
-        setHistory(newHistory);
+              history:
+                updatedHistory,
+            }
+          );
+
+        setTicket(res.data);
+
+        setHistory(
+          updatedHistory
+        );
 
         alert(
           "Due date updated"
@@ -254,10 +266,13 @@ export default function TicketDetails() {
 
           </div>
 
-          {user?.role === "Admin" && (
+          {user?.role ===
+            "Admin" && (
 
             <button
-              onClick={deleteTicket}
+              onClick={
+                deleteTicket
+              }
               className="bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-2xl font-semibold"
             >
               Delete Ticket
@@ -270,6 +285,7 @@ export default function TicketDetails() {
         {/* DETAILS */}
         <div className="grid grid-cols-2 gap-12 mt-12">
 
+          {/* LEFT */}
           <div className="space-y-8">
 
             <div>
@@ -304,6 +320,7 @@ export default function TicketDetails() {
 
           </div>
 
+          {/* RIGHT */}
           <div className="space-y-8">
 
             <div>
@@ -327,7 +344,9 @@ export default function TicketDetails() {
               </p>
             </div>
 
+            {/* DUE DATE */}
             <div>
+
               <p className="font-semibold text-gray-500">
                 Due Date
               </p>
@@ -346,13 +365,25 @@ export default function TicketDetails() {
                 />
 
                 <button
-                  onClick={updateDueDate}
+                  onClick={
+                    updateDueDate
+                  }
                   className="bg-black text-white px-5 py-3 rounded-xl"
                 >
                   Update
                 </button>
 
               </div>
+
+              {ticket.due_date && (
+
+                <p className="text-sm text-gray-500 mt-3">
+                  Current Due Date:
+                  {" "}
+                  {ticket.due_date}
+                </p>
+
+              )}
 
             </div>
 
@@ -416,7 +447,8 @@ export default function TicketDetails() {
 
           <div className="space-y-5">
 
-            {history.length === 0 ? (
+            {history.length ===
+            0 ? (
 
               <div className="text-gray-400">
                 No history available
