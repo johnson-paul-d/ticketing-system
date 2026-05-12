@@ -204,105 +204,79 @@ router.post(
 UPDATE TICKET
 =====================================================
 */
-router.put(
-  '/:id',
-  auth,
-  async (req, res) => {
+router.put("/:id", auth, async (req, res) => {
 
-    try {
+  try {
 
-      const { id } =
-        req.params;
+    const { id } = req.params;
 
-      const updates =
-        req.body;
+    const {
+      title,
+      description,
+      priority,
+      status,
+      category,
+      due_date,
+      history
+    } = req.body;
 
-      // GET EXISTING
-      const {
-        data: existingTicket
-      } = await supabase
-        .from('tickets')
-        .select('*')
-        .eq('id', id)
-        .single();
+    const updateData = {};
 
-      let history =
-        existingTicket.history || [];
+    // ONLY UPDATE PROVIDED FIELDS
 
-      // DUE DATE HISTORY
-      if (
-        updates.due_date &&
-        updates.due_date !==
-          existingTicket.due_date
-      ) {
+    if (title !== undefined)
+      updateData.title = title;
 
-        history.push({
-          action:
-            `Due date changed to ${updates.due_date}`,
+    if (description !== undefined)
+      updateData.description = description;
 
-          user:
-            req.user.name,
+    if (priority !== undefined)
+      updateData.priority = priority;
 
-          date:
-            new Date().toLocaleString()
-        });
-      }
+    if (status !== undefined)
+      updateData.status = status;
 
-      // STATUS HISTORY
-      if (
-        updates.status &&
-        updates.status !==
-          existingTicket.status
-      ) {
+    if (category !== undefined)
+      updateData.category = category;
 
-        history.push({
-          action:
-            `Status changed to ${updates.status}`,
+    if (due_date !== undefined)
+      updateData.due_date = due_date;
 
-          user:
-            req.user.name,
+    if (history !== undefined)
+      updateData.history = history;
 
-          date:
-            new Date().toLocaleString()
-        });
-      }
-
-      const {
-        data,
-        error
-      } = await supabase
-        .from('tickets')
-        .update({
-          ...updates,
-
-          history,
-
-          updated_at:
-            new Date()
-        })
-        .eq('id', id)
+    // UPDATE DATABASE
+    const { data, error } =
+      await supabase
+        .from("tickets")
+        .update(updateData)
+        .eq("id", id)
         .select()
         .single();
 
-      if (error) throw error;
+    if (error) {
 
-      res.json(data);
+      console.log(error);
 
-    } catch (error) {
-
-      console.log(
-        'UPDATE TICKET ERROR:',
-        error
-      );
-
-      res.status(500).json({
+      return res.status(500).json({
         message:
-          'Failed to update ticket'
+          "Failed to update ticket",
+        error,
       });
     }
-  }
-);
 
+    res.json(data);
+
+  } catch (error) {
+
+    console.log(error);
+
+    res.status(500).json({
+      message:
+        "Server error",
+    });
+  }
+});
 /*
 =====================================================
 UPDATE STATUS
