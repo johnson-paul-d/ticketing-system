@@ -32,22 +32,14 @@ const handleLogin = async () => {
     login(res.data.user);
 
     navigate('/dashboard');
+
   } catch (error) {
+
     alert(
       error?.response?.data?.message ||
       'Invalid credentials'
     );
-  }
-};
-
-      login(res.data.user);
-
-      navigate("/dashboard");
-    } catch (error) {
-      alert("Invalid credentials");
-    }
-  };
-
+  }};
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
       <div className="bg-white p-8 rounded-2xl shadow-xl w-[400px]">
