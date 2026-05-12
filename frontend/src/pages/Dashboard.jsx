@@ -9,26 +9,76 @@ import {
   Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 
-// ─── Design Tokens ────────────────────────────────────────────────────────────
-const C = {
-  open:      "#F97316",
-  progress:  "#3B82F6",
-  completed: "#10B981",
-  critical:  "#EF4444",
-  accent:    "#8B5CF6",
-  surface:   "#0D1117",
-  card:      "#161B22",
-  cardHover: "#1C2430",
-  border:    "#30363D",
-  text:      "#E6EDF3",
-  subtext:   "#8B949E",
-  input:     "#21262D",
-  tag:       "#388BFD1A",
-  tagBorder: "#388BFD66",
-};
-const PIE_PALETTE = [C.open, C.progress, C.completed, C.critical, C.accent, "#EC4899", "#14B8A6"];
+// ─────────────────────────────────────────────────────────────────────────────
+// DESIGN SYSTEM
+// Palette: Warm Ivory base · Deep Slate primary · Sage green · Terracotta ·
+//          Dusty Mauve · Amber gold
+// Fonts:   "Instrument Serif" display · "Inter" body · "JetBrains Mono" data
+// ─────────────────────────────────────────────────────────────────────────────
 
-// ─── Utility ──────────────────────────────────────────────────────────────────
+const T = {
+  // Surfaces
+  bg:         "#F7F5F0",   // warm ivory page
+  surface:    "#FFFFFF",   // pure white cards
+  surfaceAlt: "#F2EFE9",   // slightly warmer surface for inset areas
+  glass:      "#FFFFFFCC", // semi-transparent
+
+  // Primary — Deep Slate
+  slate:      "#1E2A3A",
+  slateLight: "#334155",
+  slateMuted: "#64748B",
+
+  // Semantic colours
+  open:       "#C4622D",   // terracotta
+  openBg:     "#FDF0E8",
+  openBorder: "#E8A87C",
+
+  progress:   "#2E6B8A",   // steel blue
+  progressBg: "#E8F4F8",
+  progressBorder: "#7BB8D0",
+
+  done:       "#3A6B4A",   // forest green
+  doneBg:     "#EAF3EC",
+  doneBorder: "#85BF96",
+
+  critical:   "#8B2E2E",   // deep crimson
+  criticalBg: "#FBE9E9",
+
+  // Accent colours for charts / variety
+  mauve:      "#7B5E7B",
+  amber:      "#B07D2E",
+  sage:       "#4E7C5F",
+  teal:       "#2A7B82",
+  rose:       "#A0455A",
+  indigo:     "#4754A0",
+
+  // Text
+  textPrimary:   "#1E2A3A",
+  textSecondary: "#64748B",
+  textTertiary:  "#94A3B8",
+  textInverse:   "#F7F5F0",
+
+  // Borders
+  border:    "#E2DDD5",
+  borderMed: "#C8C2B8",
+  borderDark:"#9E9589",
+
+  // Gradients (as string refs for inline use)
+  gradSlate: "linear-gradient(135deg, #1E2A3A 0%, #2D3F54 100%)",
+  gradGreen: "linear-gradient(135deg, #3A6B4A 0%, #4E8A63 100%)",
+};
+
+const CHART_PALETTE = [T.open, T.progress, T.done, T.mauve, T.amber, T.teal, T.rose, T.indigo];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FONT INJECTION
+// ─────────────────────────────────────────────────────────────────────────────
+const FONT_URL =
+  "https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UTILITY FUNCTIONS
+// ─────────────────────────────────────────────────────────────────────────────
 const groupBy = (arr, key) =>
   arr.reduce((acc, item) => {
     const k = item[key] || "Unknown";
@@ -36,23 +86,24 @@ const groupBy = (arr, key) =>
     return acc;
   }, {});
 
-const toChart = (obj) => Object.entries(obj).map(([name, value]) => ({ name, value }));
+const toChart = (obj) =>
+  Object.entries(obj).map(([name, value]) => ({ name, value }));
 
 const unique = (arr, key) =>
   [...new Set(arr.map((x) => x[key]).filter(Boolean))].sort();
 
-// Build day-of-week trend from real created_at dates
+const pct = (n, total) =>
+  total > 0 ? `${Math.round((n / total) * 100)}%` : "0%";
+
 function buildWeeklyTrend(tickets) {
   const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const buckets = {};
-  days.forEach((d) => {
-    buckets[d] = { day: d, Open: 0, "In Progress": 0, Completed: 0 };
-  });
+  days.forEach((d) => { buckets[d] = { day: d, Open: 0, "In Progress": 0, Completed: 0 }; });
   tickets.forEach((t) => {
     const date = t.created_at ? new Date(t.created_at) : null;
     if (!date) return;
     const dayName = date.toLocaleDateString("en-US", { weekday: "short" });
-    if (buckets[dayName] && t.status) {
+    if (buckets[dayName]) {
       const key = ["Open", "In Progress", "Completed"].includes(t.status) ? t.status : null;
       if (key) buckets[dayName][key]++;
     }
@@ -60,190 +111,256 @@ function buildWeeklyTrend(tickets) {
   return days.map((d) => buckets[d]);
 }
 
-// ─── Custom Tooltip ───────────────────────────────────────────────────────────
-const CustomTooltip = ({ active, payload, label }) => {
+// ─────────────────────────────────────────────────────────────────────────────
+// MODULAR PRIMITIVE COMPONENTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Recharts tooltip with new design language */
+const ChartTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
     <div style={{
-      background: "#0D1117", border: `1px solid ${C.border}`, borderRadius: 10,
-      padding: "10px 16px", fontSize: 13, color: C.text,
-      boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
+      background: T.surface,
+      border: `1px solid ${T.border}`,
+      borderRadius: 10,
+      padding: "10px 14px",
+      boxShadow: "0 4px 24px rgba(30,42,58,0.12)",
+      fontFamily: "'Inter', sans-serif",
     }}>
       {label && (
-        <p style={{ color: C.subtext, marginBottom: 4, fontFamily: "monospace", fontSize: 11 }}>
+        <p style={{ fontSize: 11, color: T.textTertiary, fontFamily: "'JetBrains Mono', monospace", marginBottom: 6, letterSpacing: "0.06em" }}>
           {label}
         </p>
       )}
       {payload.map((p, i) => (
-        <p key={i} style={{ color: p.color || C.text, margin: "2px 0" }}>
-          <span style={{ opacity: 0.65 }}>{p.name}: </span>
-          <strong>{p.value}</strong>
-        </p>
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: p.color, flexShrink: 0 }} />
+          <span style={{ fontSize: 12, color: T.textSecondary }}>{p.name}:</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary, fontFamily: "'JetBrains Mono', monospace" }}>{p.value}</span>
+        </div>
       ))}
     </div>
   );
 };
 
-// ─── Stat Card ────────────────────────────────────────────────────────────────
-function StatCard({ label, value, accent, icon, sub }) {
+/** Base card — every chart/section lives in one */
+function Card({ children, style, noPad }) {
+  return (
+    <div style={{
+      background: T.surface,
+      border: `1px solid ${T.border}`,
+      borderRadius: 16,
+      padding: noPad ? 0 : "22px 24px",
+      overflow: "hidden",
+      ...style,
+    }}>
+      {children}
+    </div>
+  );
+}
+
+/** Card header with eyebrow label + title */
+function CardHeader({ eyebrow, title, right }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
+      <div>
+        {eyebrow && (
+          <p style={{
+            fontSize: 10, fontFamily: "'JetBrains Mono', monospace",
+            color: T.textTertiary, letterSpacing: "0.12em",
+            textTransform: "uppercase", marginBottom: 4,
+          }}>
+            {eyebrow}
+          </p>
+        )}
+        <p style={{ fontSize: 14, fontWeight: 600, color: T.textPrimary, fontFamily: "'Inter', sans-serif", margin: 0 }}>
+          {title}
+        </p>
+      </div>
+      {right}
+    </div>
+  );
+}
+
+/** Recharts axis tick style helper */
+const axisTick = { fill: T.textTertiary, fontSize: 10, fontFamily: "'JetBrains Mono', monospace" };
+const axisLine = { axisLine: false, tickLine: false };
+
+/** Section divider with label */
+function SectionLabel({ icon, label }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+      <div style={{ width: 3, height: 18, borderRadius: 2, background: T.slateLight }} />
+      <span style={{
+        fontSize: 10, fontFamily: "'JetBrains Mono', monospace",
+        color: T.slateLight, letterSpacing: "0.14em", textTransform: "uppercase",
+      }}>
+        {label}
+      </span>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KPI STAT CARD
+// ─────────────────────────────────────────────────────────────────────────────
+function StatCard({ label, value, sub, dot, accentColor, accentBg, accentBorder }) {
   const [hov, setHov] = useState(false);
   return (
     <div
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       style={{
-        background: hov ? C.cardHover : C.card,
-        border: `1px solid ${hov ? accent + "66" : C.border}`,
-        borderRadius: 16, padding: "22px 26px",
-        position: "relative", overflow: "hidden",
-        transition: "all 0.2s", cursor: "default",
-        transform: hov ? "translateY(-2px)" : "none",
-        boxShadow: hov ? `0 8px 32px ${accent}22` : "none",
+        background: hov ? accentBg : T.surface,
+        border: `1px solid ${hov ? accentBorder : T.border}`,
+        borderRadius: 14,
+        padding: "20px 22px",
+        transition: "all 0.18s ease",
+        cursor: "default",
+        position: "relative",
+        overflow: "hidden",
       }}
     >
+      {/* top accent strip */}
       <div style={{
-        position: "absolute", top: -24, right: -24, width: 90, height: 90,
-        borderRadius: "50%", background: accent, opacity: 0.1, filter: "blur(24px)",
+        position: "absolute", top: 0, left: 0, right: 0,
+        height: 3, background: accentColor, borderRadius: "14px 14px 0 0",
+        opacity: hov ? 1 : 0.35, transition: "opacity 0.18s",
       }} />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
           <p style={{
-            color: C.subtext, fontSize: 11, fontFamily: "'DM Mono', monospace",
-            letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10,
+            fontSize: 10, fontFamily: "'JetBrains Mono', monospace",
+            color: T.textTertiary, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10,
           }}>
             {label}
           </p>
-          <h2 style={{
-            color: C.text, fontSize: 38, fontWeight: 800,
-            fontFamily: "'Syne', sans-serif", lineHeight: 1, margin: 0,
+          <p style={{
+            fontSize: 36, fontFamily: "'Instrument Serif', serif",
+            color: T.textPrimary, lineHeight: 1, margin: "0 0 6px",
+            fontStyle: hov ? "italic" : "normal", transition: "font-style 0.18s",
           }}>
             {value}
-          </h2>
+          </p>
           {sub && (
-            <p style={{ color: C.subtext, fontSize: 11, marginTop: 6, fontFamily: "'DM Mono', monospace" }}>
+            <p style={{ fontSize: 11, color: T.textTertiary, fontFamily: "'JetBrains Mono', monospace" }}>
               {sub}
             </p>
           )}
         </div>
-        <span style={{ fontSize: 26, opacity: 0.4 }}>{icon}</span>
+        {dot && (
+          <div style={{
+            width: 10, height: 10, borderRadius: "50%",
+            background: accentColor, opacity: hov ? 1 : 0.5,
+            transition: "opacity 0.18s", marginTop: 4,
+          }} />
+        )}
       </div>
     </div>
   );
 }
 
-// ─── Chart Card ───────────────────────────────────────────────────────────────
-function ChartCard({ title, subtitle, children, fullWidth }) {
-  return (
-    <div style={{
-      background: C.card, border: `1px solid ${C.border}`,
-      borderRadius: 16, padding: "22px 26px",
-      gridColumn: fullWidth ? "1 / -1" : undefined,
-    }}>
-      <p style={{
-        fontFamily: "'Syne', sans-serif", fontWeight: 700,
-        fontSize: 15, color: C.text, margin: 0,
-      }}>
-        {title}
-      </p>
-      {subtitle ? (
-        <p style={{
-          fontSize: 11, color: C.subtext,
-          fontFamily: "'DM Mono', monospace", margin: "4px 0 18px",
-        }}>
-          {subtitle}
-        </p>
-      ) : (
-        <div style={{ height: 18 }} />
-      )}
-      {children}
-    </div>
-  );
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// FILTER COMPONENTS
+// ─────────────────────────────────────────────────────────────────────────────
 
-// ─── Filter Select ────────────────────────────────────────────────────────────
-const chevron = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%238B949E' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14L2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E")`;
-
-const selectStyle = {
-  background: C.input, border: `1px solid ${C.border}`, borderRadius: 8,
-  color: C.text, fontFamily: "'DM Mono', monospace", fontSize: 12,
-  padding: "7px 28px 7px 10px", cursor: "pointer", outline: "none",
-  appearance: "none", backgroundImage: chevron,
-  backgroundRepeat: "no-repeat", backgroundPosition: "right 10px center",
-  transition: "border-color 0.15s",
+const selectBase = {
+  background: T.surfaceAlt,
+  border: `1px solid ${T.border}`,
+  borderRadius: 8,
+  color: T.textPrimary,
+  fontFamily: "'JetBrains Mono', monospace",
+  fontSize: 12,
+  padding: "7px 28px 7px 10px",
+  cursor: "pointer",
+  outline: "none",
+  appearance: "none",
+  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' fill='%2394A3B8' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14L2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E")`,
+  backgroundRepeat: "no-repeat",
+  backgroundPosition: "right 9px center",
+  transition: "border-color 0.14s, background 0.14s",
 };
 
-function FilterSelect({ label, icon, value, options, onChange, minWidth = 130 }) {
+function FilterSelect({ label, value, options, onChange, minWidth = 128 }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       <label style={{
-        fontSize: 10, color: C.subtext, fontFamily: "'DM Mono', monospace",
+        fontSize: 10, color: T.textTertiary,
+        fontFamily: "'JetBrains Mono', monospace",
         letterSpacing: "0.1em", textTransform: "uppercase",
       }}>
-        {icon} {label}
+        {label}
       </label>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        style={{ ...selectStyle, minWidth, color: value !== "all" ? C.text : C.subtext }}
-        onFocus={(e) => (e.target.style.borderColor = C.accent)}
-        onBlur={(e)  => (e.target.style.borderColor = C.border)}
+        style={{ ...selectBase, minWidth, color: value !== "all" ? T.textPrimary : T.textTertiary }}
+        onFocus={(e)  => { e.target.style.borderColor = T.slateLight; e.target.style.background = T.surface; }}
+        onBlur={(e)   => { e.target.style.borderColor = T.border;     e.target.style.background = T.surfaceAlt; }}
       >
-        <option value="all">All {label}s</option>
-        {options.map((o) => (
-          <option key={o} value={o}>{o}</option>
-        ))}
+        <option value="all">All</option>
+        {options.map((o) => <option key={o} value={o}>{o}</option>)}
       </select>
     </div>
   );
 }
 
-function DateRangeSelect({ value, onChange }) {
+function DateSelect({ value, onChange }) {
   const opts = [
-    { label: "All Time",     value: "all"  },
-    { label: "Today",        value: "today"},
-    { label: "Last 7 Days",  value: "7d"   },
-    { label: "Last 30 Days", value: "30d"  },
-    { label: "Last 90 Days", value: "90d"  },
+    { v: "all",   l: "All time"    },
+    { v: "today", l: "Today"       },
+    { v: "7d",    l: "Last 7 days" },
+    { v: "30d",   l: "Last 30 days"},
+    { v: "90d",   l: "Last 90 days"},
   ];
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       <label style={{
-        fontSize: 10, color: C.subtext, fontFamily: "'DM Mono', monospace",
+        fontSize: 10, color: T.textTertiary,
+        fontFamily: "'JetBrains Mono', monospace",
         letterSpacing: "0.1em", textTransform: "uppercase",
       }}>
-        📅 Date Range
+        Period
       </label>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        style={{ ...selectStyle, minWidth: 140, color: value !== "all" ? C.text : C.subtext }}
-        onFocus={(e) => (e.target.style.borderColor = C.accent)}
-        onBlur={(e)  => (e.target.style.borderColor = C.border)}
+        style={{ ...selectBase, minWidth: 140, color: value !== "all" ? T.textPrimary : T.textTertiary }}
+        onFocus={(e)  => { e.target.style.borderColor = T.slateLight; e.target.style.background = T.surface; }}
+        onBlur={(e)   => { e.target.style.borderColor = T.border;     e.target.style.background = T.surfaceAlt; }}
       >
-        {opts.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
+        {opts.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
       </select>
     </div>
   );
 }
 
-// ─── Active Filter Tag ────────────────────────────────────────────────────────
-function FilterTag({ label, onRemove }) {
+/** Chip tag for active filters */
+function FilterChip({ label, onRemove }) {
+  const [hov, setHov] = useState(false);
   return (
-    <div style={{
-      display: "inline-flex", alignItems: "center", gap: 6,
-      background: C.tag, border: `1px solid ${C.tagBorder}`,
-      borderRadius: 20, padding: "3px 10px 3px 12px",
-      fontFamily: "'DM Mono', monospace", fontSize: 11, color: "#388BFD",
-    }}>
+    <div
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 5,
+        background: hov ? T.slateLight : T.slate,
+        color: T.textInverse,
+        borderRadius: 20, padding: "3px 10px 3px 11px",
+        fontFamily: "'JetBrains Mono', monospace", fontSize: 11,
+        transition: "background 0.14s", cursor: "default",
+      }}
+    >
       {label}
       <button
         onClick={onRemove}
+        onMouseEnter={() => setHov(true)}
+        onMouseLeave={() => setHov(false)}
         style={{
           background: "none", border: "none", cursor: "pointer",
-          color: "#388BFD", fontSize: 14, lineHeight: 1, padding: 0, opacity: 0.7,
+          color: "rgba(247,245,240,0.6)", fontSize: 15, lineHeight: 1, padding: 0,
+          transition: "color 0.14s",
         }}
+        onMouseOver={(e)  => (e.target.style.color = T.textInverse)}
+        onMouseOut={(e)   => (e.target.style.color = "rgba(247,245,240,0.6)")}
       >
         ×
       </button>
@@ -251,13 +368,29 @@ function FilterTag({ label, onRemove }) {
   );
 }
 
-// ─── Main Dashboard ───────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// SUMMARY ROW for Director view
+// ─────────────────────────────────────────────────────────────────────────────
+function MetricRow({ label, value, color }) {
+  return (
+    <div style={{
+      display: "flex", justifyContent: "space-between", alignItems: "center",
+      padding: "10px 0", borderBottom: `1px solid ${T.border}`,
+    }}>
+      <span style={{ fontSize: 12, color: T.textSecondary, fontFamily: "'Inter', sans-serif" }}>{label}</span>
+      <span style={{ fontSize: 14, fontFamily: "'Instrument Serif', serif", color: color || T.textPrimary }}>{value}</span>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN DASHBOARD
+// ─────────────────────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const user = useAuthStore((state) => state.user);
   const [allTickets, setAllTickets] = useState([]);
   const [loaded, setLoaded]         = useState(false);
 
-  // Filter state
   const [fStatus,   setFStatus]   = useState("all");
   const [fPriority, setFPriority] = useState("all");
   const [fCategory, setFCategory] = useState("all");
@@ -268,19 +401,19 @@ export default function Dashboard() {
   const isManager        = user?.role === "Manager";
   const isAdminOrManager = isAdmin || isManager;
 
-  // ── Font injection + fetch ──
+  // Font + data init
   useEffect(() => {
     const link = document.createElement("link");
     link.rel   = "stylesheet";
-    link.href  = "https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500&display=swap";
+    link.href  = FONT_URL;
     document.head.appendChild(link);
     fetchTickets();
   }, []);
 
   const fetchTickets = async () => {
     try {
-      const res  = await api.get("/tickets");
-      let data   = res.data;
+      const res = await api.get("/tickets");
+      let data  = res.data;
       if (user?.role === "Team Member") {
         data = data.filter((t) => t.assigned_to_name === user.name);
       }
@@ -292,42 +425,35 @@ export default function Dashboard() {
     }
   };
 
-  // ── Options derived from real data ──
-  const statusOptions   = useMemo(() => unique(allTickets, "status"),           [allTickets]);
-  const priorityOptions = useMemo(() => unique(allTickets, "priority"),         [allTickets]);
-  const categoryOptions = useMemo(() => unique(allTickets, "category"),         [allTickets]);
-  const assigneeOptions = useMemo(() => unique(allTickets, "assigned_to_name"), [allTickets]);
+  // Filter option lists
+  const statusOpts   = useMemo(() => unique(allTickets, "status"),           [allTickets]);
+  const priorityOpts = useMemo(() => unique(allTickets, "priority"),         [allTickets]);
+  const categoryOpts = useMemo(() => unique(allTickets, "category"),         [allTickets]);
+  const assigneeOpts = useMemo(() => unique(allTickets, "assigned_to_name"), [allTickets]);
 
-  // ── Date cutoff ──
   const dateCutoff = useMemo(() => {
     if (fDate === "all") return null;
     const now = new Date();
-    if (fDate === "today") {
-      const d = new Date(now); d.setHours(0, 0, 0, 0); return d;
-    }
+    if (fDate === "today") { const d = new Date(now); d.setHours(0,0,0,0); return d; }
     const days = fDate === "7d" ? 7 : fDate === "30d" ? 30 : 90;
     return new Date(now.getTime() - days * 86400000);
   }, [fDate]);
 
-  // ── Apply all filters ──
-  const tickets = useMemo(() => {
-    return allTickets.filter((t) => {
-      if (fStatus   !== "all" && t.status           !== fStatus)   return false;
-      if (fPriority !== "all" && t.priority         !== fPriority) return false;
-      if (fCategory !== "all" && t.category         !== fCategory) return false;
-      if (fAssignee !== "all" && t.assigned_to_name !== fAssignee) return false;
-      if (dateCutoff && t.created_at && new Date(t.created_at) < dateCutoff) return false;
-      return true;
-    });
-  }, [allTickets, fStatus, fPriority, fCategory, fAssignee, dateCutoff]);
+  const tickets = useMemo(() => allTickets.filter((t) => {
+    if (fStatus   !== "all" && t.status           !== fStatus)   return false;
+    if (fPriority !== "all" && t.priority         !== fPriority) return false;
+    if (fCategory !== "all" && t.category         !== fCategory) return false;
+    if (fAssignee !== "all" && t.assigned_to_name !== fAssignee) return false;
+    if (dateCutoff && t.created_at && new Date(t.created_at) < dateCutoff) return false;
+    return true;
+  }), [allTickets, fStatus, fPriority, fCategory, fAssignee, dateCutoff]);
 
-  // ── Active filter descriptors ──
   const activeFilters = [
-    fStatus   !== "all" && { key: "status",   label: `Status: ${fStatus}`,     clear: () => setFStatus("all")   },
-    fPriority !== "all" && { key: "priority", label: `Priority: ${fPriority}`, clear: () => setFPriority("all") },
-    fCategory !== "all" && { key: "category", label: `Category: ${fCategory}`, clear: () => setFCategory("all") },
-    fAssignee !== "all" && { key: "assignee", label: `Assignee: ${fAssignee}`, clear: () => setFAssignee("all") },
-    fDate     !== "all" && { key: "date",     label: `Date: ${fDate}`,         clear: () => setFDate("all")     },
+    fStatus   !== "all" && { key: "s", label: fStatus,   clear: () => setFStatus("all")   },
+    fPriority !== "all" && { key: "p", label: fPriority, clear: () => setFPriority("all") },
+    fCategory !== "all" && { key: "c", label: fCategory, clear: () => setFCategory("all") },
+    fAssignee !== "all" && { key: "a", label: fAssignee, clear: () => setFAssignee("all") },
+    fDate     !== "all" && { key: "d", label: fDate,     clear: () => setFDate("all")     },
   ].filter(Boolean);
 
   const resetAll = () => {
@@ -335,7 +461,7 @@ export default function Dashboard() {
     setFAssignee("all"); setFDate("all");
   };
 
-  // ── Derived metrics (all computed from filtered set) ──
+  // Derived metrics
   const openT      = tickets.filter((t) => t.status === "Open");
   const progressT  = tickets.filter((t) => t.status === "In Progress");
   const completedT = tickets.filter((t) => t.status === "Completed");
@@ -343,9 +469,7 @@ export default function Dashboard() {
   const completionRate = tickets.length > 0
     ? Math.round((completedT.length / tickets.length) * 100) : 0;
 
-  const pct = (n) => tickets.length > 0 ? `${Math.round((n / tickets.length) * 100)}% of filtered` : "—";
-
-  // ── Chart data ──
+  // Chart datasets
   const statusData   = [
     { name: "Open",        value: openT.length      },
     { name: "In Progress", value: progressT.length  },
@@ -365,17 +489,21 @@ export default function Dashboard() {
     { subject: "Total",       A: tickets.length    },
   ];
 
-  // ── Layout helpers ──
-  const grid4 = { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 18, marginBottom: 24 };
-  const grid2 = { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 18, marginBottom: 24 };
-  const grid3 = { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 18, marginBottom: 24 };
+  // ── Layout grid helpers ──
+  const g4 = { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 20 };
+  const g2 = { display: "grid", gridTemplateColumns: "1fr 1fr",        gap: 14, marginBottom: 20 };
+  const g3 = { display: "grid", gridTemplateColumns: "1fr 1fr 1fr",    gap: 14, marginBottom: 20 };
 
+  // ── Loading state ──
   if (!loaded) {
     return (
       <MainLayout>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 400 }}>
-          <p style={{ color: C.subtext, fontFamily: "'DM Mono', monospace", fontSize: 13, letterSpacing: "0.1em" }}>
-            LOADING ANALYTICS...
+          <p style={{
+            color: T.textTertiary, fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 13, letterSpacing: "0.08em",
+          }}>
+            loading analytics...
           </p>
         </div>
       </MainLayout>
@@ -384,283 +512,293 @@ export default function Dashboard() {
 
   return (
     <MainLayout>
-      <div style={{ fontFamily: "'DM Sans', sans-serif", color: C.text }}>
+      {/* Root wrapper — warm ivory bg */}
+      <div style={{ fontFamily: "'Inter', sans-serif", color: T.textPrimary }}>
 
-        {/* ── Header ── */}
+        {/* ── PAGE HEADER ─────────────────────────────────────────────── */}
         <div style={{
           display: "flex", justifyContent: "space-between", alignItems: "flex-end",
-          marginBottom: 28, borderBottom: `1px solid ${C.border}`, paddingBottom: 22,
+          marginBottom: 24, paddingBottom: 20, borderBottom: `1px solid ${T.border}`,
         }}>
           <div>
             <p style={{
-              fontFamily: "'DM Mono', monospace", fontSize: 11, color: C.accent,
-              letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 6,
+              fontFamily: "'JetBrains Mono', monospace", fontSize: 10,
+              color: T.textTertiary, letterSpacing: "0.14em",
+              textTransform: "uppercase", marginBottom: 6,
             }}>
               {user?.role} · {user?.name}
             </p>
+            {/* Instrument Serif display heading */}
             <h1 style={{
-              fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 34,
-              color: C.text, margin: 0, letterSpacing: "-0.02em",
+              fontFamily: "'Instrument Serif', serif",
+              fontSize: 40, fontWeight: 400, fontStyle: "italic",
+              color: T.textPrimary, margin: "0 0 4px",
+              letterSpacing: "-0.01em", lineHeight: 1.1,
             }}>
-              Analytics Dashboard
+              Analytics
             </h1>
-            <p style={{ color: C.subtext, fontSize: 12, marginTop: 5, fontFamily: "'DM Mono', monospace" }}>
+            <p style={{
+              fontFamily: "'JetBrains Mono', monospace", fontSize: 11,
+              color: T.textTertiary, letterSpacing: "0.05em",
+            }}>
               {new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
             </p>
           </div>
+
+          {/* Completion rate badge */}
           <div style={{
-            background: "linear-gradient(135deg, #10B981, #059669)",
-            borderRadius: 14, padding: "13px 22px", textAlign: "center",
+            background: T.gradGreen,
+            background: T.slate,
+            borderRadius: 14, padding: "14px 24px", textAlign: "center",
+            border: `1px solid ${T.slateLight}`,
           }}>
-            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.7)", fontFamily: "'DM Mono', monospace", letterSpacing: "0.1em", textTransform: "uppercase" }}>
-              Completion Rate
+            <p style={{
+              fontSize: 10, color: "rgba(247,245,240,0.55)",
+              fontFamily: "'JetBrains Mono', monospace",
+              letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 4,
+            }}>
+              completion
             </p>
-            <p style={{ fontSize: 30, fontWeight: 800, fontFamily: "'Syne', sans-serif", color: "#fff", margin: "2px 0 0" }}>
+            <p style={{
+              fontFamily: "'Instrument Serif', serif",
+              fontSize: 34, fontStyle: "italic", color: T.textInverse,
+              margin: 0, lineHeight: 1,
+            }}>
               {completionRate}%
             </p>
           </div>
         </div>
 
-        {/* ── Filter Bar ── */}
-        <div style={{
-          background: C.card, border: `1px solid ${C.border}`,
-          borderRadius: 14, padding: "18px 22px", marginBottom: 22,
-        }}>
+        {/* ── FILTER BAR ──────────────────────────────────────────────── */}
+        <Card style={{ marginBottom: 20, background: T.surfaceAlt, border: `1px solid ${T.border}` }}>
           <div style={{
-            display: "flex", alignItems: "flex-end", justifyContent: "space-between",
-            flexWrap: "wrap", gap: 16,
+            display: "flex", alignItems: "flex-end",
+            justifyContent: "space-between", flexWrap: "wrap", gap: 16,
             marginBottom: activeFilters.length > 0 ? 14 : 0,
           }}>
-            {/* Selects */}
-            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-end" }}>
-              <FilterSelect label="Status"   icon="🔵" value={fStatus}   options={statusOptions}   onChange={setFStatus}   />
-              <FilterSelect label="Priority" icon="🔴" value={fPriority} options={priorityOptions} onChange={setFPriority} />
-              <FilterSelect label="Category" icon="🏷️" value={fCategory} options={categoryOptions} onChange={setFCategory} />
+            {/* Selects row */}
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-end" }}>
+              <FilterSelect label="Status"   value={fStatus}   options={statusOpts}   onChange={setFStatus}   />
+              <FilterSelect label="Priority" value={fPriority} options={priorityOpts} onChange={setFPriority} />
+              <FilterSelect label="Category" value={fCategory} options={categoryOpts} onChange={setFCategory} />
               {isAdminOrManager && (
-                <FilterSelect
-                  label="Assignee" icon="👤"
-                  value={fAssignee} options={assigneeOptions}
-                  onChange={setFAssignee} minWidth={160}
-                />
+                <FilterSelect label="Assignee" value={fAssignee} options={assigneeOpts} onChange={setFAssignee} minWidth={160} />
               )}
-              <DateRangeSelect value={fDate} onChange={setFDate} />
+              <DateSelect value={fDate} onChange={setFDate} />
             </div>
 
-            {/* Count + reset */}
+            {/* Ticket count + clear */}
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{
-                fontFamily: "'DM Mono', monospace", fontSize: 11, color: C.subtext,
-                background: C.input, borderRadius: 20, padding: "5px 13px",
-                border: `1px solid ${C.border}`,
+                fontFamily: "'JetBrains Mono', monospace", fontSize: 11,
+                color: T.textTertiary,
+                background: T.surface, border: `1px solid ${T.border}`,
+                borderRadius: 20, padding: "4px 12px",
               }}>
-                {tickets.length} / {allTickets.length} tickets
+                {tickets.length} / {allTickets.length}
               </span>
               {activeFilters.length > 0 && (
                 <button
                   onClick={resetAll}
                   style={{
-                    background: "none", border: `1px solid ${C.border}`, borderRadius: 8,
-                    color: C.subtext, fontFamily: "'DM Mono', monospace", fontSize: 11,
-                    padding: "5px 12px", cursor: "pointer", transition: "all 0.15s",
+                    background: "none", border: `1px solid ${T.borderMed}`,
+                    borderRadius: 8, color: T.textSecondary,
+                    fontFamily: "'JetBrains Mono', monospace", fontSize: 11,
+                    padding: "5px 11px", cursor: "pointer", transition: "all 0.14s",
                   }}
-                  onMouseEnter={(e) => { e.target.style.borderColor = C.critical; e.target.style.color = C.critical; }}
-                  onMouseLeave={(e) => { e.target.style.borderColor = C.border;   e.target.style.color = C.subtext;  }}
+                  onMouseOver={(e) => { e.target.style.borderColor = T.open; e.target.style.color = T.open; }}
+                  onMouseOut={(e)  => { e.target.style.borderColor = T.borderMed; e.target.style.color = T.textSecondary; }}
                 >
-                  ✕ Clear All
+                  ✕ clear all
                 </button>
               )}
             </div>
           </div>
 
-          {/* Active filter tags */}
+          {/* Active chips */}
           {activeFilters.length > 0 && (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {activeFilters.map((f) => (
-                <FilterTag key={f.key} label={f.label} onRemove={f.clear} />
+                <FilterChip key={f.key} label={f.label} onRemove={f.clear} />
               ))}
             </div>
           )}
+        </Card>
+
+        {/* ── KPI CARDS ───────────────────────────────────────────────── */}
+        <div style={g4}>
+          <StatCard
+            label="Total"
+            value={tickets.length}
+            sub={`${allTickets.length} unfiltered`}
+            dot accentColor={T.slateLight} accentBg="#EFF2F6" accentBorder="#C8D0DC"
+          />
+          <StatCard
+            label="Open"
+            value={openT.length}
+            sub={pct(openT.length, tickets.length)}
+            dot accentColor={T.open} accentBg={T.openBg} accentBorder={T.openBorder}
+          />
+          <StatCard
+            label="In Progress"
+            value={progressT.length}
+            sub={pct(progressT.length, tickets.length)}
+            dot accentColor={T.progress} accentBg={T.progressBg} accentBorder={T.progressBorder}
+          />
+          <StatCard
+            label="Completed"
+            value={completedT.length}
+            sub={pct(completedT.length, tickets.length)}
+            dot accentColor={T.done} accentBg={T.doneBg} accentBorder={T.doneBorder}
+          />
         </div>
 
-        {/* ── KPI Cards ── */}
-        <div style={grid4}>
-          <StatCard label="Total Tickets" value={tickets.length}       accent={C.accent}    icon="🎫" sub={`${allTickets.length} unfiltered`} />
-          <StatCard label="Open"          value={openT.length}         accent={C.open}      icon="📬" sub={pct(openT.length)} />
-          <StatCard label="In Progress"   value={progressT.length}     accent={C.progress}  icon="⚡" sub={pct(progressT.length)} />
-          <StatCard label="Completed"     value={completedT.length}    accent={C.completed} icon="✅" sub={pct(completedT.length)} />
-        </div>
-
-        {/* ── Status pie + Weekly trend ── */}
-        <div style={grid2}>
-          <ChartCard title="Status Distribution" subtitle="Filtered ticket breakdown by state">
-            <ResponsiveContainer width="100%" height={240}>
+        {/* ── STATUS DONUT + WEEKLY AREA ───────────────────────────────── */}
+        <div style={g2}>
+          <Card>
+            <CardHeader eyebrow="distribution" title="Status breakdown" />
+            <ResponsiveContainer width="100%" height={230}>
               <PieChart>
-                <Pie data={statusData} cx="50%" cy="50%" innerRadius={60} outerRadius={100}
-                  dataKey="value" paddingAngle={4} stroke="none">
-                  {[C.open, C.progress, C.completed].map((color, i) => (
-                    <Cell key={i} fill={color} />
-                  ))}
+                <Pie data={statusData} cx="50%" cy="50%" innerRadius={58} outerRadius={96}
+                  dataKey="value" paddingAngle={3} stroke="none">
+                  <Cell fill={T.open}     />
+                  <Cell fill={T.progress} />
+                  <Cell fill={T.done}     />
                 </Pie>
-                <Tooltip content={<CustomTooltip />} />
-                <Legend iconType="circle" iconSize={8}
+                <Tooltip content={<ChartTooltip />} />
+                <Legend iconType="circle" iconSize={7}
                   formatter={(v) => (
-                    <span style={{ color: C.subtext, fontSize: 11, fontFamily: "'DM Mono', monospace" }}>{v}</span>
+                    <span style={{ fontSize: 11, color: T.textSecondary, fontFamily: "'Inter', sans-serif" }}>{v}</span>
                   )} />
               </PieChart>
             </ResponsiveContainer>
-          </ChartCard>
+          </Card>
 
-          <ChartCard title="Volume by Day of Week" subtitle="Tickets grouped by created_at day">
-            <ResponsiveContainer width="100%" height={240}>
-              <AreaChart data={weeklyTrend}>
+          <Card>
+            <CardHeader eyebrow="volume" title="Volume by day of week" />
+            <ResponsiveContainer width="100%" height={230}>
+              <AreaChart data={weeklyTrend} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
                 <defs>
-                  {[["gO", C.open], ["gP", C.progress], ["gC", C.completed]].map(([id, color]) => (
+                  {[[T.open, "ao"], [T.progress, "ap"], [T.done, "ac"]].map(([color, id]) => (
                     <linearGradient key={id} id={id} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor={color} stopOpacity={0.35} />
+                      <stop offset="5%"  stopColor={color} stopOpacity={0.22} />
                       <stop offset="95%" stopColor={color} stopOpacity={0}    />
                     </linearGradient>
                   ))}
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
-                <XAxis dataKey="day" tick={{ fill: C.subtext, fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: C.subtext, fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} />
-                <Tooltip content={<CustomTooltip />} />
-                <Area type="monotone" dataKey="Open"        stroke={C.open}      fill="url(#gO)" strokeWidth={2} />
-                <Area type="monotone" dataKey="In Progress" stroke={C.progress}  fill="url(#gP)" strokeWidth={2} />
-                <Area type="monotone" dataKey="Completed"   stroke={C.completed} fill="url(#gC)" strokeWidth={2} />
+                <CartesianGrid strokeDasharray="2 4" stroke={T.border} />
+                <XAxis dataKey="day" tick={axisTick} {...axisLine} />
+                <YAxis tick={axisTick} {...axisLine} />
+                <Tooltip content={<ChartTooltip />} />
+                <Area type="monotone" dataKey="Open"        stroke={T.open}     fill="url(#ao)" strokeWidth={1.8} />
+                <Area type="monotone" dataKey="In Progress" stroke={T.progress} fill="url(#ap)" strokeWidth={1.8} />
+                <Area type="monotone" dataKey="Completed"   stroke={T.done}     fill="url(#ac)" strokeWidth={1.8} />
               </AreaChart>
             </ResponsiveContainer>
-          </ChartCard>
+          </Card>
         </div>
 
-        {/* ── Priority + Category + Radar ── */}
-        <div style={grid3}>
-          <ChartCard title="Priority Breakdown" subtitle="Tickets by urgency level">
-            <ResponsiveContainer width="100%" height={210}>
-              <BarChart data={priorityData} barCategoryGap="30%">
-                <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false} />
-                <XAxis dataKey="name" tick={{ fill: C.subtext, fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: C.subtext, fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+        {/* ── PRIORITY + CATEGORY + RADAR ─────────────────────────────── */}
+        <div style={g3}>
+          <Card>
+            <CardHeader eyebrow="urgency" title="Priority breakdown" />
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={priorityData} barCategoryGap="32%" margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
+                <CartesianGrid strokeDasharray="2 4" stroke={T.border} vertical={false} />
+                <XAxis dataKey="name" tick={axisTick} {...axisLine} />
+                <YAxis tick={axisTick} {...axisLine} />
+                <Tooltip content={<ChartTooltip />} />
+                <Bar dataKey="value" radius={[5, 5, 0, 0]}>
                   {priorityData.map((_, i) => (
-                    <Cell key={i} fill={PIE_PALETTE[i % PIE_PALETTE.length]} />
+                    <Cell key={i} fill={CHART_PALETTE[i % CHART_PALETTE.length]} />
                   ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-          </ChartCard>
+          </Card>
 
-          <ChartCard title="Category Split" subtitle="Tickets by category type">
-            <ResponsiveContainer width="100%" height={210}>
+          <Card>
+            <CardHeader eyebrow="type" title="Category split" />
+            <ResponsiveContainer width="100%" height={200}>
               <PieChart>
-                <Pie data={categoryData} cx="50%" cy="50%" outerRadius={78}
+                <Pie data={categoryData} cx="50%" cy="50%" outerRadius={75}
                   dataKey="value" stroke="none" paddingAngle={2}>
                   {categoryData.map((_, i) => (
-                    <Cell key={i} fill={PIE_PALETTE[i % PIE_PALETTE.length]} />
+                    <Cell key={i} fill={CHART_PALETTE[i % CHART_PALETTE.length]} />
                   ))}
                 </Pie>
-                <Tooltip content={<CustomTooltip />} />
+                <Tooltip content={<ChartTooltip />} />
                 <Legend iconType="circle" iconSize={7}
                   formatter={(v) => (
-                    <span style={{ color: C.subtext, fontSize: 10, fontFamily: "'DM Mono', monospace" }}>{v}</span>
+                    <span style={{ fontSize: 10, color: T.textSecondary, fontFamily: "'Inter', sans-serif" }}>{v}</span>
                   )} />
               </PieChart>
             </ResponsiveContainer>
-          </ChartCard>
+          </Card>
 
-          <ChartCard
-            title="Performance Radar"
-            subtitle={isAdminOrManager ? "Team snapshot" : "Your activity profile"}
-          >
-            <ResponsiveContainer width="100%" height={210}>
+          <Card>
+            <CardHeader eyebrow="profile" title={isAdminOrManager ? "Team snapshot" : "Your activity"} />
+            <ResponsiveContainer width="100%" height={200}>
               <RadarChart data={radarData}>
-                <PolarGrid stroke={C.border} />
-                <PolarAngleAxis dataKey="subject" tick={{ fill: C.subtext, fontSize: 10, fontFamily: "monospace" }} />
-                <Radar dataKey="A" stroke={C.accent} fill={C.accent} fillOpacity={0.22} strokeWidth={2} />
-                <Tooltip content={<CustomTooltip />} />
+                <PolarGrid stroke={T.border} />
+                <PolarAngleAxis dataKey="subject" tick={{ ...axisTick, fontSize: 9 }} />
+                <Radar dataKey="A" stroke={T.slateLight} fill={T.slateLight} fillOpacity={0.15} strokeWidth={1.8} />
+                <Tooltip content={<ChartTooltip />} />
               </RadarChart>
             </ResponsiveContainer>
-          </ChartCard>
+          </Card>
         </div>
 
-        {/* ── Admin / Manager section ── */}
+        {/* ── ADMIN / MANAGER SECTION ──────────────────────────────────── */}
         {isAdminOrManager && (
           <>
-            <div style={{
-              display: "flex", alignItems: "center", gap: 12,
-              borderTop: `1px solid ${C.border}`, paddingTop: 26, marginBottom: 18,
-            }}>
-              <div style={{
-                width: 4, height: 20, borderRadius: 2,
-                background: "linear-gradient(180deg, #8B5CF6, #3B82F6)",
-              }} />
-              <p style={{
-                fontFamily: "'DM Mono', monospace", fontSize: 11, color: C.accent,
-                letterSpacing: "0.15em", textTransform: "uppercase", margin: 0,
-              }}>
-                {isAdmin ? "Admin" : "Manager"} Intelligence — Team-wide Visibility
-              </p>
+            <div style={{ marginTop: 8, marginBottom: 16, paddingTop: 20, borderTop: `1px solid ${T.border}` }}>
+              <SectionLabel label={`${isAdmin ? "Admin" : "Manager"} intelligence — team-wide`} />
             </div>
 
-            {/* Team Workload (full width) */}
-            <div style={{ marginBottom: 24 }}>
-              <ChartCard
-                title="Team Workload Distribution"
-                subtitle="Ticket count per assignee — spot bottlenecks instantly"
-                fullWidth
-              >
-                <ResponsiveContainer width="100%" height={Math.max(200, assigneeData.length * 38)}>
-                  <BarChart data={assigneeData} layout="vertical" barCategoryGap="28%">
-                    <CartesianGrid strokeDasharray="3 3" stroke={C.border} horizontal={false} />
-                    <XAxis type="number" tick={{ fill: C.subtext, fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} />
-                    <YAxis type="category" dataKey="name" tick={{ fill: C.subtext, fontSize: 11, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={130} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="value" name="Tickets" radius={[0, 6, 6, 0]}>
-                      {assigneeData.map((_, i) => (
-                        <Cell key={i} fill={`hsl(${200 + i * 22}, 70%, 56%)`} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </ChartCard>
-            </div>
+            {/* Full-width: Team workload */}
+            <Card style={{ marginBottom: 14 }}>
+              <CardHeader eyebrow="workload" title="Tickets per assignee" />
+              <ResponsiveContainer width="100%" height={Math.max(180, assigneeData.length * 36)}>
+                <BarChart data={assigneeData} layout="vertical" barCategoryGap="28%" margin={{ top: 0, right: 16, bottom: 0, left: 8 }}>
+                  <CartesianGrid strokeDasharray="2 4" stroke={T.border} horizontal={false} />
+                  <XAxis type="number" tick={axisTick} {...axisLine} />
+                  <YAxis type="category" dataKey="name" tick={{ ...axisTick, fontSize: 11 }} {...axisLine} width={120} />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Bar dataKey="value" name="Tickets" radius={[0, 5, 5, 0]}>
+                    {assigneeData.map((_, i) => (
+                      <Cell key={i} fill={CHART_PALETTE[i % CHART_PALETTE.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </Card>
 
-            {/* Resolution velocity + Director summary */}
-            <div style={grid2}>
-              <ChartCard title="Resolution Velocity" subtitle="Completed vs. Open by day of week">
-                <ResponsiveContainer width="100%" height={220}>
-                  <LineChart data={weeklyTrend}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
-                    <XAxis dataKey="day" tick={{ fill: C.subtext, fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fill: C.subtext, fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Line type="monotone" dataKey="Completed" stroke={C.completed} strokeWidth={2.5} dot={{ fill: C.completed, r: 4 }} />
-                    <Line type="monotone" dataKey="Open"      stroke={C.open}      strokeWidth={2.5} dot={{ fill: C.open, r: 4 }} strokeDasharray="5 3" />
+            {/* 2-col: Resolution line + Director summary */}
+            <div style={g2}>
+              <Card>
+                <CardHeader eyebrow="velocity" title="Resolution trend" />
+                <ResponsiveContainer width="100%" height={210}>
+                  <LineChart data={weeklyTrend} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
+                    <CartesianGrid strokeDasharray="2 4" stroke={T.border} />
+                    <XAxis dataKey="day" tick={axisTick} {...axisLine} />
+                    <YAxis tick={axisTick} {...axisLine} />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Line type="monotone" dataKey="Completed" stroke={T.done}     strokeWidth={2} dot={{ fill: T.done,     r: 3, strokeWidth: 0 }} />
+                    <Line type="monotone" dataKey="Open"      stroke={T.open}     strokeWidth={2} dot={{ fill: T.open,     r: 3, strokeWidth: 0 }} strokeDasharray="5 3" />
                   </LineChart>
                 </ResponsiveContainer>
-              </ChartCard>
+              </Card>
 
-              <ChartCard title="Director Summary" subtitle="Operational metrics for current filter">
-                <div style={{ display: "flex", flexDirection: "column", gap: 13, marginTop: 4 }}>
-                  {[
-                    { label: "Completion Rate",  value: `${completionRate}%`,                                                                   color: C.completed },
-                    { label: "Critical / High",  value: criticalT.length,                                                                       color: C.critical  },
-                    { label: "Avg Load / Agent", value: assigneeData.length > 0 ? (tickets.length / assigneeData.length).toFixed(1) : "—",      color: C.progress  },
-                    { label: "Active Assignees", value: assigneeData.length,                                                                     color: C.accent    },
-                    { label: "Top Assignee",     value: assigneeData[0]?.name ?? "—",                                                            color: C.open      },
-                    { label: "Unresolved",       value: openT.length + progressT.length,                                                         color: C.subtext   },
-                  ].map(({ label, value, color }, i) => (
-                    <div key={i} style={{
-                      display: "flex", justifyContent: "space-between", alignItems: "center",
-                      borderBottom: `1px solid ${C.border}`, paddingBottom: 10,
-                    }}>
-                      <span style={{ fontSize: 12, color: C.subtext, fontFamily: "'DM Mono', monospace" }}>{label}</span>
-                      <span style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Syne', sans-serif", color }}>{value}</span>
-                    </div>
-                  ))}
-                </div>
-              </ChartCard>
+              <Card>
+                <CardHeader eyebrow="executive" title="Director summary" />
+                <MetricRow label="Completion rate"    value={`${completionRate}%`}                                                                          color={T.done}     />
+                <MetricRow label="Critical / High"    value={criticalT.length}                                                                              color={T.critical} />
+                <MetricRow label="Avg load per agent" value={assigneeData.length > 0 ? (tickets.length / assigneeData.length).toFixed(1) : "—"}             color={T.progress} />
+                <MetricRow label="Active assignees"   value={assigneeData.length}                                                                           color={T.slateLight} />
+                <MetricRow label="Top assignee"       value={assigneeData[0]?.name ?? "—"}                                                                  color={T.open}     />
+                <MetricRow label="Unresolved"         value={openT.length + progressT.length}                                                               color={T.textSecondary} />
+              </Card>
             </div>
           </>
         )}
