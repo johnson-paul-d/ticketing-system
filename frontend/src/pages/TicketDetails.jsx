@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 
-import { useParams } from "react-router-dom";
+import {
+  useParams,
+  useNavigate,
+} from "react-router-dom";
 
 import MainLayout from "../layouts/MainLayout";
 
@@ -11,6 +14,8 @@ import useAuthStore from "../store/authStore";
 export default function TicketDetails() {
 
   const { id } = useParams();
+
+  const navigate = useNavigate();
 
   const user = useAuthStore(
     (state) => state.user
@@ -38,18 +43,8 @@ export default function TicketDetails() {
 
     try {
 
-      console.log(
-        "Fetching ticket:",
-        id
-      );
-
       const res = await api.get(
         `/tickets/${id}`
-      );
-
-      console.log(
-        "Ticket response:",
-        res.data
       );
 
       setTicket(res.data);
@@ -85,11 +80,6 @@ export default function TicketDetails() {
           await api.get(
             "/auth/team-members"
           );
-
-        console.log(
-          "Team members:",
-          res.data
-        );
 
         if (
           Array.isArray(
@@ -142,17 +132,21 @@ export default function TicketDetails() {
 
       try {
 
+        const member =
+          teamMembers.find(
+            (m) =>
+              m.id ===
+              selectedMember
+          );
+
         await api.put(
-          `/api/tickets/${id}`,
+          `/tickets/${id}/assign`,
           {
-            assigned:
-              selectedMember,
+            assigned_to:
+              member.id,
 
-            changedBy:
-              user?.name,
-
-            role:
-              user?.role,
+            assigned_to_name:
+              member.name,
           }
         );
 
@@ -181,17 +175,7 @@ export default function TicketDetails() {
       try {
 
         await api.put(
-          `/api/tickets/${id}`,
-          {
-            assigned:
-              "Unassigned",
-
-            changedBy:
-              user?.name,
-
-            role:
-              user?.role,
-          }
+          `/tickets/${id}/unassign`
         );
 
         alert(
@@ -206,6 +190,42 @@ export default function TicketDetails() {
 
         alert(
           "Failed to unassign"
+        );
+      }
+    };
+
+  // =====================================
+  // DELETE TICKET
+  // =====================================
+  const deleteTicket =
+    async () => {
+
+      const confirmDelete =
+        window.confirm(
+          "Delete this ticket?"
+        );
+
+      if (!confirmDelete)
+        return;
+
+      try {
+
+        await api.delete(
+          `/tickets/${id}`
+        );
+
+        alert(
+          "Ticket deleted"
+        );
+
+        navigate("/tickets");
+
+      } catch (error) {
+
+        console.log(error);
+
+        alert(
+          "Delete failed"
         );
       }
     };
@@ -257,18 +277,34 @@ export default function TicketDetails() {
 
       <div className="bg-white rounded-2xl shadow-sm p-8">
 
-        <div className="mb-10">
+        <div className="mb-10 flex justify-between items-start">
 
-          <h1 className="text-3xl font-bold">
-            {ticket?.title}
-          </h1>
+          <div>
 
-          <p className="text-gray-500 mt-2">
-            Ticket ID:
-            {" "}
-            {ticket?._id ||
-              ticket?.id}
-          </p>
+            <h1 className="text-3xl font-bold">
+              {ticket?.title}
+            </h1>
+
+            <p className="text-gray-500 mt-2">
+              Ticket ID:
+              {" "}
+              {ticket?.id}
+            </p>
+
+          </div>
+
+          {user?.role ===
+            "Admin" && (
+
+            <button
+              onClick={
+                deleteTicket
+              }
+              className="bg-red-500 hover:bg-red-600 text-white px-5 py-3 rounded-xl"
+            >
+              Delete Ticket
+            </button>
+          )}
 
         </div>
 
@@ -323,7 +359,7 @@ export default function TicketDetails() {
               </h2>
 
               <p>
-                {ticket?.assigned ||
+                {ticket?.assigned_to_name ||
                   "Unassigned"}
               </p>
 
@@ -348,7 +384,7 @@ export default function TicketDetails() {
               </h2>
 
               <p>
-                {ticket?.createdByName}
+                {ticket?.created_by_name}
               </p>
 
             </div>
@@ -389,15 +425,15 @@ export default function TicketDetails() {
 
                     <option
                       key={
-                        member._id
+                        member.id
                       }
                       value={
-                        member.email
+                        member.id
                       }
                     >
                       {member.name}
                       {" - "}
-                      {member.name}
+                      {member.email}
                     </option>
                   )
                 )}
