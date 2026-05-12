@@ -50,11 +50,10 @@ router.post('/login', async (req, res) => {
     }
 
     // PASSWORD CHECK
-    const validPassword =
-      await bcrypt.compare(
-        password,
-        user.password
-      );
+    const validPassword = await bcrypt.compare(
+  password.trim(),
+  user.password.trim()
+);
 
     if (!validPassword) {
 
