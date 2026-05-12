@@ -150,7 +150,7 @@ router.put('/:id/status', auth, async (req, res) => {
 ASSIGN TICKET
 =====================================================
 */
-router.put('/:id/assign', authMiddleware, async (req, res) => {
+router.put('/:id/assign', auth, async (req, res) => {
   try {
     const { id } = req.params;
 

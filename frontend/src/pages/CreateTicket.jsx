@@ -9,8 +9,7 @@ import useAuthStore from "../store/authStore";
 
 export default function CreateTicket() {
 
-  const navigate =
-    useNavigate();
+  const navigate = useNavigate();
 
   const user =
     useAuthStore(
@@ -20,6 +19,7 @@ export default function CreateTicket() {
   // =====================================
   // STATES
   // =====================================
+
   const [title, setTitle] =
     useState("");
 
@@ -46,6 +46,7 @@ export default function CreateTicket() {
   // =====================================
   // CREATE TICKET
   // =====================================
+
   const handleSubmit =
     async () => {
 
@@ -54,6 +55,7 @@ export default function CreateTicket() {
         setLoading(true);
 
         // VALIDATION
+
         if (!title.trim()) {
 
           alert(
@@ -77,6 +79,7 @@ export default function CreateTicket() {
         // =====================================
         // CREATE OBJECT
         // =====================================
+
         const ticketData = {
 
           title,
@@ -89,17 +92,22 @@ export default function CreateTicket() {
 
           division,
 
-          dueDate,
+          // IMPORTANT FIX
+          due_date:
+            dueDate,
 
           status: "Open",
 
-          assigned:
+          assigned_to:
+            null,
+
+          assigned_to_name:
             "Unassigned",
 
-          createdBy:
+          created_by:
             user?.email,
 
-          createdByName:
+          created_by_name:
             user?.name,
 
           created_at:
@@ -114,6 +122,7 @@ export default function CreateTicket() {
         // =====================================
         // API CALL
         // =====================================
+
         await api.post(
           "/tickets",
           ticketData
@@ -126,6 +135,7 @@ export default function CreateTicket() {
         // =====================================
         // RESET FORM
         // =====================================
+
         setTitle("");
 
         setDescription("");
@@ -147,6 +157,7 @@ export default function CreateTicket() {
         // =====================================
         // REDIRECT
         // =====================================
+
         navigate(
           "/tickets"
         );
@@ -175,6 +186,7 @@ export default function CreateTicket() {
     <MainLayout>
 
       {/* HEADER */}
+
       <div className="mb-8">
 
         <h1 className="text-3xl font-bold">
@@ -188,9 +200,11 @@ export default function CreateTicket() {
       </div>
 
       {/* FORM */}
+
       <div className="bg-white rounded-2xl shadow-sm p-8 max-w-5xl">
 
         {/* TITLE */}
+
         <div className="mb-6">
 
           <label className="block mb-2 font-medium">
@@ -212,6 +226,7 @@ export default function CreateTicket() {
         </div>
 
         {/* DESCRIPTION */}
+
         <div className="mb-6">
 
           <label className="block mb-2 font-medium">
@@ -233,9 +248,11 @@ export default function CreateTicket() {
         </div>
 
         {/* CATEGORY + PRIORITY */}
+
         <div className="grid grid-cols-2 gap-6 mb-6">
 
           {/* CATEGORY */}
+
           <div>
 
             <label className="block mb-2 font-medium">
@@ -321,6 +338,7 @@ export default function CreateTicket() {
           </div>
 
           {/* PRIORITY */}
+
           <div>
 
             <label className="block mb-2 font-medium">
@@ -360,9 +378,11 @@ export default function CreateTicket() {
         </div>
 
         {/* DIVISION + DUE DATE */}
+
         <div className="grid grid-cols-2 gap-6 mb-6">
 
           {/* DIVISION */}
+
           <div>
 
             <label className="block mb-2 font-medium">
@@ -400,6 +420,7 @@ export default function CreateTicket() {
           </div>
 
           {/* DUE DATE */}
+
           <div>
 
             <label className="block mb-2 font-medium">
@@ -422,6 +443,7 @@ export default function CreateTicket() {
         </div>
 
         {/* BUTTONS */}
+
         <div className="flex gap-4">
 
           <button
@@ -446,7 +468,9 @@ export default function CreateTicket() {
             }
             className="border px-6 py-3 rounded-xl hover:bg-gray-100"
           >
+
             Cancel
+
           </button>
 
         </div>
