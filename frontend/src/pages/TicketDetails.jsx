@@ -16,13 +16,16 @@ import useAuthStore from "../store/authStore";
 
 export default function TicketDetails() {
 
-  const { id } = useParams();
+  const { id } =
+    useParams();
 
-  const navigate = useNavigate();
+  const navigate =
+    useNavigate();
 
   const user =
     useAuthStore(
-      (state) => state.user
+      (state) =>
+        state.user
     );
 
   const [ticket, setTicket] =
@@ -31,19 +34,24 @@ export default function TicketDetails() {
   const [users, setUsers] =
     useState([]);
 
-  const [selectedUser, setSelectedUser] =
+  const [selectedUser,
+    setSelectedUser] =
     useState("");
 
-  const [dueDate, setDueDate] =
+  const [dueDate,
+    setDueDate] =
     useState("");
 
-  const [status, setStatus] =
+  const [status,
+    setStatus] =
     useState("");
 
-  const [comment, setComment] =
+  const [comment,
+    setComment] =
     useState("");
 
-  const [history, setHistory] =
+  const [timeline,
+    settimeline] =
     useState([]);
 
   /*
@@ -51,14 +59,16 @@ export default function TicketDetails() {
   INITIAL LOAD
   =====================================================
   */
+
   useEffect(() => {
 
     fetchTicket();
 
-    // ONLY ADMIN FETCHES USERS
     if (
-      user?.role === "Admin"
+      user?.role ===
+      "Admin"
     ) {
+
       fetchUsers();
     }
 
@@ -69,6 +79,7 @@ export default function TicketDetails() {
   FETCH TICKET
   =====================================================
   */
+
   const fetchTicket =
     async () => {
 
@@ -79,20 +90,20 @@ export default function TicketDetails() {
             `/tickets/${id}`
           );
 
-        setTicket(res.data);
+        setTicket(
+          res.data
+        );
 
-setDueDate(
-  res.data.due_date
-    ? res.data.due_date
-    : ""
-);
+        setDueDate(
+          res.data.due_date || ""
+        );
 
         setStatus(
           res.data.status || "Open"
         );
 
-        setHistory(
-          res.data.history || []
+        settimeline(
+          res.data.timeline || []
         );
 
       } catch (error) {
@@ -109,20 +120,25 @@ setDueDate(
   FETCH USERS
   =====================================================
   */
+
   const fetchUsers =
     async () => {
 
       try {
 
-        // BLOCK TEAM MEMBERS
         if (
-          user?.role !== "Admin"
+          user?.role !==
+          "Admin"
         ) return;
 
         const res =
-          await api.get("/users");
+          await api.get(
+            "/users"
+          );
 
-        setUsers(res.data);
+        setUsers(
+          res.data
+        );
 
       } catch (error) {
 
@@ -138,10 +154,13 @@ setDueDate(
   ASSIGN TICKET
   =====================================================
   */
+
   const assignTicket =
     async () => {
 
-      if (!selectedUser) {
+      if (
+        !selectedUser
+      ) {
 
         alert(
           "Select a team member"
@@ -155,7 +174,8 @@ setDueDate(
         const selected =
           users.find(
             (u) =>
-              u.id === selectedUser
+              u.id ===
+              selectedUser
           );
 
         await api.put(
@@ -193,6 +213,7 @@ setDueDate(
   DELETE TICKET
   =====================================================
   */
+
   const deleteTicket =
     async () => {
 
@@ -214,7 +235,9 @@ setDueDate(
           "Ticket deleted"
         );
 
-        navigate("/tickets");
+        navigate(
+          "/tickets"
+        );
 
       } catch (error) {
 
@@ -234,112 +257,147 @@ setDueDate(
   UPDATE DUE DATE
   =====================================================
   */
- /*
-=====================================================
-UPDATE DUE DATE
-=====================================================
-*/
-const updateDueDate =
-  async () => {
 
-    try {
+  const updateDueDate =
+    async () => {
 
-      const res =
-        await api.put(
-          `/tickets/${ticket.id}`,
-          {
-            due_date:
-              dueDate,
+      try {
 
-            comment:
+        const res =
+          await api.put(
+            `/tickets/${ticket.id}`,
+            {
+              due_date:
+                dueDate,
+
               comment,
-          }
+            }
+          );
+
+        setTicket(
+          res.data
         );
 
-      setTicket(res.data);
+        settimeline(
+          res.data.timeline || []
+        );
 
-      setHistory(
-        res.data.history || []
-      );
+        setComment("");
 
-      setComment("");
+        alert(
+          "Due date updated"
+        );
 
-      alert(
-        "Due date updated"
-      );
+      } catch (error) {
 
-    } catch (error) {
+        console.log(
+          error
+        );
 
-      console.log(
-        "DUE DATE ERROR:",
-        error.response?.data ||
-        error
-      );
+        alert(
+          "Failed to update due date"
+        );
+      }
+    };
 
-      alert(
-        error.response?.data?.message ||
-        "Failed to update due date"
-      );
-    }
-  };
   /*
   =====================================================
   UPDATE STATUS
   =====================================================
   */
-  /*
-=====================================================
-UPDATE STATUS
-=====================================================
-*/
-const updateStatus =
-  async () => {
 
-    try {
+  const updateStatus =
+    async () => {
 
-      const res =
-        await api.put(
-          `/tickets/${ticket.id}`,
-          {
-            status:
+      try {
+
+        const res =
+          await api.put(
+            `/tickets/${ticket.id}`,
+            {
               status,
-
-            comment:
               comment,
-          }
+            }
+          );
+
+        setTicket(
+          res.data
         );
 
-      setTicket(res.data);
+        settimeline(
+          res.data.timeline || []
+        );
 
-      setHistory(
-        res.data.history || []
-      );
+        setComment("");
 
-      setComment("");
+        alert(
+          "Status updated"
+        );
 
-      alert(
-        "Status updated"
-      );
+      } catch (error) {
 
-    } catch (error) {
+        console.log(
+          error
+        );
 
-      console.log(
-        "STATUS ERROR:",
-        error.response?.data ||
-        error
-      );
+        alert(
+          "Failed to update status"
+        );
+      }
+    };
 
-      alert(
-        error.response?.data?.message ||
-        "Failed to update status"
-      );
-    }
-  };
+  /*
+  =====================================================
+  APPROVAL
+  =====================================================
+  */
+
+  const handleApproval =
+    async (
+      approvalStatus
+    ) => {
+
+      try {
+
+        const res =
+          await api.put(
+            `/tickets/${ticket.id}/approve`,
+            {
+              approval_status:
+                approvalStatus,
+            }
+          );
+
+        setTicket(
+          res.data
+        );
+
+        settimeline(
+          res.data.timeline || []
+        );
+
+        alert(
+          `Ticket ${approvalStatus}`
+        );
+
+      } catch (error) {
+
+        console.log(
+          error
+        );
+
+        alert(
+          "Approval failed"
+        );
+      }
+    };
+
   /*
   =====================================================
   LOADING
   =====================================================
   */
+
   if (!ticket) {
 
     return (
@@ -356,19 +414,42 @@ const updateStatus =
       <div className="bg-white rounded-3xl shadow-sm p-8">
 
         {/* HEADER */}
-        <div className="flex justify-between items-start">
+
+        <div className="flex flex-col lg:flex-row justify-between lg:items-start gap-6">
 
           <div>
 
-            <h1 className="text-5xl font-bold">
+            <h1 className="text-4xl lg:text-5xl font-bold">
               {ticket.title}
             </h1>
 
-            <p className="text-gray-500 mt-2">
+            <p className="text-gray-500 mt-2 break-all">
               Ticket ID:
               {" "}
               {ticket.id}
             </p>
+
+            {/* STATUS BADGES */}
+
+            <div className="flex flex-wrap gap-3 mt-5">
+
+              <span className="bg-gray-100 px-4 py-2 rounded-full text-sm font-medium">
+                {ticket.status}
+              </span>
+
+              {ticket.approval_status && (
+
+                <span className="bg-yellow-100 text-yellow-700 px-4 py-2 rounded-full text-sm font-medium">
+
+                  Approval:
+                  {" "}
+                  {ticket.approval_status}
+
+                </span>
+
+              )}
+
+            </div>
 
           </div>
 
@@ -388,55 +469,111 @@ const updateStatus =
 
         </div>
 
+        {/* APPROVAL SECTION */}
+
+        {ticket.status ===
+          "Pending Approval" &&
+          user?.role ===
+            "Admin" && (
+
+          <div className="mt-8 bg-yellow-50 border border-yellow-200 rounded-3xl p-6">
+
+            <h2 className="text-2xl font-bold">
+              Approval Required
+            </h2>
+
+            <p className="text-gray-600 mt-2">
+              This ticket requires manager approval.
+            </p>
+
+            <div className="flex gap-4 mt-6">
+
+              <button
+                onClick={() =>
+                  handleApproval(
+                    "Approved"
+                  )
+                }
+                className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-2xl"
+              >
+                Approve
+              </button>
+
+              <button
+                onClick={() =>
+                  handleApproval(
+                    "Rejected"
+                  )
+                }
+                className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-2xl"
+              >
+                Reject
+              </button>
+
+            </div>
+
+          </div>
+        )}
+
         {/* DETAILS */}
-        <div className="grid grid-cols-2 gap-12 mt-12">
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mt-12">
 
           {/* LEFT */}
+
           <div className="space-y-8">
 
             <div>
+
               <p className="font-semibold text-gray-500">
                 Description
               </p>
 
-              <p className="text-xl font-medium mt-2">
+              <p className="text-lg lg:text-xl font-medium mt-2">
                 {ticket.description}
               </p>
+
             </div>
 
             <div>
+
               <p className="font-semibold text-gray-500">
                 Priority
               </p>
 
-              <p className="text-xl font-medium mt-2">
+              <p className="text-lg lg:text-xl font-medium mt-2">
                 {ticket.priority}
               </p>
+
             </div>
 
             <div>
+
               <p className="font-semibold text-gray-500">
                 Category
               </p>
 
-              <p className="text-xl font-medium mt-2">
+              <p className="text-lg lg:text-xl font-medium mt-2">
                 {ticket.category}
               </p>
+
             </div>
 
           </div>
 
           {/* RIGHT */}
+
           <div className="space-y-8">
 
             {/* ASSIGNED */}
+
             <div>
 
               <p className="font-semibold text-gray-500">
                 Assigned To
               </p>
 
-              <p className="text-xl font-medium mt-2">
+              <p className="text-lg lg:text-xl font-medium mt-2">
                 {ticket.assigned_to_name ||
                   "Unassigned"}
               </p>
@@ -444,13 +581,14 @@ const updateStatus =
             </div>
 
             {/* STATUS */}
+
             <div>
 
               <p className="font-semibold text-gray-500">
                 Update Status
               </p>
 
-              <div className="flex gap-4 mt-3">
+              <div className="flex flex-col sm:flex-row gap-4 mt-3">
 
                 <select
                   value={status}
@@ -459,7 +597,7 @@ const updateStatus =
                       e.target.value
                     )
                   }
-                  className="border rounded-xl px-4 py-3"
+                  className="border rounded-2xl px-4 py-3 w-full"
                 >
 
                   <option>
@@ -484,7 +622,7 @@ const updateStatus =
                   onClick={
                     updateStatus
                   }
-                  className="bg-black text-white px-5 py-3 rounded-xl"
+                  className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl whitespace-nowrap"
                 >
                   Update
                 </button>
@@ -494,34 +632,31 @@ const updateStatus =
             </div>
 
             {/* DUE DATE */}
+
             <div>
 
               <p className="font-semibold text-gray-500">
                 Due Date
               </p>
 
-              <div className="flex gap-4 mt-3">
+              <div className="flex flex-col sm:flex-row gap-4 mt-3">
 
-               <input
-  type="date"
-  value={
-    dueDate
-      ? dueDate
-      : ""
-  }
-  onChange={(e) =>
-    setDueDate(
-      e.target.value
-    )
-  }
-  className="border rounded-xl px-4 py-3"
-/>
+                <input
+                  type="date"
+                  value={dueDate || ""}
+                  onChange={(e) =>
+                    setDueDate(
+                      e.target.value
+                    )
+                  }
+                  className="border rounded-2xl px-4 py-3 w-full"
+                />
 
                 <button
                   onClick={
                     updateDueDate
                   }
-                  className="bg-black text-white px-5 py-3 rounded-xl"
+                  className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl whitespace-nowrap"
                 >
                   Update
                 </button>
@@ -541,6 +676,7 @@ const updateStatus =
             </div>
 
             {/* COMMENT */}
+
             <div>
 
               <p className="font-semibold text-gray-500">
@@ -554,8 +690,11 @@ const updateStatus =
                     e.target.value
                   )
                 }
-                placeholder="Add comment while updating..."
-                className="border rounded-2xl px-4 py-3 w-full h-32 mt-3"
+                placeholder="
+Add comment...
+Use @name to tag users
+"
+                className="border rounded-2xl px-4 py-3 w-full h-36 mt-3"
               />
 
             </div>
@@ -565,6 +704,7 @@ const updateStatus =
         </div>
 
         {/* ASSIGN */}
+
         {user?.role ===
           "Admin" && (
 
@@ -574,7 +714,7 @@ const updateStatus =
               Assign Ticket
             </h2>
 
-            <div className="flex gap-4">
+            <div className="flex flex-col sm:flex-row gap-4">
 
               <select
                 value={selectedUser}
@@ -583,7 +723,7 @@ const updateStatus =
                     e.target.value
                   )
                 }
-                className="border px-5 py-3 rounded-xl w-96"
+                className="border px-5 py-3 rounded-2xl w-full sm:w-96"
               >
 
                 <option value="">
@@ -607,7 +747,7 @@ const updateStatus =
                 onClick={
                   assignTicket
                 }
-                className="bg-black text-white px-8 py-3 rounded-xl"
+                className="bg-black hover:bg-gray-800 text-white px-8 py-3 rounded-2xl"
               >
                 Assign
               </button>
@@ -618,25 +758,26 @@ const updateStatus =
 
         )}
 
-        {/* HISTORY */}
+        {/* TIMELINE */}
+
         <div className="mt-16 border-t pt-10">
 
           <h2 className="text-3xl font-bold mb-8">
-            Ticket History
+            Ticket Timeline
           </h2>
 
           <div className="space-y-5">
 
-            {history.length ===
+            {timeline.length ===
             0 ? (
 
               <div className="text-gray-400">
-                No history available
+                No timeline available
               </div>
 
             ) : (
 
-              history
+              timeline
                 .slice()
                 .reverse()
                 .map(
@@ -647,29 +788,68 @@ const updateStatus =
 
                     <div
                       key={index}
-                      className="bg-gray-50 rounded-2xl p-5 border"
+                      className="bg-gray-50 rounded-3xl p-5 border"
                     >
 
-                      <p className="font-semibold">
-                        {item.action}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-3">
+
+                        <p className="font-semibold text-lg">
+                          {item.action}
+                        </p>
+
+                        {item.type && (
+
+                          <span className="bg-gray-200 text-gray-700 text-xs px-3 py-1 rounded-full">
+                            {item.type}
+                          </span>
+
+                        )}
+
+                      </div>
 
                       {item.comment && (
 
-                        <p className="mt-2 text-gray-700">
+                        <p className="mt-3 text-gray-700 whitespace-pre-wrap">
                           {item.comment}
                         </p>
 
                       )}
 
-                      <div className="flex gap-4 text-sm text-gray-500 mt-2">
+                      {/* MENTIONS */}
+
+                      {item.mentions?.length >
+                        0 && (
+
+                        <div className="flex flex-wrap gap-2 mt-4">
+
+                          {item.mentions.map(
+                            (
+                              mention,
+                              index
+                            ) => (
+
+                              <span
+                                key={index}
+                                className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs"
+                              >
+                                {mention}
+                              </span>
+
+                            )
+                          )}
+
+                        </div>
+
+                      )}
+
+                      <div className="flex flex-wrap gap-4 text-sm text-gray-500 mt-4">
 
                         <span>
                           {item.user}
                         </span>
 
                         <span>
-                          {item.date}
+                          {item.created_at}
                         </span>
 
                       </div>

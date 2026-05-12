@@ -1,408 +1,452 @@
-const express = require("express");
+  const express = require("express");
 
-const router = express.Router();
+  const router = express.Router();
 
-const supabase =
-  require("../config/supabase");
+  const supabase =
+    require("../config/supabase");
 
-const auth =
-  require("../middleware/auth");
+  const auth =
+    require("../middleware/auth");
 
-const sendMail =
-  require("../services/mailService");
+  const sendMail =
+    require("../services/mailService");
 
-/*
-=====================================================
-GET ALL TICKETS
-=====================================================
-*/
-router.get(
-  "/",
-  auth,
-  async (req, res) => {
+  const getISTTime =
+    require("../utils/time");
 
-    try {
+  /*
+  =====================================================
+  GET ALL TICKETS
+  =====================================================
+  */
+  router.get(
+    "/",
+    auth,
+    async (req, res) => {
 
-      let query =
-        supabase
+      try {
+
+        let query =
+          supabase
+            .from("tickets")
+            .select("*")
+            .eq("deleted", false)
+            .order(
+              "created_at",
+              {
+                ascending: false,
+              }
+            );
+
+        /*
+        =====================================================
+        TEAM MEMBER FILTER
+        =====================================================
+        */
+
+        if (
+          req.user.role ===
+          "Team Member"
+        ) {
+
+          query =
+            query.or(`
+  assigned_to_name.eq.${req.user.name},
+  tagged_users.cs.["${req.user.name}"]
+  `);
+        }
+
+        const {
+          data,
+          error,
+        } = await query;
+
+        if (error)
+          throw error;
+
+        res.json(data);
+
+      } catch (error) {
+
+        console.log(
+          "GET TICKETS ERROR:",
+          error
+        );
+
+        res.status(500).json({
+          message:
+            "Failed to fetch tickets",
+        });
+      }
+    }
+  );
+
+  /*
+  =====================================================
+  TEST MAIL
+  =====================================================
+  */
+
+  router.get(
+    "/test-mail",
+    async (req, res) => {
+
+      try {
+
+        await sendMail({
+
+          to:
+            process.env.ADMIN_EMAIL,
+
+          subject:
+            "Test Mail",
+
+          text:
+            "Mail is working successfully",
+        });
+
+        res.json({
+          success: true,
+          message:
+            "Mail sent successfully",
+        });
+
+      } catch (error) {
+
+        console.log(
+          "MAIL ERROR:",
+          error
+        );
+
+        res.status(500).json({
+          success: false,
+          message:
+            "Mail failed",
+        });
+      }
+    }
+  );
+
+  /*
+  =====================================================
+  GET SINGLE TICKET
+  =====================================================
+  */
+  router.get(
+    "/:id",
+    auth,
+    async (req, res) => {
+
+      try {
+
+        const {
+          data,
+          error,
+        } = await supabase
           .from("tickets")
           .select("*")
-          .eq("deleted", false)
-          .order(
-            "created_at",
-            {
-              ascending: false,
-            }
-          );
+          .eq(
+            "id",
+            req.params.id
+          )
+          .single();
 
-      // TEAM MEMBER FILTER
-      if (
-        req.user.role ===
-        "Team Member"
-      ) {
+        if (error)
+          throw error;
 
-        query =
-          query.eq(
-            "assigned_to_name",
-            req.user.name
-          );
+        res.json(data);
+
+      } catch (error) {
+
+        console.log(
+          "GET SINGLE TICKET ERROR:",
+          error
+        );
+
+        res.status(500).json({
+          message:
+            "Failed to fetch ticket",
+        });
       }
-
-      const {
-        data,
-        error,
-      } = await query;
-
-      if (error)
-        throw error;
-
-      res.json(data);
-
-    } catch (error) {
-
-      console.log(
-        "GET TICKETS ERROR:",
-        error
-      );
-
-      res.status(500).json({
-        message:
-          "Failed to fetch tickets",
-      });
     }
-  }
-);
+  );
 
-/*
-=====================================================
-TEST MAIL
-=====================================================
-*/
+  /*
+  =====================================================
+  CREATE TICKET
+  =====================================================
+  */
+  router.post(
+    "/",
+    auth,
+    async (req, res) => {
 
-router.get(
-  "/test-mail",
-  async (req, res) => {
+      try {
 
-    try {
+        const {
+          title,
+          description,
+          category,
+          priority,
+          division,
+          due_date,
+        } = req.body;
 
-      await sendMail({
-
-        to:
-          process.env.ADMIN_EMAIL,
-
-        subject:
-          "Test Mail",
-
-        text:
-          "Mail is working successfully",
-      });
-
-      res.json({
-        success: true,
-        message:
-          "Mail sent successfully",
-      });
-
-    } catch (error) {
-
-      console.log(
-        "MAIL ERROR:",
-        error
-      );
-
-      res.status(500).json({
-        success: false,
-        message:
-          "Mail failed",
-      });
-    }
-  }
-);
-
-
-/*
-=====================================================
-GET SINGLE TICKET
-=====================================================
-*/
-router.get(
-  "/:id",
-  auth,
-  async (req, res) => {
-
-    try {
-
-      const {
-        data,
-        error,
-      } = await supabase
-        .from("tickets")
-        .select("*")
-        .eq(
-          "id",
-          req.params.id
-        )
-        .single();
-
-      if (error)
-        throw error;
-
-      res.json(data);
-
-    } catch (error) {
-
-      console.log(
-        "GET SINGLE TICKET ERROR:",
-        error
-      );
-
-      res.status(500).json({
-        message:
-          "Failed to fetch ticket",
-      });
-    }
-  }
-);
-
-/*
-=====================================================
-CREATE TICKET
-=====================================================
-*/
-router.post(
-  "/",
-  auth,
-  async (req, res) => {
-
-    try {
-
-      const {
-        title,
-        description,
-        category,
-        priority,
-        division,
-        due_date,
-      } = req.body;
-
-      const history = [
-        {
-          action:
-            "Ticket created",
-
-          user:
-            req.user.name,
-
-          comment:
-            "",
-
-          date:
-            new Date().toLocaleString(),
-        },
-      ];
-
-      const {
-        data,
-        error,
-      } = await supabase
-        .from("tickets")
-        .insert([
+        const timeline = [
           {
-            title,
-            description,
-            category,
-            priority,
-            division,
-            due_date,
+            type:
+              "system",
 
-            status: "Open",
+            action:
+              "Ticket created",
 
-            history,
-
-            created_by:
-              req.user.id,
-
-            created_by_name:
+            user:
               req.user.name,
 
-            deleted: false,
+            comment:
+              "",
+
+            mentions: [],
+
+            created_at:
+              getISTTime(),
           },
-        ])
-        .select();
+        ];
 
-      if (error)
-        throw error;
+        const {
+          data,
+          error,
+        } = await supabase
+          .from("tickets")
+          .insert([
+            {
+              title,
+              description,
+              category,
+              priority,
+              division,
+              due_date,
 
-      res
-        .status(201)
-        .json(data[0]);
+              status:
+                "Open",
 
-    } catch (error) {
+              approval_required:
+                false,
 
-      console.log(
-        "CREATE TICKET ERROR:",
-        error
-      );
+              approval_status:
+                "Approved",
 
-      res.status(500).json({
-        message:
-          "Failed to create ticket",
-      });
-    }
-  }
-);
+              tagged_users:
+                [],
 
-/*
-=====================================================
-UPDATE TICKET
-=====================================================
-*/
-router.put(
-  "/:id",
-  auth,
-  async (req, res) => {
+              timeline,
 
-    try {
+              created_by:
+                req.user.id,
 
-      const { id } =
-        req.params;
+              created_by_name:
+                req.user.name,
 
-      const {
-        title,
-        description,
-        priority,
-        status,
-        category,
-        due_date,
-        comment,
-      } = req.body;
+              deleted:
+                false,
+            },
+          ])
+          .select();
 
-      // GET EXISTING
-      const {
-        data: existing,
-        error: fetchError,
-      } = await supabase
-        .from("tickets")
-        .select("*")
-        .eq("id", id)
-        .single();
+        if (error)
+          throw error;
 
-      if (fetchError)
-        throw fetchError;
+        res
+          .status(201)
+          .json(data[0]);
 
-      let updatedHistory =
-        existing.history || [];
+      } catch (error) {
 
-      /*
-      =====================================================
-      DUE DATE HISTORY
-      =====================================================
-      */
-      if (
-        due_date &&
-        due_date !==
-          existing.due_date
-      ) {
+        console.log(
+          "CREATE TICKET ERROR:",
+          error
+        );
 
-        updatedHistory.push({
-          action:
-            `Due date changed to ${due_date}`,
-
-          user:
-            req.user.name,
-
-          comment:
-            comment || "",
-
-          date:
-            new Date().toLocaleString(),
+        res.status(500).json({
+          message:
+            "Failed to create ticket",
         });
-
-        // EMAIL
-        try {
-
-          await sendMail({
-            to:
-              process.env.ADMIN_EMAIL,
-
-            subject:
-              "Ticket Due Date Updated",
-
-            text:
-              `
-Ticket:
-${existing.title}
-
-Updated By:
-${req.user.name}
-
-New Due Date:
-${due_date}
-
-Comment:
-${comment || "No comment"}
-              `,
-          });
-
-        } catch (mailError) {
-
-          console.log(
-            "MAIL ERROR:",
-            mailError
-          );
-        }
       }
+    }
+  );
 
+  /*
+  =====================================================
+  UPDATE TICKET
+  =====================================================
+  */
+  router.put(
+    "/:id",
+    auth,
+    async (req, res) => {
+
+      try {
+
+        const { id } =
+          req.params;
+
+        const {
+          title,
+          description,
+          priority,
+          status,
+          category,
+          due_date,
+          comment,
+        } = req.body;
+
+        /*
+        =====================================================
+        MENTIONS
+        =====================================================
+        */
+
+        const mentions =
+          comment?.match(/@\w+/g)
+          || [];
+
+        const taggedUsers =
+          mentions.map(
+            (m) =>
+              m.replace("@", "")
+          );
+        /*
+        =====================================================
+        EXISTING TICKET
+        =====================================================
+        */
+
+        const {
+          data: existing,
+          error: fetchError,
+        } = await supabase
+          .from("tickets")
+          .select("*")
+          .eq("id", id)
+          .single();
+
+        if (fetchError)
+          throw fetchError;
+
+        
       /*
-      =====================================================
-      STATUS HISTORY
-      =====================================================
-      */
-      if (
-        status &&
-        status !==
-          existing.status
-      ) {
+  =====================================================
+  MENTION NOTIFICATIONS
+  =====================================================
+  */
 
-        updatedHistory.push({
-          action:
-            `Status changed to ${status}`,
+  for (const username of taggedUsers) {
 
-          user:
-            req.user.name,
+    await supabase
+      .from("notifications")
+      .insert({
 
-          comment:
-            comment || "",
+        user_name:
+          username,
 
-          date:
-            new Date().toLocaleString(),
-        });
+        title:
+          "You were tagged",
 
-        // COMPLETION EMAIL
+        message:
+          `${req.user.name} tagged you in "${existing.title}"`,
+
+        ticket_id:
+          existing.id,
+      });
+  }
+
+
+        let timeline =
+          existing.timeline || [];
+
+        /*
+        =====================================================
+        COMMENT ENTRY
+        =====================================================
+        */
+
+        if (comment) {
+
+          timeline.push({
+
+            type:
+              "comment",
+
+            action:
+              "Comment added",
+
+            user:
+              req.user.name,
+
+            comment,
+
+            mentions,
+
+            created_at:
+              getISTTime(),
+          });
+        }
+
+        /*
+        =====================================================
+        DUE DATE
+        =====================================================
+        */
+
         if (
-          status ===
-          "Completed"
+          due_date &&
+          due_date !==
+            existing.due_date
         ) {
+
+          timeline.push({
+
+            type:
+              "due_date",
+
+            action:
+              `Due date changed to ${due_date}`,
+
+            user:
+              req.user.name,
+
+            comment:
+              comment || "",
+
+            mentions,
+
+            created_at:
+              getISTTime(),
+          });
 
           try {
 
             await sendMail({
+
               to:
                 process.env.ADMIN_EMAIL,
 
               subject:
-                "Ticket Completed",
+                "Ticket Due Date Updated",
 
               text:
                 `
-Ticket:
-${existing.title}
+  Ticket:
+  ${existing.title}
 
-Completed By:
-${req.user.name}
+  Updated By:
+  ${req.user.name}
 
-Comment:
-${comment || "No comment"}
+  New Due Date:
+  ${due_date}
+
+  Comment:
+  ${comment || "No comment"}
                 `,
             });
 
@@ -414,330 +458,525 @@ ${comment || "No comment"}
             );
           }
         }
-      }
 
-      /*
-      =====================================================
-      UPDATE OBJECT
-      =====================================================
-      */
+        /*
+        =====================================================
+        STATUS
+        =====================================================
+        */
 
-      const updateData = {
+        if (
+          status &&
+          status !==
+            existing.status
+        ) {
 
-        updated_at:
-          new Date(),
+          timeline.push({
 
-        history:
-          updatedHistory,
-      };
+            type:
+              "status",
 
-      if (title !== undefined)
-        updateData.title = title;
+            action:
+              `Status changed to ${status}`,
 
-      if (description !== undefined)
-        updateData.description =
-          description;
+            user:
+              req.user.name,
 
-      if (priority !== undefined)
-        updateData.priority =
-          priority;
+            comment:
+              comment || "",
 
-      if (status !== undefined)
-        updateData.status =
-          status;
+            mentions,
 
-      if (category !== undefined)
-        updateData.category =
-          category;
+            created_at:
+              getISTTime(),
+          });
 
-/*
-=====================================================
-FORMAT DUE DATE
-=====================================================
-*/
-if (
-  due_date !== undefined &&
-  due_date !== ""
-) {
+          /*
+          =====================================================
+          APPROVAL FLOW
+          =====================================================
+          */
 
-  updateData.due_date =
-    new Date(due_date)
-      .toISOString()
-      .split("T")[0];
-}
+          if (
+            status ===
+              "Completed" ||
+            status ===
+              "Waiting For Sources"
+          ) {
 
-      /*
-      =====================================================
-      UPDATE DATABASE
-      =====================================================
-      */
+            timeline.push({
 
-      const {
-        data,
-        error,
-      } = await supabase
-        .from("tickets")
-        .update(updateData)
-        .eq("id", id)
-        .select()
-        .single();
+              type:
+                "approval",
 
-      if (error) {
+              action:
+                `Approval requested for ${status}`,
+
+              user:
+                req.user.name,
+
+              comment:
+                comment || "",
+
+              mentions,
+
+              created_at:
+                getISTTime(),
+            });
+  /*
+  =====================================================
+  APPROVAL NOTIFICATION
+  =====================================================
+  */
+
+  await supabase
+    .from("notifications")
+    .insert({
+
+      user_name:
+        "Admin",
+
+      title:
+        "Approval Required",
+
+      message:
+        `${req.user.name} requested approval for "${existing.title}"`,
+
+      ticket_id:
+        existing.id,
+    });
+          }
+        }
+        /*
+        =====================================================
+        UPDATE OBJECT
+        =====================================================
+        */
+
+        const updateData = {
+
+          updated_at:
+            new Date(),
+
+          timeline,
+
+          tagged_users:
+            [
+              ...new Set([
+                ...(existing.tagged_users || []),
+                ...taggedUsers,
+              ]),
+            ],
+        };
+
+        if (title !== undefined)
+          updateData.title =
+            title;
+
+        if (description !== undefined)
+          updateData.description =
+            description;
+
+        if (priority !== undefined)
+          updateData.priority =
+            priority;
+
+        if (category !== undefined)
+          updateData.category =
+            category;
+
+        /*
+        =====================================================
+        APPROVAL LOGIC
+        =====================================================
+        */
+
+        if (
+          status ===
+            "Completed" ||
+          status ===
+            "Waiting For Sources"
+        ) {
+
+          updateData.status =
+            "Pending Approval";
+
+          updateData.approval_required =
+            true;
+
+          updateData.approval_status =
+            "Pending";
+
+          updateData.approval_requested_by =
+            req.user.name;
+
+        } else if (
+          status !== undefined
+        ) {
+
+          updateData.status =
+            status;
+        }
+
+        /*
+        =====================================================
+        DUE DATE FORMAT
+        =====================================================
+        */
+
+        if (
+          due_date !== undefined &&
+          due_date !== ""
+        ) {
+
+          updateData.due_date =
+            new Date(due_date)
+              .toISOString()
+              .split("T")[0];
+        }
+
+        /*
+        =====================================================
+        UPDATE DATABASE
+        =====================================================
+        */
+
+        const {
+          data,
+          error,
+        } = await supabase
+          .from("tickets")
+          .update(updateData)
+          .eq("id", id)
+          .select()
+          .single();
+
+        if (error) {
+
+          console.log(
+            "SUPABASE UPDATE ERROR:",
+            error
+          );
+
+          return res
+            .status(500)
+            .json({
+              message:
+                "Database update failed",
+              error,
+            });
+        }
+
+        res.json(data);
+
+      } catch (error) {
 
         console.log(
-          "SUPABASE UPDATE ERROR:",
+          "UPDATE ERROR:",
           error
         );
 
-        return res
-          .status(500)
-          .json({
-            message:
-              "Database update failed",
-            error,
-          });
+        res.status(500).json({
+          message:
+            "Failed to update ticket",
+        });
       }
-
-      res.json(data);
-
-    } catch (error) {
-
-      console.log(
-        "UPDATE ERROR:",
-        error
-      );
-
-      res.status(500).json({
-        message:
-          "Failed to update ticket",
-      });
     }
-  }
-);
+  );
 
-/*
+  /*
+  =====================================================
+  APPROVE / REJECT
+  =====================================================
+  */
+  router.put(
+    "/:id/approve",
+    auth,
+    async (req, res) => {
+
+      try {
+
+        if (
+          req.user.role !==
+          "Admin"
+        ) {
+
+          return res
+            .status(403)
+            .json({
+              message:
+                "Only admin can approve",
+            });
+        }
+
+        const {
+          approval_status,
+        } = req.body;
+
+        const {
+          data: existing,
+        } = await supabase
+          .from("tickets")
+          .select("*")
+          .eq(
+            "id",
+            req.params.id
+          )
+          .single();
+
+        const timeline =
+          existing.timeline || [];
+
+        timeline.push({
+
+          type:
+            "approval",
+
+          action:
+            `Approval ${approval_status}`,
+
+          user:
+            req.user.name,
+
+          comment:
+            "",
+
+          mentions: [],
+
+          created_at:
+            getISTTime(),
+        });
+
+        const updateData = {
+
+          approval_status,
+
+          approved_by:
+            req.user.name,
+
+          timeline,
+        };
+
+        if (
+          approval_status ===
+          "Approved"
+        ) {
+
+          updateData.status =
+            "Completed";
+        }
+
+        if (
+          approval_status ===
+          "Rejected"
+        ) {
+
+          updateData.status =
+            "In Progress";
+        }
+
+        const {
+          data,
+          error,
+        } = await supabase
+          .from("tickets")
+          .update(updateData)
+          .eq(
+            "id",
+            req.params.id
+          )
+          .select()
+          .single();
+
+        if (error)
+          throw error;
+        /*
 =====================================================
-ASSIGN TICKET
+APPROVAL RESULT NOTIFICATION
 =====================================================
 */
-router.put(
-  "/:id/assign",
-  auth,
-  async (req, res) => {
 
-    try {
+await supabase
+  .from("notifications")
+  .insert({
 
-      const { id } =
-        req.params;
+    user_name:
+      existing.approval_requested_by,
 
-      const {
-        assigned_to,
-        assigned_to_name,
-      } = req.body;
+    title:
+      `Ticket ${approval_status}`,
 
-      const {
-        data: existing,
-      } = await supabase
-        .from("tickets")
-        .select("*")
-        .eq("id", id)
-        .single();
+    message:
+      `${req.user.name} ${approval_status.toLowerCase()} your ticket "${existing.title}"`,
 
-      const history =
-        existing.history || [];
+    ticket_id:
+      existing.id,
+  });
 
-      history.push({
-        action:
-          `Assigned to ${assigned_to_name}`,
+        res.json(data);
 
-        user:
-          req.user.name,
+      } catch (err) {
 
-        comment:
-          "",
+        console.log(err);
 
-        date:
-          new Date().toLocaleString(),
-      });
+        res.status(500).json({
+          message:
+            "Approval failed",
+        });
+      }
+    }
+  );
 
-      const {
-        data,
-        error,
-      } = await supabase
-        .from("tickets")
-        .update({
+  /*
+  =====================================================
+  ASSIGN TICKET
+  =====================================================
+  */
+  router.put(
+    "/:id/assign",
+    auth,
+    async (req, res) => {
+
+      try {
+
+        const { id } =
+          req.params;
+
+        const {
           assigned_to,
           assigned_to_name,
+        } = req.body;
 
-          history,
+        const {
+          data: existing,
+        } = await supabase
+          .from("tickets")
+          .select("*")
+          .eq("id", id)
+          .single();
 
-          updated_at:
-            new Date(),
-        })
-        .eq("id", id)
-        .select()
-        .single();
+        const timeline =
+          existing.timeline || [];
 
-      if (error)
-        throw error;
+        timeline.push({
 
-      res.json(data);
+          type:
+            "assignment",
 
-    } catch (error) {
+          action:
+            `Assigned to ${assigned_to_name}`,
 
-      console.log(
-        "ASSIGN ERROR:",
-        error
-      );
+          user:
+            req.user.name,
 
-      res.status(500).json({
-        message:
-          "Assignment failed",
-      });
-    }
-  }
-);
+          comment:
+            "",
 
-/*
-=====================================================
-UNASSIGN TICKET
-=====================================================
-*/
-router.put(
-  "/:id/unassign",
-  auth,
-  async (req, res) => {
+          mentions: [],
 
-    try {
+          created_at:
+            getISTTime(),
+        });
 
-      const {
-        data: existing,
-      } = await supabase
-        .from("tickets")
-        .select("*")
-        .eq(
-          "id",
-          req.params.id
-        )
-        .single();
-
-      const history =
-        existing.history || [];
-
-      history.push({
-        action:
-          "Ticket unassigned",
-
-        user:
-          req.user.name,
-
-        comment:
-          "",
-
-        date:
-          new Date().toLocaleString(),
-      });
-
-      const {
-        data,
-        error,
-      } = await supabase
-        .from("tickets")
-        .update({
-          assigned_to: null,
-          assigned_to_name: null,
-
-          history,
-
-          updated_at:
-            new Date(),
-        })
-        .eq(
-          "id",
-          req.params.id
-        )
-        .select();
-
-      if (error)
-        throw error;
-
-      res.json(data[0]);
-
-    } catch (error) {
-
-      console.log(
-        "UNASSIGN ERROR:",
-        error
-      );
-
-      res.status(500).json({
-        message:
-          "Unassign failed",
-      });
-    }
-  }
-);
-
-/*
-=====================================================
-DELETE TICKET
-=====================================================
-*/
-router.delete(
-  "/:id",
-  auth,
-  async (req, res) => {
-
-    try {
-
-      if (
-        req.user.role !==
-        "Admin"
-      ) {
-
-        return res
-          .status(403)
-          .json({
-            message:
-              "Access denied",
-          });
-      }
-
-      const { error } =
-        await supabase
+        const {
+          data,
+          error,
+        } = await supabase
           .from("tickets")
           .update({
-            deleted: true,
+            assigned_to,
+            assigned_to_name,
+
+            timeline,
 
             updated_at:
               new Date(),
           })
-          .eq(
-            "id",
-            req.params.id
-          );
+          .eq("id", id)
+          .select()
+          .single();
 
-      if (error)
-        throw error;
+        if (error)
+          throw error;
 
-      res.json({
-        message:
-          "Ticket deleted",
-      });
+        res.json(data);
 
-    } catch (error) {
+      } catch (error) {
 
-      console.log(
-        "DELETE ERROR:",
-        error
-      );
+        console.log(
+          "ASSIGN ERROR:",
+          error
+        );
 
-      res.status(500).json({
-        message:
-          "Delete failed",
-      });
+        res.status(500).json({
+          message:
+            "Assignment failed",
+        });
+      }
     }
-  }
-);
+  );
 
-module.exports = router;
+  /*
+  =====================================================
+  DELETE TICKET
+  =====================================================
+  */
+  router.delete(
+    "/:id",
+    auth,
+    async (req, res) => {
+
+      try {
+
+        if (
+          req.user.role !==
+          "Admin"
+        ) {
+
+          return res
+            .status(403)
+            .json({
+              message:
+                "Access denied",
+            });
+        }
+
+        const { error } =
+          await supabase
+            .from("tickets")
+            .update({
+              deleted:
+                true,
+
+              updated_at:
+                new Date(),
+            })
+            .eq(
+              "id",
+              req.params.id
+            );
+
+        if (error)
+          throw error;
+
+        res.json({
+          message:
+            "Ticket deleted",
+        });
+
+      } catch (error) {
+
+        console.log(
+          "DELETE ERROR:",
+          error
+        );
+
+        res.status(500).json({
+          message:
+            "Delete failed",
+        });
+      }
+    }
+  );
+
+  module.exports = router;

@@ -23,6 +23,9 @@ import {
 import useAuthStore
   from "../store/authStore";
 
+import NotificationBell
+from "../components/NotificationBell";
+
 export default function MainLayout({
   children,
 }) {
