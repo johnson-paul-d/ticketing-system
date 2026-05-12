@@ -1,64 +1,126 @@
 import { useEffect, useState } from "react";
-import Sidebar from "../components/Sidebar";
+
+import MainLayout from "../layouts/MainLayout";
+
 import api from "../services/api";
 
-import FullCalendar from "@fullcalendar/react";
-import dayGridPlugin from "@fullcalendar/daygrid";
-import interactionPlugin from "@fullcalendar/interaction";
+import {
+  Calendar,
+  momentLocalizer,
+} from "react-big-calendar";
 
-function TicketCalendar() {
-  const [events, setEvents] = useState([]);
+import moment from "moment";
+
+import "react-big-calendar/lib/css/react-big-calendar.css";
+
+const localizer =
+  momentLocalizer(moment);
+
+export default function TicketCalendar() {
+
+  const [events, setEvents] =
+    useState([]);
 
   useEffect(() => {
+
     fetchTickets();
+
   }, []);
 
-  const fetchTickets = async () => {
-    try {
-      const res = await api.get("/tickets");
+  const fetchTickets =
+    async () => {
 
-      const calendarEvents = res.data
-        .filter((ticket) => ticket.due_date)
-        .map((ticket) => ({
-          id: ticket.id,
-          title: `${ticket.title} (${ticket.priority})`,
-          date: ticket.due_date,
-        }));
+      try {
 
-      setEvents(calendarEvents);
-    } catch (err) {
-      console.log(err);
-    }
-  };
+        const res =
+          await api.get(
+            "/tickets"
+          );
+
+        const formatted =
+          res.data
+            .filter(
+              (ticket) =>
+                ticket.due_date
+            )
+            .map((ticket) => ({
+
+              title:
+                `${ticket.title} (${ticket.priority})`,
+
+              start:
+                new Date(
+                  ticket.due_date
+                ),
+
+              end:
+                new Date(
+                  ticket.due_date
+                ),
+
+              allDay: true,
+
+            }));
+
+        setEvents(
+          formatted
+        );
+
+      } catch (err) {
+
+        console.log(
+          err
+        );
+      }
+    };
 
   return (
-    <div className="flex bg-gray-100 min-h-screen">
-      <Sidebar />
 
-      <div className="flex-1 p-6">
-        <div className="bg-white rounded-xl shadow p-5">
-          <h1 className="text-3xl font-bold mb-2">
+    <MainLayout>
+
+      <div className="p-6">
+
+        <div className="mb-6">
+
+          <h1 className="text-3xl font-bold">
             Ticket Calendar
           </h1>
 
-          <p className="text-gray-500 mb-6">
-            Jira style calendar view
+          <p className="text-gray-500">
+            Jira style due-date calendar
           </p>
 
-          <FullCalendar
-            plugins={[
-              dayGridPlugin,
-              interactionPlugin,
-            ]}
-            initialView="dayGridMonth"
-            height="80vh"
-            events={events}
-            eventColor="#dc2626"
-          />
         </div>
+
+        <div className="bg-white p-5 rounded-2xl shadow">
+
+          <div
+            style={{
+              height: "80vh",
+            }}
+          >
+
+            <Calendar
+              localizer={
+                localizer
+              }
+              events={events}
+              startAccessor="start"
+              endAccessor="end"
+              views={[
+                "month",
+                "week",
+                "day",
+                "agenda",
+              ]}
+            />
+
+          </div>
+
+        </div>
+
       </div>
-    </div>
+
+    </MainLayout>
   );
 }
-
-export default TicketCalendar;
