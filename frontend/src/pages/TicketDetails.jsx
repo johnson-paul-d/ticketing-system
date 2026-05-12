@@ -81,9 +81,11 @@ export default function TicketDetails() {
 
         setTicket(res.data);
 
-        setDueDate(
-          res.data.due_date || ""
-        );
+setDueDate(
+  res.data.due_date
+    ? res.data.due_date
+    : ""
+);
 
         setStatus(
           res.data.status || "Open"
@@ -500,16 +502,20 @@ const updateStatus =
 
               <div className="flex gap-4 mt-3">
 
-                <input
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) =>
-                    setDueDate(
-                      e.target.value
-                    )
-                  }
-                  className="border rounded-xl px-4 py-3"
-                />
+               <input
+  type="date"
+  value={
+    dueDate
+      ? dueDate
+      : ""
+  }
+  onChange={(e) =>
+    setDueDate(
+      e.target.value
+    )
+  }
+  className="border rounded-xl px-4 py-3"
+/>
 
                 <button
                   onClick={

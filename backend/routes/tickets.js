@@ -403,9 +403,21 @@ ${comment || "No comment"}
         updateData.category =
           category;
 
-      if (due_date !== undefined)
-        updateData.due_date =
-          due_date;
+/*
+=====================================================
+FORMAT DUE DATE
+=====================================================
+*/
+if (
+  due_date !== undefined &&
+  due_date !== ""
+) {
+
+  updateData.due_date =
+    new Date(due_date)
+      .toISOString()
+      .split("T")[0];
+}
 
       /*
       =====================================================
