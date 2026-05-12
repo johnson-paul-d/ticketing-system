@@ -26,12 +26,12 @@ const sendMail =
     try {
 
       console.log(
-        "EMAIL_USER:",
+        "EMAIL USER:",
         process.env.EMAIL_USER
       );
 
       console.log(
-        "ADMIN_EMAIL:",
+        "ADMIN EMAIL:",
         process.env.ADMIN_EMAIL
       );
 
@@ -39,7 +39,7 @@ const sendMail =
         await transporter.sendMail({
 
           from:
-            process.env.EMAIL_USER,
+            `"Ticket System" <${process.env.EMAIL_USER}>`,
 
           to,
 
@@ -49,7 +49,10 @@ const sendMail =
         });
 
       console.log(
-        "MAIL SUCCESS:",
+        "MAIL SUCCESS:"
+      );
+
+      console.log(
         info.response
       );
 
@@ -58,7 +61,7 @@ const sendMail =
     } catch (error) {
 
       console.log(
-        "MAIL FULL ERROR:"
+        "MAIL ERROR:"
       );
 
       console.log(error);
