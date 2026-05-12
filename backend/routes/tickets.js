@@ -75,6 +75,53 @@ router.get(
 
 /*
 =====================================================
+TEST MAIL
+=====================================================
+*/
+
+router.get(
+  "/test-mail",
+  async (req, res) => {
+
+    try {
+
+      await sendMail({
+
+        to:
+          process.env.ADMIN_EMAIL,
+
+        subject:
+          "Test Mail",
+
+        text:
+          "Mail is working successfully",
+      });
+
+      res.json({
+        success: true,
+        message:
+          "Mail sent successfully",
+      });
+
+    } catch (error) {
+
+      console.log(
+        "MAIL ERROR:",
+        error
+      );
+
+      res.status(500).json({
+        success: false,
+        message:
+          "Mail failed",
+      });
+    }
+  }
+);
+
+
+/*
+=====================================================
 GET SINGLE TICKET
 =====================================================
 */
