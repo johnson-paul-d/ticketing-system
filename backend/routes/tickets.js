@@ -9,7 +9,7 @@ const auth =
   require("../middleware/auth");
 
 const sendMail =
-  require("../services/sendMail");
+  require("../services/mailService");
 
 /*
 =====================================================
