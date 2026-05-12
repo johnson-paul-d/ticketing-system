@@ -46,15 +46,29 @@ export default function TicketDetails() {
   const [history, setHistory] =
     useState([]);
 
+  /*
+  =====================================================
+  INITIAL LOAD
+  =====================================================
+  */
   useEffect(() => {
 
     fetchTicket();
 
-    fetchUsers();
+    // ONLY ADMIN FETCHES USERS
+    if (
+      user?.role === "Admin"
+    ) {
+      fetchUsers();
+    }
 
-  }, []);
+  }, [user]);
 
-  // FETCH TICKET
+  /*
+  =====================================================
+  FETCH TICKET
+  =====================================================
+  */
   const fetchTicket =
     async () => {
 
@@ -81,15 +95,27 @@ export default function TicketDetails() {
 
       } catch (error) {
 
-        console.log(error);
+        console.log(
+          "FETCH TICKET ERROR:",
+          error
+        );
       }
     };
 
-  // FETCH USERS
+  /*
+  =====================================================
+  FETCH USERS
+  =====================================================
+  */
   const fetchUsers =
     async () => {
 
       try {
+
+        // BLOCK TEAM MEMBERS
+        if (
+          user?.role !== "Admin"
+        ) return;
 
         const res =
           await api.get("/users");
@@ -98,11 +124,18 @@ export default function TicketDetails() {
 
       } catch (error) {
 
-        console.log(error);
+        console.log(
+          "USER FETCH ERROR:",
+          error
+        );
       }
     };
 
-  // ASSIGN TICKET
+  /*
+  =====================================================
+  ASSIGN TICKET
+  =====================================================
+  */
   const assignTicket =
     async () => {
 
@@ -142,7 +175,10 @@ export default function TicketDetails() {
 
       } catch (error) {
 
-        console.log(error);
+        console.log(
+          "ASSIGN ERROR:",
+          error
+        );
 
         alert(
           "Assignment failed"
@@ -150,7 +186,11 @@ export default function TicketDetails() {
       }
     };
 
-  // DELETE
+  /*
+  =====================================================
+  DELETE TICKET
+  =====================================================
+  */
   const deleteTicket =
     async () => {
 
@@ -176,7 +216,10 @@ export default function TicketDetails() {
 
       } catch (error) {
 
-        console.log(error);
+        console.log(
+          "DELETE ERROR:",
+          error
+        );
 
         alert(
           "Delete failed"
@@ -184,7 +227,11 @@ export default function TicketDetails() {
       }
     };
 
-  // UPDATE DUE DATE
+  /*
+  =====================================================
+  UPDATE DUE DATE
+  =====================================================
+  */
   const updateDueDate =
     async () => {
 
@@ -220,6 +267,9 @@ export default function TicketDetails() {
               due_date:
                 dueDate,
 
+              comment:
+                comment,
+
               history:
                 updatedHistory,
             }
@@ -239,7 +289,10 @@ export default function TicketDetails() {
 
       } catch (error) {
 
-        console.log(error);
+        console.log(
+          "DUE DATE ERROR:",
+          error
+        );
 
         alert(
           "Failed to update due date"
@@ -247,7 +300,11 @@ export default function TicketDetails() {
       }
     };
 
-  // UPDATE STATUS
+  /*
+  =====================================================
+  UPDATE STATUS
+  =====================================================
+  */
   const updateStatus =
     async () => {
 
@@ -283,6 +340,9 @@ export default function TicketDetails() {
               status:
                 status,
 
+              comment:
+                comment,
+
               history:
                 updatedHistory,
             }
@@ -302,7 +362,10 @@ export default function TicketDetails() {
 
       } catch (error) {
 
-        console.log(error);
+        console.log(
+          "STATUS ERROR:",
+          error
+        );
 
         alert(
           "Failed to update status"
@@ -310,6 +373,11 @@ export default function TicketDetails() {
       }
     };
 
+  /*
+  =====================================================
+  LOADING
+  =====================================================
+  */
   if (!ticket) {
 
     return (
@@ -531,51 +599,58 @@ export default function TicketDetails() {
         </div>
 
         {/* ASSIGN */}
-        <div className="mt-16 border-t pt-10">
+        {user?.role ===
+          "Admin" && (
 
-          <h2 className="text-3xl font-bold mb-6">
-            Assign Ticket
-          </h2>
+          <div className="mt-16 border-t pt-10">
 
-          <div className="flex gap-4">
+            <h2 className="text-3xl font-bold mb-6">
+              Assign Ticket
+            </h2>
 
-            <select
-              value={selectedUser}
-              onChange={(e) =>
-                setSelectedUser(
-                  e.target.value
-                )
-              }
-              className="border px-5 py-3 rounded-xl w-96"
-            >
+            <div className="flex gap-4">
 
-              <option value="">
-                Select Team Member
-              </option>
+              <select
+                value={selectedUser}
+                onChange={(e) =>
+                  setSelectedUser(
+                    e.target.value
+                  )
+                }
+                className="border px-5 py-3 rounded-xl w-96"
+              >
 
-              {users.map((u) => (
-
-                <option
-                  key={u.id}
-                  value={u.id}
-                >
-                  {u.name}
+                <option value="">
+                  Select Team Member
                 </option>
 
-              ))}
+                {users.map((u) => (
 
-            </select>
+                  <option
+                    key={u.id}
+                    value={u.id}
+                  >
+                    {u.name}
+                  </option>
 
-            <button
-              onClick={assignTicket}
-              className="bg-black text-white px-8 py-3 rounded-xl"
-            >
-              Assign
-            </button>
+                ))}
+
+              </select>
+
+              <button
+                onClick={
+                  assignTicket
+                }
+                className="bg-black text-white px-8 py-3 rounded-xl"
+              >
+                Assign
+              </button>
+
+            </div>
 
           </div>
 
-        </div>
+        )}
 
         {/* HISTORY */}
         <div className="mt-16 border-t pt-10">
