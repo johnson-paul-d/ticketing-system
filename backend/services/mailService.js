@@ -1,74 +1,46 @@
-const nodemailer =
-  require("nodemailer");
+const { Resend } = require("resend");
 
-const transporter =
-  nodemailer.createTransport({
+const resend = new Resend(
+  process.env.RESEND_API_KEY
+);
 
-    service: "gmail",
+const sendMail = async ({
+  to,
+  subject,
+  text,
+}) => {
+  try {
+    const response =
+      await resend.emails.send({
+        from:
+          "Ticketing <onboarding@resend.dev>",
 
-    auth: {
+        to,
 
-      user:
-        process.env.EMAIL_USER,
+        subject,
 
-      pass:
-        process.env.EMAIL_PASS,
-    },
-  });
+        text,
+      });
 
-const sendMail =
-  async ({
-    to,
-    subject,
-    text,
-  }) => {
+    console.log(
+      "MAIL SUCCESS:",
+      response
+    );
 
-    try {
+    return {
+      success: true,
+    };
+  } catch (error) {
+    console.log(
+      "MAIL ERROR:",
+      error
+    );
 
-      console.log(
-        "EMAIL USER:",
-        process.env.EMAIL_USER
-      );
+    return {
+      success: false,
+      error,
+    };
+  }
+};
 
-      console.log(
-        "ADMIN EMAIL:",
-        process.env.ADMIN_EMAIL
-      );
-
-      const info =
-        await transporter.sendMail({
-
-          from:
-            `"Ticket System" <${process.env.EMAIL_USER}>`,
-
-          to,
-
-          subject,
-
-          text,
-        });
-
-      console.log(
-        "MAIL SUCCESS:"
-      );
-
-      console.log(
-        info.response
-      );
-
-      return info;
-
-    } catch (error) {
-
-      console.log(
-        "MAIL ERROR:"
-      );
-
-      console.log(error);
-
-      throw error;
-    }
-  };
-
-module.exports =
-  sendMail;
+module.exports = sendMail;
