@@ -1,13 +1,9 @@
 import { useEffect, useState } from "react";
-
 import { useNavigate } from "react-router-dom";
 
 import socket from "../services/socket";
-
 import useAuthStore from "../store/authStore";
-
 import MainLayout from "../layouts/MainLayout";
-
 import api from "../services/api";
 
 export default function Tickets() {
@@ -302,6 +298,7 @@ export default function Tickets() {
       {/* FILTERS */}
       <div className="bg-white rounded-2xl shadow-sm p-5 mb-6">
         <div className="grid grid-cols-4 gap-4">
+
           {/* SEARCH */}
           <input
             type="text"
@@ -413,8 +410,10 @@ export default function Tickets() {
       {/* TABLE */}
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
         <table className="w-full">
+
           <thead className="bg-gray-50">
             <tr className="text-left">
+
               <th className="p-5">
                 Title
               </th>
@@ -442,6 +441,7 @@ export default function Tickets() {
               <th className="p-5">
                 Action
               </th>
+
             </tr>
           </thead>
 
@@ -449,12 +449,16 @@ export default function Tickets() {
             {filteredTickets.map(
               (ticket) => (
                 <tr
-                 key={ticket.id || ticket._id}
+                  key={
+                    ticket.id ||
+                    ticket._id
                   }
                   className="border-t hover:bg-gray-50"
                 >
+
                   <td className="p-5">
                     <div>
+
                       <p className="font-semibold">
                         {
                           ticket.title
@@ -466,6 +470,7 @@ export default function Tickets() {
                           ticket.description
                         }
                       </p>
+
                     </div>
                   </td>
 
@@ -514,21 +519,24 @@ export default function Tickets() {
                   <td className="p-5">
                     <button
                       onClick={() =>
-                       navigate(
-  `/tickets/${
-    ticket.id || ticket._id
-  }`
-)
+                        navigate(
+                          `/tickets/${
+                            ticket.id ||
+                            ticket._id
+                          }`
+                        )
                       }
                       className="bg-black text-white px-4 py-2 rounded-lg hover:bg-gray-800"
                     >
                       View
                     </button>
                   </td>
+
                 </tr>
               )
             )}
           </tbody>
+
         </table>
 
         {!loading &&
@@ -556,6 +564,7 @@ function StatCard({
 }) {
   return (
     <div className="bg-white rounded-2xl p-6 shadow-sm">
+
       <p className="text-gray-500 text-sm">
         {title}
       </p>
@@ -563,6 +572,7 @@ function StatCard({
       <h2 className="text-3xl font-bold mt-2">
         {value}
       </h2>
+
     </div>
   );
 }
