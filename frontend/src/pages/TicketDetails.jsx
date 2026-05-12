@@ -1,4 +1,7 @@
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useState,
+} from "react";
 
 import {
   useParams,
@@ -17,60 +20,52 @@ export default function TicketDetails() {
 
   const navigate = useNavigate();
 
-  const user = useAuthStore(
-    (state) => state.user
-  );
+  const user =
+    useAuthStore(
+      (state) => state.user
+    );
 
   const [ticket, setTicket] =
     useState(null);
 
-  const [teamMembers, setTeamMembers] =
+  const [users, setUsers] =
     useState([]);
 
-  const [selectedMember, setSelectedMember] =
+  const [selectedUser, setSelectedUser] =
     useState("");
 
-  const [loading, setLoading] =
-    useState(true);
-
-  const [error, setError] =
+  const [dueDate, setDueDate] =
     useState("");
 
-  // FETCH TICKET
-  const fetchTicket = async () => {
-    try {
+  const [history, setHistory] =
+    useState([]);
 
-      const res = await api.get(
-        `/tickets/${id}`
-      );
+  useEffect(() => {
 
-      setTicket(res.data);
+    fetchTicket();
 
-    } catch (error) {
+    fetchUsers();
 
-      console.log(error);
+  }, []);
 
-      setError("Failed to load ticket");
-
-    } finally {
-
-      setLoading(false);
-    }
-  };
-
-  // FETCH TEAM MEMBERS
-  const fetchTeamMembers =
+  const fetchTicket =
     async () => {
 
       try {
 
         const res =
           await api.get(
-            "/auth/team-members"
+            `/tickets/${id}`
           );
 
-        setTeamMembers(
-          res.data || []
+        setTicket(res.data);
+
+        setDueDate(
+          res.data.due_date || ""
+        );
+
+        setHistory(
+          res.data.history || []
         );
 
       } catch (error) {
@@ -79,80 +74,55 @@ export default function TicketDetails() {
       }
     };
 
-  useEffect(() => {
-
-    fetchTicket();
-
-    fetchTeamMembers();
-
-  }, []);
-
-  // ASSIGN TICKET
-  const assignTicket = async () => {
-
-    try {
-
-      if (!selectedMember) {
-
-        alert("Select a team member");
-
-        return;
-      }
-
-      // FIND SELECTED USER OBJECT
-      const member =
-        teamMembers.find(
-          (m) =>
-            m.id ===
-            selectedMember
-        );
-
-      if (!member) {
-
-        alert("User not found");
-
-        return;
-      }
-
-      await api.put(
-        `/tickets/${ticket.id}/assign`,
-        {
-          assigned_to:
-            member.id,
-
-          assigned_to_name:
-            member.name
-        }
-      );
-
-      alert(
-        "Ticket assigned"
-      );
-
-      fetchTicket();
-
-    } catch (error) {
-
-      console.log(error);
-
-      alert(
-        "Assign failed"
-      );
-    }
-  };
-
-  // UNASSIGN
-  const unassignTicket =
+  const fetchUsers =
     async () => {
 
       try {
 
+        const res =
+          await api.get("/users");
+
+        setUsers(res.data);
+
+      } catch (error) {
+
+        console.log(error);
+      }
+    };
+
+  // ASSIGN
+  const assignTicket =
+    async () => {
+
+      if (!selectedUser) {
+        alert(
+          "Select a team member"
+        );
+
+        return;
+      }
+
+      try {
+
+        const selected =
+          users.find(
+            (u) =>
+              u.id === selectedUser
+          );
+
         await api.put(
-          `/tickets/${id}/unassign`
+          `/tickets/${ticket.id}/assign`,
+          {
+            assigned_to:
+              selected.id,
+
+            assigned_to_name:
+              selected.name,
+          }
         );
 
         alert(
-          "Ticket unassigned"
+          "Ticket assigned"
         );
 
         fetchTicket();
@@ -162,7 +132,7 @@ export default function TicketDetails() {
         console.log(error);
 
         alert(
-          "Failed to unassign"
+          "Assignment failed"
         );
       }
     };
@@ -176,13 +146,12 @@ export default function TicketDetails() {
           "Delete this ticket?"
         );
 
-      if (!confirmDelete)
-        return;
+      if (!confirmDelete) return;
 
       try {
 
         await api.delete(
-          `/tickets/${id}`
+          `/tickets/${ticket.id}`
         );
 
         alert(
@@ -201,141 +170,190 @@ export default function TicketDetails() {
       }
     };
 
-  if (loading) {
+  // UPDATE DUE DATE
+  const updateDueDate =
+    async () => {
 
-    return (
-      <MainLayout>
-        <div className="p-10">
-          Loading...
-        </div>
-      </MainLayout>
-    );
-  }
+      try {
 
-  if (error) {
+        await api.put(
+          `/tickets/${ticket.id}`,
+          {
+            due_date: dueDate,
+          }
+        );
 
-    return (
-      <MainLayout>
-        <div className="p-10 text-red-500">
-          {error}
-        </div>
-      </MainLayout>
-    );
-  }
+        // ADD HISTORY
+        const newHistory = [
+          ...history,
+          {
+            action:
+              `Due date changed to ${dueDate}`,
+
+            user:
+              user?.name,
+
+            date:
+              new Date().toLocaleString(),
+          },
+        ];
+
+        await api.put(
+          `/tickets/${ticket.id}/history`,
+          {
+            history:
+              newHistory,
+          }
+        );
+
+        setHistory(newHistory);
+
+        alert(
+          "Due date updated"
+        );
+
+      } catch (error) {
+
+        console.log(error);
+
+        alert(
+          "Failed to update due date"
+        );
+      }
+    };
 
   if (!ticket) {
 
     return (
       <MainLayout>
-        <div className="p-10">
-          Ticket not found
-        </div>
+        Loading...
       </MainLayout>
     );
   }
 
   return (
+
     <MainLayout>
 
-      <div className="bg-white rounded-2xl shadow-sm p-8">
+      <div className="bg-white rounded-3xl shadow-sm p-8">
 
         {/* HEADER */}
-        <div className="flex justify-between mb-8">
+        <div className="flex justify-between items-start">
 
           <div>
 
-            <h1 className="text-3xl font-bold">
+            <h1 className="text-5xl font-bold">
               {ticket.title}
             </h1>
 
             <p className="text-gray-500 mt-2">
-              Ticket ID: {ticket.id}
+              Ticket ID:
+              {" "}
+              {ticket.id}
             </p>
 
           </div>
 
-          {user?.role ===
-            "Admin" && (
+          {user?.role === "Admin" && (
 
             <button
-              onClick={
-                deleteTicket
-              }
-              className="bg-red-500 hover:bg-red-600 text-white px-5 py-3 rounded-xl"
+              onClick={deleteTicket}
+              className="bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-2xl font-semibold"
             >
               Delete Ticket
             </button>
+
           )}
+
         </div>
 
         {/* DETAILS */}
-        <div className="grid grid-cols-2 gap-10">
+        <div className="grid grid-cols-2 gap-12 mt-12">
 
-          <div className="space-y-6">
+          <div className="space-y-8">
 
             <div>
-              <h2 className="font-semibold mb-2">
+              <p className="font-semibold text-gray-500">
                 Description
-              </h2>
+              </p>
 
-              <p>
+              <p className="text-xl font-medium mt-2">
                 {ticket.description}
               </p>
             </div>
 
             <div>
-              <h2 className="font-semibold mb-2">
+              <p className="font-semibold text-gray-500">
                 Priority
-              </h2>
+              </p>
 
-              <p>
+              <p className="text-xl font-medium mt-2">
                 {ticket.priority}
               </p>
             </div>
 
             <div>
-              <h2 className="font-semibold mb-2">
+              <p className="font-semibold text-gray-500">
                 Category
-              </h2>
+              </p>
 
-              <p>
+              <p className="text-xl font-medium mt-2">
                 {ticket.category}
               </p>
             </div>
 
           </div>
 
-          <div className="space-y-6">
+          <div className="space-y-8">
 
             <div>
-              <h2 className="font-semibold mb-2">
+              <p className="font-semibold text-gray-500">
                 Assigned To
-              </h2>
+              </p>
 
-              <p>
+              <p className="text-xl font-medium mt-2">
                 {ticket.assigned_to_name ||
                   "Unassigned"}
               </p>
             </div>
 
             <div>
-              <h2 className="font-semibold mb-2">
+              <p className="font-semibold text-gray-500">
                 Status
-              </h2>
+              </p>
 
-              <p>
+              <p className="text-xl font-medium mt-2">
                 {ticket.status}
               </p>
             </div>
 
             <div>
-              <h2 className="font-semibold mb-2">
-                Created By
-              </h2>
-
-              <p>
-                {ticket.created_by}
+              <p className="font-semibold text-gray-500">
+                Due Date
               </p>
+
+              <div className="flex gap-4 mt-3">
+
+                <input
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) =>
+                    setDueDate(
+                      e.target.value
+                    )
+                  }
+                  className="border rounded-xl px-4 py-3"
+                />
+
+                <button
+                  onClick={updateDueDate}
+                  className="bg-black text-white px-5 py-3 rounded-xl"
+                >
+                  Update
+                </button>
+
+              </div>
+
             </div>
 
           </div>
@@ -343,74 +361,108 @@ export default function TicketDetails() {
         </div>
 
         {/* ASSIGN */}
-        {user?.role ===
-          "Admin" && (
+        <div className="mt-16 border-t pt-10">
 
-          <div className="mt-10 border-t pt-8">
+          <h2 className="text-3xl font-bold mb-6">
+            Assign Ticket
+          </h2>
 
-            <h2 className="text-2xl font-semibold mb-5">
-              Assign Ticket
-            </h2>
+          <div className="flex gap-4">
 
-            <div className="flex gap-4">
+            <select
+              value={selectedUser}
+              onChange={(e) =>
+                setSelectedUser(
+                  e.target.value
+                )
+              }
+              className="border px-5 py-3 rounded-xl w-96"
+            >
 
-              <select
-                value={
-                  selectedMember
-                }
-                onChange={(e) =>
-                  setSelectedMember(
-                    e.target.value
-                  )
-                }
-                className="border p-3 rounded-xl min-w-[320px]"
-              >
+              <option value="">
+                Select Team Member
+              </option>
 
-                <option value="">
-                  Select Team Member
+              {users.map((u) => (
+
+                <option
+                  key={u.id}
+                  value={u.id}
+                >
+                  {u.name}
                 </option>
 
-                {teamMembers.map(
-                  (member) => (
+              ))}
 
-                    <option
-                      key={
-                        member.id
-                      }
-                      value={
-                        member.id
-                      }
-                    >
-                      {member.name}
-                      {" - "}
-                      {member.email}
-                    </option>
-                  )
-                )}
-              </select>
+            </select>
 
-              <button
-                onClick={
-                  assignTicket
-                }
-                className="bg-black text-white px-6 py-3 rounded-xl"
-              >
-                Assign
-              </button>
-
-              <button
-                onClick={
-                  unassignTicket
-                }
-                className="border px-6 py-3 rounded-xl"
-              >
-                Unassign
-              </button>
-
-            </div>
+            <button
+              onClick={assignTicket}
+              className="bg-black text-white px-8 py-3 rounded-xl"
+            >
+              Assign
+            </button>
 
           </div>
-        )}
+
+        </div>
+
+        {/* HISTORY */}
+        <div className="mt-16 border-t pt-10">
+
+          <h2 className="text-3xl font-bold mb-8">
+            Ticket History
+          </h2>
+
+          <div className="space-y-5">
+
+            {history.length === 0 ? (
+
+              <div className="text-gray-400">
+                No history available
+              </div>
+
+            ) : (
+
+              history
+                .slice()
+                .reverse()
+                .map(
+                  (
+                    item,
+                    index
+                  ) => (
+
+                    <div
+                      key={index}
+                      className="bg-gray-50 rounded-2xl p-5 border"
+                    >
+
+                      <p className="font-semibold">
+                        {item.action}
+                      </p>
+
+                      <div className="flex gap-4 text-sm text-gray-500 mt-2">
+
+                        <span>
+                          {item.user}
+                        </span>
+
+                        <span>
+                          {item.date}
+                        </span>
+
+                      </div>
+
+                    </div>
+
+                  )
+                )
+            )}
+
+          </div>
+
+        </div>
 
       </div>
 
