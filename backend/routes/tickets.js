@@ -50,33 +50,51 @@ router.get('/:id', auth, async (req, res) => {
 
 router.post('/', auth, async (req, res) => {
   try {
-    const ticketData = {
-      ...req.body,
-      id: uuidv4(),
-      deleted: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
+    const {
+      title,
+      description,
+      category,
+      priority,
+      division,
+      due_date
+    } = req.body;
 
     const { data, error } = await supabase
       .from('tickets')
-      .insert([ticketData])
+      .insert([
+        {
+          title,
+          description,
+          category,
+          priority,
+          division,
+          due_date,
+
+          status: 'Open',
+
+          created_by: req.user.id,
+          created_by_name: req.user.name,
+
+          deleted: false
+        }
+      ])
       .select();
 
-    if (error) throw error;
-
-    req.io.emit('ticketCreated', data[0]);
+    if (error) {
+      console.log(error);
+      throw error;
+    }
 
     res.status(201).json(data[0]);
+
   } catch (error) {
-    console.log(error);
+    console.log('CREATE TICKET ERROR:', error);
 
     res.status(500).json({
       message: 'Failed to create ticket'
     });
   }
 });
-
 router.put('/:id', auth, async (req, res) => {
   try {
     const payload = {
