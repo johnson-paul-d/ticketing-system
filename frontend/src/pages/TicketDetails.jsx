@@ -44,7 +44,7 @@ export default function TicketDetails() {
       );
 
       const res = await api.get(
-        `/api/tickets/${id}`
+        `/tickets/${id}`
       );
 
       console.log(
@@ -83,7 +83,7 @@ export default function TicketDetails() {
 
         const res =
           await api.get(
-            "/api/auth/team-members"
+            "/auth/team-members"
           );
 
         console.log(
@@ -397,7 +397,7 @@ export default function TicketDetails() {
                     >
                       {member.name}
                       {" - "}
-                      {member.email}
+                      {member.name}
                     </option>
                   )
                 )}

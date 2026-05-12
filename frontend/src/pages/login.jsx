@@ -17,15 +17,28 @@ export default function Login() {
   const [password, setPassword] =
     useState("");
 
-  const handleLogin = async () => {
-    try {
-      const res = await api.post(
-        "/auth/login",
-        {
-          email,
-          password,
-        }
-      );
+const handleLogin = async () => {
+  try {
+    const res = await api.post('/auth/login', {
+      email,
+      password
+    });
+
+    localStorage.setItem(
+      'token',
+      res.data.token
+    );
+
+    login(res.data.user);
+
+    navigate('/dashboard');
+  } catch (error) {
+    alert(
+      error?.response?.data?.message ||
+      'Invalid credentials'
+    );
+  }
+};
 
       login(res.data.user);
 

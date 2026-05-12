@@ -48,7 +48,7 @@ export default function Tickets() {
         "/tickets"
       );
 
-      let data = res.data;
+      let data = res.data || [];
 
       // ADMIN
       if (
@@ -449,8 +449,7 @@ export default function Tickets() {
             {filteredTickets.map(
               (ticket) => (
                 <tr
-                  key={
-                    ticket.id
+                 key={ticket.id || ticket._id}
                   }
                   className="border-t hover:bg-gray-50"
                 >
@@ -515,9 +514,11 @@ export default function Tickets() {
                   <td className="p-5">
                     <button
                       onClick={() =>
-                        navigate(
-                          `/tickets/${ticket.id}`
-                        )
+                       navigate(
+  `/tickets/${
+    ticket.id || ticket._id
+  }`
+)
                       }
                       className="bg-black text-white px-4 py-2 rounded-lg hover:bg-gray-800"
                     >

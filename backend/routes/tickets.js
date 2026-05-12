@@ -1,305 +1,135 @@
-const express = require("express");
+const express = require('express');
+const { v4: uuidv4 } = require('uuid');
 
 const router = express.Router();
 
-const Ticket = require("../models/Ticket");
+const supabase = require('../config/supabase');
+const auth = require('../middleware/auth');
 
-
-// =====================================
-// GET ALL TICKETS
-// =====================================
-router.get("/", async (req, res) => {
-
+router.get('/', auth, async (req, res) => {
   try {
-
-    const tickets =
-      await Ticket.find().sort({
-        createdAt: -1,
+    const { data, error } = await supabase
+      .from('tickets')
+      .select('*')
+      .eq('deleted', false)
+      .order('created_at', {
+        ascending: false
       });
 
-    res.json(tickets);
+    if (error) throw error;
 
+    res.json(data);
   } catch (error) {
-
     console.log(error);
 
     res.status(500).json({
-      message:
-        "Failed to fetch tickets",
+      message: 'Failed to fetch tickets'
     });
   }
 });
 
-
-// =====================================
-// GET SINGLE TICKET
-// SUPPORTS UUID + MONGO _id
-// =====================================
-router.get("/:id", async (req, res) => {
-
+router.get('/:id', auth, async (req, res) => {
   try {
+    const { data, error } = await supabase
+      .from('tickets')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
 
-    const ticketId =
-      req.params.id;
+    if (error) throw error;
 
-    console.log(
-      "Fetching ticket:",
-      ticketId
-    );
-
-    let ticket = null;
-
-    // =====================================
-    // TRY UUID FIELD
-    // =====================================
-    ticket =
-      await Ticket.findOne({
-        id: ticketId,
-      });
-
-    // =====================================
-    // TRY MONGO _id
-    // =====================================
-    if (!ticket) {
-
-      try {
-
-        ticket =
-          await Ticket.findById(
-            ticketId
-          );
-
-      } catch (err) {
-
-        console.log(
-          "Not Mongo ObjectId"
-        );
-      }
-    }
-
-    // =====================================
-    // NOT FOUND
-    // =====================================
-    if (!ticket) {
-
-      return res.status(404).json({
-        message:
-          "Ticket not found",
-      });
-    }
-
-    res.json(ticket);
-
+    res.json(data);
   } catch (error) {
-
     console.log(error);
 
     res.status(500).json({
-      message:
-        "Server error",
+      message: 'Failed to fetch ticket'
     });
   }
 });
 
-
-// =====================================
-// CREATE TICKET
-// =====================================
-router.post("/", async (req, res) => {
-
+router.post('/', auth, async (req, res) => {
   try {
+    const ticketData = {
+      ...req.body,
+      id: uuidv4(),
+      deleted: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
 
-    const ticket =
-      await Ticket.create(
-        req.body
-      );
+    const { data, error } = await supabase
+      .from('tickets')
+      .insert([ticketData])
+      .select();
 
-    req.io.emit(
-      "ticketCreated",
-      ticket
-    );
+    if (error) throw error;
 
-    res.status(201).json(
-      ticket
-    );
+    req.io.emit('ticketCreated', data[0]);
 
+    res.status(201).json(data[0]);
   } catch (error) {
-
     console.log(error);
 
     res.status(500).json({
-      message:
-        "Failed to create ticket",
+      message: 'Failed to create ticket'
     });
   }
 });
 
-
-// =====================================
-// UPDATE TICKET
-// SUPPORTS UUID + MONGO _id
-// =====================================
-router.put("/:id", async (req, res) => {
-
+router.put('/:id', auth, async (req, res) => {
   try {
+    const payload = {
+      ...req.body,
+      updated_at: new Date().toISOString()
+    };
 
-    const ticketId =
-      req.params.id;
+    const { data, error } = await supabase
+      .from('tickets')
+      .update(payload)
+      .eq('id', req.params.id)
+      .select();
 
-    console.log(
-      "Updating ticket:",
-      ticketId
-    );
+    if (error) throw error;
 
-    let ticket = null;
+    req.io.emit('ticketUpdated', data[0]);
 
-    // =====================================
-    // TRY UUID FIELD
-    // =====================================
-    ticket =
-      await Ticket.findOne({
-        id: ticketId,
-      });
-
-    // =====================================
-    // TRY MONGO _id
-    // =====================================
-    if (!ticket) {
-
-      try {
-
-        ticket =
-          await Ticket.findById(
-            ticketId
-          );
-
-      } catch (err) {
-
-        console.log(
-          "Not Mongo ObjectId"
-        );
-      }
-    }
-
-    // =====================================
-    // NOT FOUND
-    // =====================================
-    if (!ticket) {
-
-      return res.status(404).json({
-        message:
-          "Ticket not found",
-      });
-    }
-
-    // =====================================
-    // UPDATE FIELDS
-    // =====================================
-    Object.assign(
-      ticket,
-      req.body
-    );
-
-    await ticket.save();
-
-    req.io.emit(
-      "ticketUpdated",
-      ticket
-    );
-
-    res.json(ticket);
-
+    res.json(data[0]);
   } catch (error) {
-
     console.log(error);
 
     res.status(500).json({
-      message:
-        "Failed to update ticket",
+      message: 'Failed to update ticket'
     });
   }
 });
 
-
-// =====================================
-// DELETE TICKET
-// SUPPORTS UUID + MONGO _id
-// =====================================
-router.delete("/:id", async (req, res) => {
-
+router.delete('/:id', auth, async (req, res) => {
   try {
+    const { data, error } = await supabase
+      .from('tickets')
+      .update({
+        deleted: true,
+        status: 'Deleted',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', req.params.id)
+      .select();
 
-    const ticketId =
-      req.params.id;
+    if (error) throw error;
 
-    console.log(
-      "Deleting ticket:",
-      ticketId
-    );
-
-    let ticket = null;
-
-    // =====================================
-    // TRY UUID FIELD
-    // =====================================
-    ticket =
-      await Ticket.findOne({
-        id: ticketId,
-      });
-
-    // =====================================
-    // TRY MONGO _id
-    // =====================================
-    if (!ticket) {
-
-      try {
-
-        ticket =
-          await Ticket.findById(
-            ticketId
-          );
-
-      } catch (err) {
-
-        console.log(
-          "Not Mongo ObjectId"
-        );
-      }
-    }
-
-    // =====================================
-    // NOT FOUND
-    // =====================================
-    if (!ticket) {
-
-      return res.status(404).json({
-        message:
-          "Ticket not found",
-      });
-    }
-
-    await ticket.deleteOne();
-
-    req.io.emit(
-      "ticketDeleted",
-      ticketId
-    );
+    req.io.emit('ticketDeleted', data[0]);
 
     res.json({
-      message:
-        "Ticket deleted successfully",
+      message: 'Ticket deleted successfully'
     });
-
   } catch (error) {
-
     console.log(error);
 
     res.status(500).json({
-      message:
-        "Failed to delete ticket",
+      message: 'Failed to delete ticket'
     });
   }
 });
-
 
 module.exports = router;

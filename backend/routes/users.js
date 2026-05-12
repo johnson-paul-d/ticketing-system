@@ -1,136 +1,96 @@
-const express = require("express");
+const express = require('express');
+const bcrypt = require('bcryptjs');
 
 const router = express.Router();
 
-const {
-  readUsers,
-  writeUsers,
-} = require("../services/userService");
+const supabase = require('../config/supabase');
+const auth = require('../middleware/auth');
+const admin = require('../middleware/admin');
 
-const { v4: uuidv4 } =
-  require("uuid");
-
-
-// ======================================
-// GET USERS
-// ======================================
-router.get("/", (req, res) => {
-
+router.get('/', auth, admin, async (req, res) => {
   try {
-
-    const users =
-      readUsers();
-
-    res.json(users);
-
-  } catch (error) {
-
-    console.log(error);
-
-    res.status(500).json({
-      message:
-        "Failed to fetch users",
-    });
-  }
-});
-
-
-// ======================================
-// CREATE USER
-// ======================================
-router.post("/", (req, res) => {
-
-  try {
-
-    const users =
-      readUsers();
-
-    const newUser = {
-      id: uuidv4(),
-
-      name:
-        req.body.name,
-
-      email:
-        req.body.email,
-
-      password:
-        req.body.password,
-
-      role:
-        req.body.role,
-
-      division:
-        req.body.division,
-
-      active: true,
-
-      activityCount: 0,
-
-      lastLogin: "Never",
-    };
-
-    users.push(newUser);
-
-    writeUsers(users);
-
-    res.json(newUser);
-
-  } catch (error) {
-
-    console.log(error);
-
-    res.status(500).json({
-      message:
-        "Failed to create user",
-    });
-  }
-});
-
-
-// ======================================
-// UPDATE USER
-// ======================================
-router.put("/:id", (req, res) => {
-
-  try {
-
-    const users =
-      readUsers();
-
-    const updatedUsers =
-      users.map((u) => {
-
-        if (
-          u.id ===
-          req.params.id
-        ) {
-
-          return {
-            ...u,
-            ...req.body,
-          };
-        }
-
-        return u;
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .order('created_at', {
+        ascending: false
       });
 
-    writeUsers(
-      updatedUsers
-    );
+    if (error) throw error;
 
-    res.json({
-      message:
-        "User updated",
-    });
+    const cleaned = data.map((u) => ({
+      ...u,
+      password: undefined
+    }));
 
+    res.json(cleaned);
   } catch (error) {
-
     console.log(error);
 
     res.status(500).json({
-      message:
-        "Failed to update user",
+      message: 'Failed to fetch users'
+    });
+  }
+});
+
+router.post('/', auth, admin, async (req, res) => {
+  try {
+    const {
+      name,
+      email,
+      password,
+      role,
+      division
+    } = req.body;
+
+    const hashedPassword = await bcrypt.hash(
+      password,
+      10
+    );
+
+    const { data, error } = await supabase
+      .from('users')
+      .insert([
+        {
+          name,
+          email,
+          password: hashedPassword,
+          role,
+          division,
+          active: true
+        }
+      ])
+      .select();
+
+    if (error) throw error;
+
+    res.json(data[0]);
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).json({
+      message: 'Failed to create user'
+    });
+  }
+});
+
+router.put('/:id', auth, admin, async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('users')
+      .update(req.body)
+      .eq('id', req.params.id);
+
+    if (error) throw error;
+
+    res.json({
+      message: 'User updated'
+    });
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).json({
+      message: 'Failed to update user'
     });
   }
 });

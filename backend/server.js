@@ -1,147 +1,49 @@
-require("dotenv").config();
+require('dotenv').config();
 
-const express = require("express");
+const express = require('express');
+const cors = require('cors');
+const http = require('http');
+const { Server } = require('socket.io');
 
-const cors = require("cors");
-
-const http = require("http");
-
-const { Server } = require("socket.io");
-
-
-// ROUTES
-const ticketRoutes = require(
-  "./routes/tickets"
-);
-
-const authRoutes = require(
-  "./routes/auth"
-);
-
-const userRoutes = require(
-  "./routes/users"
-);
-
-
-// EXPRESS APP
 const app = express();
+const server = http.createServer(app);
 
+const ticketRoutes = require('./routes/tickets');
+const authRoutes = require('./routes/auth');
+const userRoutes = require('./routes/users');
 
-// HTTP SERVER
-const server =
-  http.createServer(app);
-
-
-// CORS
-app.use(
-  cors({
-    origin: "*",
-
-    methods: [
-      "GET",
-      "POST",
-      "PUT",
-      "DELETE",
-    ],
-
-    credentials: true,
-  })
-);
-
-
-// BODY PARSER
+app.use(cors());
 app.use(express.json());
 
-
-// STATIC FILES
-app.use(
-  "/uploads",
-  express.static("uploads")
-);
-
-
-// SOCKET IO
 const io = new Server(server, {
   cors: {
-    origin: "*",
-
-    methods: [
-      "GET",
-      "POST",
-      "PUT",
-      "DELETE",
-    ],
-  },
+    origin: '*'
+  }
 });
 
-
-// SOCKET ACCESS
 app.use((req, res, next) => {
-
   req.io = io;
-
   next();
 });
 
+app.use('/api/auth', authRoutes);
+app.use('/api/tickets', ticketRoutes);
+app.use('/api/users', userRoutes);
 
-// ROUTES
-app.use(
-  "/api/tickets",
-  ticketRoutes
-);
-
-app.use(
-  "/api/auth",
-  authRoutes
-);
-
-app.use(
-  "/api/users",
-  userRoutes
-);
-
-
-// ROOT
-app.get("/", (req, res) => {
-
-  res.send(
-    "Ticketing Backend Running"
-  );
+app.get('/', (req, res) => {
+  res.send('Production Ticketing Backend Running');
 });
 
+io.on('connection', (socket) => {
+  console.log('Socket connected:', socket.id);
 
-// SOCKET EVENTS
-io.on(
-  "connection",
-  (socket) => {
+  socket.on('disconnect', () => {
+    console.log('Socket disconnected');
+  });
+});
 
-    console.log(
-      "User connected:",
-      socket.id
-    );
+const PORT = process.env.PORT || 5000;
 
-    socket.on(
-      "disconnect",
-      () => {
-
-        console.log(
-          "User disconnected"
-        );
-      }
-    );
-  }
-);
-
-
-// PORT
-const PORT =
-  process.env.PORT || 5000;
-
-
-// START SERVER
 server.listen(PORT, () => {
-
-  console.log(
-    `Server running on port ${PORT}`
-  );
+  console.log(`Server running on ${PORT}`);
 });
