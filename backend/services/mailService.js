@@ -1,10 +1,13 @@
-const nodemailer = require("nodemailer");
+const nodemailer =
+  require("nodemailer");
 
 const transporter =
   nodemailer.createTransport({
+
     service: "gmail",
 
     auth: {
+
       user:
         process.env.EMAIL_USER,
 
@@ -22,10 +25,21 @@ const sendMail =
 
     try {
 
+      console.log(
+        "EMAIL_USER:",
+        process.env.EMAIL_USER
+      );
+
+      console.log(
+        "ADMIN_EMAIL:",
+        process.env.ADMIN_EMAIL
+      );
+
       const info =
         await transporter.sendMail({
+
           from:
-            `"Ticket System" <${process.env.EMAIL_USER}>`,
+            process.env.EMAIL_USER,
 
           to,
 
@@ -35,16 +49,21 @@ const sendMail =
         });
 
       console.log(
-        "MAIL SENT:",
+        "MAIL SUCCESS:",
         info.response
       );
+
+      return info;
 
     } catch (error) {
 
       console.log(
-        "MAIL ERROR:",
-        error
+        "MAIL FULL ERROR:"
       );
+
+      console.log(error);
+
+      throw error;
     }
   };
 
