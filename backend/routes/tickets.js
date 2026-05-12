@@ -274,7 +274,7 @@ router.put(
         // EMAIL
         try {
 
-          await sendMail({
+          sendMail({
             to:
               process.env.ADMIN_EMAIL,
 
@@ -339,7 +339,7 @@ ${comment || "No comment"}
 
           try {
 
-            await sendMail({
+            sendMail({
               to:
                 process.env.ADMIN_EMAIL,
 
