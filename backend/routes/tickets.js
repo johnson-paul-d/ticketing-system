@@ -1,12 +1,15 @@
-const express = require('express');
+const express = require("express");
 
 const router = express.Router();
 
 const supabase =
-  require('../config/supabase');
+  require("../config/supabase");
 
 const auth =
-  require('../middleware/auth');
+  require("../middleware/auth");
+
+const sendMail =
+  require("../services/sendMail");
 
 /*
 =====================================================
@@ -14,7 +17,7 @@ GET ALL TICKETS
 =====================================================
 */
 router.get(
-  '/',
+  "/",
   auth,
   async (req, res) => {
 
@@ -22,32 +25,32 @@ router.get(
 
       let query =
         supabase
-          .from('tickets')
-          .select('*')
-          .eq('deleted', false)
+          .from("tickets")
+          .select("*")
+          .eq("deleted", false)
           .order(
-            'created_at',
+            "created_at",
             {
-              ascending: false
+              ascending: false,
             }
           );
 
       // TEAM MEMBER FILTER
       if (
         req.user.role ===
-        'Team Member'
+        "Team Member"
       ) {
 
         query =
           query.eq(
-            'assigned_to_name',
+            "assigned_to_name",
             req.user.name
           );
       }
 
       const {
         data,
-        error
+        error,
       } = await query;
 
       if (error) throw error;
@@ -57,13 +60,13 @@ router.get(
     } catch (error) {
 
       console.log(
-        'GET TICKETS ERROR:',
+        "GET TICKETS ERROR:",
         error
       );
 
       res.status(500).json({
         message:
-          'Failed to fetch tickets'
+          "Failed to fetch tickets",
       });
     }
   }
@@ -75,7 +78,7 @@ GET SINGLE TICKET
 =====================================================
 */
 router.get(
-  '/:id',
+  "/:id",
   auth,
   async (req, res) => {
 
@@ -83,12 +86,12 @@ router.get(
 
       const {
         data,
-        error
+        error,
       } = await supabase
-        .from('tickets')
-        .select('*')
+        .from("tickets")
+        .select("*")
         .eq(
-          'id',
+          "id",
           req.params.id
         )
         .single();
@@ -100,13 +103,13 @@ router.get(
     } catch (error) {
 
       console.log(
-        'GET SINGLE TICKET ERROR:',
+        "GET SINGLE TICKET ERROR:",
         error
       );
 
       res.status(500).json({
         message:
-          'Failed to fetch ticket'
+          "Failed to fetch ticket",
       });
     }
   }
@@ -118,7 +121,7 @@ CREATE TICKET
 =====================================================
 */
 router.post(
-  '/',
+  "/",
   auth,
   async (req, res) => {
 
@@ -130,27 +133,30 @@ router.post(
         category,
         priority,
         division,
-        due_date
+        due_date,
       } = req.body;
 
       const history = [
         {
           action:
-            'Ticket created',
+            "Ticket created",
 
           user:
             req.user.name,
 
+          comment:
+            "",
+
           date:
-            new Date().toLocaleString()
-        }
+            new Date().toLocaleString(),
+        },
       ];
 
       const {
         data,
-        error
+        error,
       } = await supabase
-        .from('tickets')
+        .from("tickets")
         .insert([
           {
             title,
@@ -160,7 +166,7 @@ router.post(
             division,
             due_date,
 
-            status: 'Open',
+            status: "Open",
 
             history,
 
@@ -170,15 +176,12 @@ router.post(
             created_by_name:
               req.user.name,
 
-            deleted: false
-          }
+            deleted: false,
+          },
         ])
         .select();
 
-      if (error) {
-        console.log(error);
-        throw error;
-      }
+      if (error) throw error;
 
       res
         .status(201)
@@ -187,13 +190,13 @@ router.post(
     } catch (error) {
 
       console.log(
-        'CREATE TICKET ERROR:',
+        "CREATE TICKET ERROR:",
         error
       );
 
       res.status(500).json({
         message:
-          'Failed to create ticket'
+          "Failed to create ticket",
       });
     }
   }
@@ -204,153 +207,209 @@ router.post(
 UPDATE TICKET
 =====================================================
 */
-router.put("/:id", auth, async (req, res) => {
+router.put(
+  "/:id",
+  auth,
+  async (req, res) => {
 
-  try {
+    try {
 
-    const { id } = req.params;
+      const { id } =
+        req.params;
 
-    const {
-      title,
-      description,
-      priority,
-      status,
-      category,
-      due_date,
-      history
-    } = req.body;
+      const {
+        title,
+        description,
+        priority,
+        status,
+        category,
+        due_date,
+        history,
+        comment,
+      } = req.body;
 
-    const updateData = {};
+      // GET EXISTING TICKET
+      const {
+        data: existing,
+        error: fetchError,
+      } = await supabase
+        .from("tickets")
+        .select("*")
+        .eq("id", id)
+        .single();
 
-    // ONLY UPDATE PROVIDED FIELDS
+      if (fetchError)
+        throw fetchError;
 
-    if (title !== undefined)
-      updateData.title = title;
+      const updatedHistory =
+        existing.history || [];
 
-    if (description !== undefined)
-      updateData.description = description;
+      /*
+      =====================================
+      DUE DATE HISTORY
+      =====================================
+      */
+      if (
+        due_date &&
+        due_date !==
+          existing.due_date
+      ) {
 
-    if (priority !== undefined)
-      updateData.priority = priority;
+        updatedHistory.push({
+          action:
+            `Due date changed to ${due_date}`,
 
-    if (status !== undefined)
-      updateData.status = status;
+          user:
+            req.user.name,
 
-    if (category !== undefined)
-      updateData.category = category;
+          comment:
+            comment || "",
 
-    if (due_date !== undefined)
-      updateData.due_date = due_date;
+          date:
+            new Date().toLocaleString(),
+        });
 
-    if (history !== undefined)
-      updateData.history = history;
+        // EMAIL TO ADMIN
+        await sendMail({
 
-    // UPDATE DATABASE
-    const { data, error } =
-      await supabase
+          to:
+            process.env.ADMIN_EMAIL,
+
+          subject:
+            "Ticket Due Date Updated",
+
+          text:
+            `
+Ticket:
+${existing.title}
+
+Updated By:
+${req.user.name}
+
+New Due Date:
+${due_date}
+
+Comment:
+${comment || "No comment"}
+            `,
+        });
+      }
+
+      /*
+      =====================================
+      STATUS HISTORY
+      =====================================
+      */
+      if (
+        status &&
+        status !==
+          existing.status
+      ) {
+
+        updatedHistory.push({
+          action:
+            `Status changed to ${status}`,
+
+          user:
+            req.user.name,
+
+          comment:
+            comment || "",
+
+          date:
+            new Date().toLocaleString(),
+        });
+
+        // COMPLETION EMAIL
+        if (
+          status ===
+          "Completed"
+        ) {
+
+          await sendMail({
+
+            to:
+              process.env.ADMIN_EMAIL,
+
+            subject:
+              "Ticket Completed",
+
+            text:
+              `
+Ticket:
+${existing.title}
+
+Completed By:
+${req.user.name}
+
+Comment:
+${comment || "No comment"}
+              `,
+          });
+        }
+      }
+
+      const updateData = {
+
+        updated_at:
+          new Date(),
+
+        history:
+          updatedHistory,
+      };
+
+      if (title !== undefined)
+        updateData.title = title;
+
+      if (description !== undefined)
+        updateData.description =
+          description;
+
+      if (priority !== undefined)
+        updateData.priority =
+          priority;
+
+      if (status !== undefined)
+        updateData.status =
+          status;
+
+      if (category !== undefined)
+        updateData.category =
+          category;
+
+      if (due_date !== undefined)
+        updateData.due_date =
+          due_date;
+
+      if (history !== undefined)
+        updateData.history =
+          updatedHistory;
+
+      const {
+        data,
+        error,
+      } = await supabase
         .from("tickets")
         .update(updateData)
         .eq("id", id)
         .select()
         .single();
 
-    if (error) {
+      if (error)
+        throw error;
 
-      console.log(error);
-
-      return res.status(500).json({
-        message:
-          "Failed to update ticket",
-        error,
-      });
-    }
-
-    res.json(data);
-
-  } catch (error) {
-
-    console.log(error);
-
-    res.status(500).json({
-      message:
-        "Server error",
-    });
-  }
-});
-/*
-=====================================================
-UPDATE STATUS
-=====================================================
-*/
-router.put(
-  '/:id/status',
-  auth,
-  async (req, res) => {
-
-    try {
-
-      const { status } =
-        req.body;
-
-      // GET EXISTING
-      const {
-        data: existing
-      } = await supabase
-        .from('tickets')
-        .select('*')
-        .eq(
-          'id',
-          req.params.id
-        )
-        .single();
-
-      const history =
-        existing.history || [];
-
-      history.push({
-        action:
-          `Status changed to ${status}`,
-
-        user:
-          req.user.name,
-
-        date:
-          new Date().toLocaleString()
-      });
-
-      const {
-        data,
-        error
-      } = await supabase
-        .from('tickets')
-        .update({
-          status,
-
-          history,
-
-          updated_at:
-            new Date()
-        })
-        .eq(
-          'id',
-          req.params.id
-        )
-        .select();
-
-      if (error) throw error;
-
-      res.json(data[0]);
+      res.json(data);
 
     } catch (error) {
 
       console.log(
-        'STATUS UPDATE ERROR:',
+        "UPDATE ERROR:",
         error
       );
 
       res.status(500).json({
         message:
-          'Failed to update status'
+          "Failed to update ticket",
       });
     }
   }
@@ -362,7 +421,7 @@ ASSIGN TICKET
 =====================================================
 */
 router.put(
-  '/:id/assign',
+  "/:id/assign",
   auth,
   async (req, res) => {
 
@@ -373,16 +432,16 @@ router.put(
 
       const {
         assigned_to,
-        assigned_to_name
+        assigned_to_name,
       } = req.body;
 
       // GET EXISTING
       const {
-        data: existing
+        data: existing,
       } = await supabase
-        .from('tickets')
-        .select('*')
-        .eq('id', id)
+        .from("tickets")
+        .select("*")
+        .eq("id", id)
         .single();
 
       const history =
@@ -395,15 +454,18 @@ router.put(
         user:
           req.user.name,
 
+        comment:
+          "",
+
         date:
-          new Date().toLocaleString()
+          new Date().toLocaleString(),
       });
 
       const {
         data,
-        error
+        error,
       } = await supabase
-        .from('tickets')
+        .from("tickets")
         .update({
           assigned_to,
           assigned_to_name,
@@ -411,26 +473,27 @@ router.put(
           history,
 
           updated_at:
-            new Date()
+            new Date(),
         })
-        .eq('id', id)
+        .eq("id", id)
         .select()
         .single();
 
-      if (error) throw error;
+      if (error)
+        throw error;
 
       res.json(data);
 
     } catch (error) {
 
       console.log(
-        'ASSIGN ERROR:',
+        "ASSIGN ERROR:",
         error
       );
 
       res.status(500).json({
         message:
-          'Assignment failed'
+          "Assignment failed",
       });
     }
   }
@@ -442,20 +505,19 @@ UNASSIGN TICKET
 =====================================================
 */
 router.put(
-  '/:id/unassign',
+  "/:id/unassign",
   auth,
   async (req, res) => {
 
     try {
 
-      // GET EXISTING
       const {
-        data: existing
+        data: existing,
       } = await supabase
-        .from('tickets')
-        .select('*')
+        .from("tickets")
+        .select("*")
         .eq(
-          'id',
+          "id",
           req.params.id
         )
         .single();
@@ -465,20 +527,23 @@ router.put(
 
       history.push({
         action:
-          'Ticket unassigned',
+          "Ticket unassigned",
 
         user:
           req.user.name,
 
+        comment:
+          "",
+
         date:
-          new Date().toLocaleString()
+          new Date().toLocaleString(),
       });
 
       const {
         data,
-        error
+        error,
       } = await supabase
-        .from('tickets')
+        .from("tickets")
         .update({
           assigned_to: null,
           assigned_to_name: null,
@@ -486,28 +551,29 @@ router.put(
           history,
 
           updated_at:
-            new Date()
+            new Date(),
         })
         .eq(
-          'id',
+          "id",
           req.params.id
         )
         .select();
 
-      if (error) throw error;
+      if (error)
+        throw error;
 
       res.json(data[0]);
 
     } catch (error) {
 
       console.log(
-        'UNASSIGN ERROR:',
+        "UNASSIGN ERROR:",
         error
       );
 
       res.status(500).json({
         message:
-          'Unassign failed'
+          "Unassign failed",
       });
     }
   }
@@ -519,7 +585,7 @@ DELETE TICKET
 =====================================================
 */
 router.delete(
-  '/:id',
+  "/:id",
   auth,
   async (req, res) => {
 
@@ -527,48 +593,49 @@ router.delete(
 
       if (
         req.user.role !==
-        'Admin'
+        "Admin"
       ) {
 
         return res
           .status(403)
           .json({
             message:
-              'Access denied'
+              "Access denied",
           });
       }
 
       const { error } =
         await supabase
-          .from('tickets')
+          .from("tickets")
           .update({
             deleted: true,
 
             updated_at:
-              new Date()
+              new Date(),
           })
           .eq(
-            'id',
+            "id",
             req.params.id
           );
 
-      if (error) throw error;
+      if (error)
+        throw error;
 
       res.json({
         message:
-          'Ticket deleted'
+          "Ticket deleted",
       });
 
     } catch (error) {
 
       console.log(
-        'DELETE ERROR:',
+        "DELETE ERROR:",
         error
       );
 
       res.status(500).json({
         message:
-          'Delete failed'
+          "Delete failed",
       });
     }
   }

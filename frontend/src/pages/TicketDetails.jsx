@@ -37,6 +37,12 @@ export default function TicketDetails() {
   const [dueDate, setDueDate] =
     useState("");
 
+  const [status, setStatus] =
+    useState("");
+
+  const [comment, setComment] =
+    useState("");
+
   const [history, setHistory] =
     useState([]);
 
@@ -63,6 +69,10 @@ export default function TicketDetails() {
 
         setDueDate(
           res.data.due_date || ""
+        );
+
+        setStatus(
+          res.data.status || "Open"
         );
 
         setHistory(
@@ -140,7 +150,7 @@ export default function TicketDetails() {
       }
     };
 
-  // DELETE TICKET
+  // DELETE
   const deleteTicket =
     async () => {
 
@@ -180,14 +190,16 @@ export default function TicketDetails() {
 
       try {
 
-        // EXISTING HISTORY
         const existingHistory =
           ticket.history || [];
 
-        // NEW HISTORY ENTRY
         const historyEntry = {
+
           action:
             `Due date changed to ${dueDate}`,
+
+          comment:
+            comment,
 
           user:
             user?.name,
@@ -201,7 +213,6 @@ export default function TicketDetails() {
           historyEntry,
         ];
 
-        // UPDATE TICKET
         const res =
           await api.put(
             `/tickets/${ticket.id}`,
@@ -220,6 +231,8 @@ export default function TicketDetails() {
           updatedHistory
         );
 
+        setComment("");
+
         alert(
           "Due date updated"
         );
@@ -230,6 +243,69 @@ export default function TicketDetails() {
 
         alert(
           "Failed to update due date"
+        );
+      }
+    };
+
+  // UPDATE STATUS
+  const updateStatus =
+    async () => {
+
+      try {
+
+        const existingHistory =
+          ticket.history || [];
+
+        const historyEntry = {
+
+          action:
+            `Status changed to ${status}`,
+
+          comment:
+            comment,
+
+          user:
+            user?.name,
+
+          date:
+            new Date().toLocaleString(),
+        };
+
+        const updatedHistory = [
+          ...existingHistory,
+          historyEntry,
+        ];
+
+        const res =
+          await api.put(
+            `/tickets/${ticket.id}`,
+            {
+              status:
+                status,
+
+              history:
+                updatedHistory,
+            }
+          );
+
+        setTicket(res.data);
+
+        setHistory(
+          updatedHistory
+        );
+
+        setComment("");
+
+        alert(
+          "Status updated"
+        );
+
+      } catch (error) {
+
+        console.log(error);
+
+        alert(
+          "Failed to update status"
         );
       }
     };
@@ -323,7 +399,9 @@ export default function TicketDetails() {
           {/* RIGHT */}
           <div className="space-y-8">
 
+            {/* ASSIGNED */}
             <div>
+
               <p className="font-semibold text-gray-500">
                 Assigned To
               </p>
@@ -332,16 +410,57 @@ export default function TicketDetails() {
                 {ticket.assigned_to_name ||
                   "Unassigned"}
               </p>
+
             </div>
 
+            {/* STATUS */}
             <div>
+
               <p className="font-semibold text-gray-500">
-                Status
+                Update Status
               </p>
 
-              <p className="text-xl font-medium mt-2">
-                {ticket.status}
-              </p>
+              <div className="flex gap-4 mt-3">
+
+                <select
+                  value={status}
+                  onChange={(e) =>
+                    setStatus(
+                      e.target.value
+                    )
+                  }
+                  className="border rounded-xl px-4 py-3"
+                >
+
+                  <option>
+                    Open
+                  </option>
+
+                  <option>
+                    In Progress
+                  </option>
+
+                  <option>
+                    Waiting For Sources
+                  </option>
+
+                  <option>
+                    Completed
+                  </option>
+
+                </select>
+
+                <button
+                  onClick={
+                    updateStatus
+                  }
+                  className="bg-black text-white px-5 py-3 rounded-xl"
+                >
+                  Update
+                </button>
+
+              </div>
+
             </div>
 
             {/* DUE DATE */}
@@ -384,6 +503,26 @@ export default function TicketDetails() {
                 </p>
 
               )}
+
+            </div>
+
+            {/* COMMENT */}
+            <div>
+
+              <p className="font-semibold text-gray-500">
+                Comment
+              </p>
+
+              <textarea
+                value={comment}
+                onChange={(e) =>
+                  setComment(
+                    e.target.value
+                  )
+                }
+                placeholder="Add comment while updating..."
+                className="border rounded-2xl px-4 py-3 w-full h-32 mt-3"
+              />
 
             </div>
 
@@ -473,6 +612,14 @@ export default function TicketDetails() {
                       <p className="font-semibold">
                         {item.action}
                       </p>
+
+                      {item.comment && (
+
+                        <p className="mt-2 text-gray-700">
+                          {item.comment}
+                        </p>
+
+                      )}
 
                       <div className="flex gap-4 text-sm text-gray-500 mt-2">
 
