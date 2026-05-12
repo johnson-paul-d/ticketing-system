@@ -2,21 +2,26 @@ import {
   BrowserRouter,
   Routes,
   Route,
+  Navigate,
 } from "react-router-dom";
 
-import Login from "./pages/login";
+import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Tickets from "./pages/Tickets";
 import TicketDetails from "./pages/TicketDetails";
 import CreateTicket from "./pages/CreateTicket";
+import EditTicket from "./pages/EditTicket";
 import Kanban from "./pages/Kanban";
 import Reports from "./pages/Reports";
 import AdminPanel from "./pages/AdminPanel";
+import TicketCalendar from "./pages/TicketCalendar";
 
 function App() {
   return (
     <BrowserRouter>
+
       <Routes>
+
         {/* LOGIN */}
         <Route
           path="/"
@@ -25,13 +30,13 @@ function App() {
 
         {/* DASHBOARD */}
         <Route
-          path="/Dashboard"
+          path="/dashboard"
           element={<Dashboard />}
         />
 
         {/* TICKETS */}
         <Route
-          path="/Tickets"
+          path="/tickets"
           element={<Tickets />}
         />
 
@@ -39,6 +44,12 @@ function App() {
         <Route
           path="/tickets/:id"
           element={<TicketDetails />}
+        />
+
+        {/* EDIT TICKET */}
+        <Route
+          path="/tickets/edit/:id"
+          element={<EditTicket />}
         />
 
         {/* CREATE TICKET */}
@@ -49,14 +60,20 @@ function App() {
 
         {/* KANBAN */}
         <Route
-          path="/Kanban"
+          path="/kanban"
           element={<Kanban />}
         />
 
         {/* REPORTS */}
         <Route
-          path="/Reports"
+          path="/reports"
           element={<Reports />}
+        />
+
+        {/* CALENDAR */}
+        <Route
+          path="/calendar"
+          element={<TicketCalendar />}
         />
 
         {/* ADMIN PANEL */}
@@ -64,7 +81,17 @@ function App() {
           path="/admin"
           element={<AdminPanel />}
         />
+
+        {/* FALLBACK */}
+        <Route
+          path="*"
+          element={
+            <Navigate to="/" />
+          }
+        />
+
       </Routes>
+
     </BrowserRouter>
   );
 }
