@@ -150,8 +150,9 @@ router.put('/:id/status', auth, async (req, res) => {
 ASSIGN TICKET
 =====================================================
 */
-router.put('/:id/assign', auth, async (req, res) => {
+router.put('/:id/assign', authMiddleware, async (req, res) => {
   try {
+    const { id } = req.params;
 
     const {
       assigned_to,
@@ -165,18 +166,15 @@ router.put('/:id/assign', auth, async (req, res) => {
         assigned_to_name,
         updated_at: new Date()
       })
-      .eq('id', req.params.id)
-      .select();
+      .eq('id', id)
+      .select()
+      .single();
 
-    if (error) {
-      console.log(error);
-      throw error;
-    }
+    if (error) throw error;
 
-    res.json(data[0]);
-
+    res.json(data);
   } catch (error) {
-    console.log('ASSIGN ERROR:', error);
+    console.log(error);
 
     res.status(500).json({
       message: 'Assignment failed'

@@ -36,11 +36,8 @@ export default function TicketDetails() {
   const [error, setError] =
     useState("");
 
-  // =====================================
   // FETCH TICKET
-  // =====================================
   const fetchTicket = async () => {
-
     try {
 
       const res = await api.get(
@@ -51,16 +48,9 @@ export default function TicketDetails() {
 
     } catch (error) {
 
-      console.log(
-        "Ticket fetch error:",
-        error
-      );
+      console.log(error);
 
-      setError(
-        error?.response?.data
-          ?.message ||
-          "Failed to load ticket"
-      );
+      setError("Failed to load ticket");
 
     } finally {
 
@@ -68,9 +58,7 @@ export default function TicketDetails() {
     }
   };
 
-  // =====================================
   // FETCH TEAM MEMBERS
-  // =====================================
   const fetchTeamMembers =
     async () => {
 
@@ -81,29 +69,13 @@ export default function TicketDetails() {
             "/auth/team-members"
           );
 
-        if (
-          Array.isArray(
-            res.data
-          )
-        ) {
-
-          setTeamMembers(
-            res.data
-          );
-
-        } else {
-
-          setTeamMembers([]);
-        }
+        setTeamMembers(
+          res.data || []
+        );
 
       } catch (error) {
 
-        console.log(
-          "Team member error:",
-          error
-        );
-
-        setTeamMembers([]);
+        console.log(error);
       }
     };
 
@@ -115,60 +87,61 @@ export default function TicketDetails() {
 
   }, []);
 
-  // =====================================
   // ASSIGN TICKET
-  // =====================================
-  const assignTicket =
-    async () => {
+  const assignTicket = async () => {
+
+    try {
 
       if (!selectedMember) {
 
-        alert(
-          "Select team member"
-        );
+        alert("Select a team member");
 
         return;
       }
 
-      try {
-
-        const member =
-          teamMembers.find(
-            (m) =>
-              m.id ===
-              selectedMember
-          );
-
-        await api.put(
-          `/tickets/${id}/assign`,
-          {
-            assigned_to:
-              member.id,
-
-            assigned_to_name:
-              member.name,
-          }
+      // FIND SELECTED USER OBJECT
+      const member =
+        teamMembers.find(
+          (m) =>
+            m.id ===
+            selectedMember
         );
 
-        alert(
-          "Ticket assigned"
-        );
+      if (!member) {
 
-        fetchTicket();
+        alert("User not found");
 
-      } catch (error) {
-
-        console.log(error);
-
-        alert(
-          "Assign failed"
-        );
+        return;
       }
-    };
 
-  // =====================================
+      await api.put(
+        `/tickets/${ticket.id}/assign`,
+        {
+          assigned_to:
+            member.id,
+
+          assigned_to_name:
+            member.name
+        }
+      );
+
+      alert(
+        "Ticket assigned"
+      );
+
+      fetchTicket();
+
+    } catch (error) {
+
+      console.log(error);
+
+      alert(
+        "Assign failed"
+      );
+    }
+  };
+
   // UNASSIGN
-  // =====================================
   const unassignTicket =
     async () => {
 
@@ -194,9 +167,7 @@ export default function TicketDetails() {
       }
     };
 
-  // =====================================
-  // DELETE TICKET
-  // =====================================
+  // DELETE
   const deleteTicket =
     async () => {
 
@@ -230,23 +201,17 @@ export default function TicketDetails() {
       }
     };
 
-  // =====================================
-  // LOADING
-  // =====================================
   if (loading) {
 
     return (
       <MainLayout>
         <div className="p-10">
-          Loading ticket...
+          Loading...
         </div>
       </MainLayout>
     );
   }
 
-  // =====================================
-  // ERROR
-  // =====================================
   if (error) {
 
     return (
@@ -258,9 +223,6 @@ export default function TicketDetails() {
     );
   }
 
-  // =====================================
-  // NO TICKET
-  // =====================================
   if (!ticket) {
 
     return (
@@ -277,18 +239,17 @@ export default function TicketDetails() {
 
       <div className="bg-white rounded-2xl shadow-sm p-8">
 
-        <div className="mb-10 flex justify-between items-start">
+        {/* HEADER */}
+        <div className="flex justify-between mb-8">
 
           <div>
 
             <h1 className="text-3xl font-bold">
-              {ticket?.title}
+              {ticket.title}
             </h1>
 
             <p className="text-gray-500 mt-2">
-              Ticket ID:
-              {" "}
-              {ticket?.id}
+              Ticket ID: {ticket.id}
             </p>
 
           </div>
@@ -305,47 +266,41 @@ export default function TicketDetails() {
               Delete Ticket
             </button>
           )}
-
         </div>
 
+        {/* DETAILS */}
         <div className="grid grid-cols-2 gap-10">
 
           <div className="space-y-6">
 
             <div>
-
               <h2 className="font-semibold mb-2">
                 Description
               </h2>
 
               <p>
-                {ticket?.description}
+                {ticket.description}
               </p>
-
             </div>
 
             <div>
-
               <h2 className="font-semibold mb-2">
                 Priority
               </h2>
 
               <p>
-                {ticket?.priority}
+                {ticket.priority}
               </p>
-
             </div>
 
             <div>
-
               <h2 className="font-semibold mb-2">
                 Category
               </h2>
 
               <p>
-                {ticket?.category}
+                {ticket.category}
               </p>
-
             </div>
 
           </div>
@@ -353,46 +308,41 @@ export default function TicketDetails() {
           <div className="space-y-6">
 
             <div>
-
               <h2 className="font-semibold mb-2">
                 Assigned To
               </h2>
 
               <p>
-                {ticket?.assigned_to_name ||
+                {ticket.assigned_to_name ||
                   "Unassigned"}
               </p>
-
             </div>
 
             <div>
-
               <h2 className="font-semibold mb-2">
                 Status
               </h2>
 
               <p>
-                {ticket?.status}
+                {ticket.status}
               </p>
-
             </div>
 
             <div>
-
               <h2 className="font-semibold mb-2">
                 Created By
               </h2>
 
               <p>
-                {ticket?.created_by_name}
+                {ticket.created_by}
               </p>
-
             </div>
 
           </div>
 
         </div>
 
+        {/* ASSIGN */}
         {user?.role ===
           "Admin" && (
 
@@ -402,7 +352,7 @@ export default function TicketDetails() {
               Assign Ticket
             </h2>
 
-            <div className="flex gap-4 items-center">
+            <div className="flex gap-4">
 
               <select
                 value={
@@ -413,7 +363,7 @@ export default function TicketDetails() {
                     e.target.value
                   )
                 }
-                className="border p-3 rounded-xl min-w-[300px]"
+                className="border p-3 rounded-xl min-w-[320px]"
               >
 
                 <option value="">
@@ -437,7 +387,6 @@ export default function TicketDetails() {
                     </option>
                   )
                 )}
-
               </select>
 
               <button
