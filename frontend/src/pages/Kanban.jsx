@@ -19,7 +19,7 @@ export default function Kanban() {
   const open = tickets.filter(t => t.status === "Open");
   const progress = tickets.filter(t => t.status === "In Progress");
   const completed = tickets.filter(t => t.status === "Completed");
-  const pending = tickets.filter(t => t.status === "Pending Approval");
+  const pending = tickets.filter(t => t.status === "Waiting For Approval");
 
   const Column = ({ title, data, color }) => (
     <div className={`rounded-3xl p-5 ${color}`}>
@@ -47,7 +47,7 @@ export default function Kanban() {
       <div className="grid grid-cols-4 gap-6">
         <Column title="Open" data={open} color="bg-red-50" />
         <Column title="In Progress" data={progress} color="bg-blue-50" />
-        <Column title="Pending Approval" data={pending} color="bg-yellow-50" />
+        <Column title="Waiting for approval" data={pending} color="bg-yellow-50" />
         <Column title="Completed" data={completed} color="bg-green-50" />
       </div>
     </MainLayout>
