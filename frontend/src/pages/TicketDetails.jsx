@@ -94,15 +94,43 @@ export default function TicketDetails() {
     }
   };
 
-  const handleApproval = async (approvalStatus) => {
-    try {
-      await api.put(`/tickets/${ticket.id}/approve`, { approval_status: approvalStatus });
-      fetchTicket();
-      alert(`Ticket ${approvalStatus}`);
-    } catch (err) {
-      alert("Approval failed");
-    }
-  };
+const approveTicket = async () => {
+  try {
+
+    await api.put(
+      `/tickets/${ticket.id}/approve`
+    );
+
+    fetchTicket();
+
+    alert("Ticket approved");
+
+  } catch (err) {
+
+    console.error(err);
+
+    alert("Approval failed");
+  }
+};
+
+const rejectTicket = async () => {
+  try {
+
+    await api.put(
+      `/tickets/${ticket.id}/reject`
+    );
+
+    fetchTicket();
+
+    alert("Ticket rejected");
+
+  } catch (err) {
+
+    console.error(err);
+
+    alert("Reject failed");
+  }
+};
 
   if (!ticket) return <MainLayout>Loading...</MainLayout>;
 
@@ -129,15 +157,15 @@ export default function TicketDetails() {
           )}
         </div>
 
-        {ticket.status === "Pending Approval" && user?.role === "Admin" && (
+        {ticket.status === "Waiting For Approval" && user?.role === "Admin" && (
           <div className="mt-8 bg-yellow-50 border border-yellow-200 rounded-3xl p-6">
             <h2 className="text-2xl font-bold">Approval Required</h2>
             <p className="text-gray-600 mt-2">This ticket requires manager approval.</p>
             <div className="flex gap-4 mt-6">
-              <button onClick={() => handleApproval("Approved")} className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-2xl">
+              <button onClick={approveTicket} className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-2xl">
                 Approve
               </button>
-              <button onClick={() => handleApproval("Rejected")} className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-2xl">
+              <button onClick={rejectTicket} className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-2xl">
                 Reject
               </button>
             </div>
