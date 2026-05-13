@@ -1,9 +1,9 @@
 import { io } from "socket.io-client";
 
-const socketUrl = process.env.REACT_APP_SOCKET_URL || 
-  (process.env.NODE_ENV === 'production' ? window.location.origin : 'http://localhost:5000');
+const PROD_SOCKET_URL = 'https://ticketing-backend-6azk.onrender.com';
+const DEV_SOCKET_URL = 'http://localhost:5000';
 
-const socket = io(socketUrl, {
+const socket = io(process.env.NODE_ENV === 'production' ? PROD_SOCKET_URL : DEV_SOCKET_URL, {
   transports: ["websocket"],
   autoConnect: true,
 });
