@@ -33,6 +33,66 @@ const sendApprovalEmail = async (to, ticketTitle, requesterName, ticketId) => {
 // [Keep all other routes: GET, POST, GET/:id, PUT/:id/approve, PUT/:id/assign, DELETE]
 // Only the PUT /:id (update) needs modification to send email.
 
+// CREATE ticket
+router.post('/', auth, async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      priority,
+      category,
+      assigned_to,
+      due_date,
+    } = req.body;
+
+    const { data, error } = await supabase
+      .from('tickets')
+      .insert([
+        {
+          title,
+          description,
+          priority,
+          category,
+          assigned_to,
+          due_date,
+          status: 'Open',
+          created_by: req.user.name,
+          created_at: getISTTime(),
+          updated_at: getISTTime(),
+          timeline: [
+            {
+              type: 'created',
+              action: 'Ticket created',
+              user: req.user.name,
+              created_at: getISTTime(),
+            },
+          ],
+        },
+      ])
+      .select()
+      .single();
+
+    if (error) {
+      console.error(error);
+      return res.status(500).json({
+        message: 'Failed to create ticket',
+      });
+    }
+
+    const io = req.app.get('io');
+
+    io.emit('ticketCreated', data);
+
+    res.status(201).json(data);
+  } catch (err) {
+    console.error(err);
+
+    res.status(500).json({
+      message: 'Server error',
+    });
+  }
+});
+
 // UPDATE ticket (partial) – with Resend email on approval request
 router.put('/:id', auth, async (req, res) => {
   try {

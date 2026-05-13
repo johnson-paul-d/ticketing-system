@@ -2,17 +2,21 @@ import { Bell, CheckCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import api from "../services/api";
 import socket from "../services/socket";
+import useAuthStore from "../store/authStore";
 
 export default function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
+  const user = useAuthStore((state) => state.user);
 
   const fetchNotifications = async () => {
+    if (!user?.name) return;
     try {
       const res = await api.get("/notifications");
+      // Backend already filters by user_name = req.user.name
       setNotifications(res.data);
     } catch (error) {
-      console.error(error);
+      console.error("Fetch notifications error", error);
     }
   };
 
@@ -20,7 +24,7 @@ export default function NotificationBell() {
     fetchNotifications();
     socket.on("notificationReceived", fetchNotifications);
     return () => socket.off("notificationReceived", fetchNotifications);
-  }, []);
+  }, [user?.name]);
 
   const markAsRead = async (id) => {
     try {
@@ -34,13 +38,9 @@ export default function NotificationBell() {
   };
 
   const markAllRead = async () => {
-    try {
-      const unread = notifications.filter(n => !n.is_read);
-      await Promise.all(unread.map(n => api.put(`/notifications/${n.id}/read`)));
-      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
-    } catch (error) {
-      console.error(error);
-    }
+    const unread = notifications.filter(n => !n.is_read);
+    await Promise.all(unread.map(n => api.put(`/notifications/${n.id}/read`)));
+    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
   };
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
@@ -66,7 +66,9 @@ export default function NotificationBell() {
               </button>
             )}
           </div>
-          {notifications.length === 0 && <div className="text-center text-gray-400 py-6">No notifications</div>}
+          {notifications.length === 0 && (
+            <div className="text-center text-gray-400 py-6">No notifications</div>
+          )}
           <div className="space-y-3">
             {notifications.map((n) => (
               <div
