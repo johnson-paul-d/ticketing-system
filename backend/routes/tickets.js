@@ -270,9 +270,19 @@ router.put('/:id', auth, async (req, res) => {
     TIMELINE
     ============================================
     */
-    let timeline = Array.isArray(existing.timeline)
-      ? existing.timeline
-      : [];
+let timeline = [];
+
+if (existing.timeline) {
+  if (Array.isArray(existing.timeline)) {
+    timeline = existing.timeline;
+  } else {
+    try {
+      timeline = JSON.parse(existing.timeline);
+    } catch {
+      timeline = [];
+    }
+  }
+}
 
     if (comment) {
       timeline.push({
@@ -290,17 +300,20 @@ router.put('/:id', auth, async (req, res) => {
     UPDATE DATA
     ============================================
     */
-    const updateData = {
-      updated_at: getISTTime(),
-      timeline,
+const updateData = {
+  updated_at: new Date().toISOString(),
 
-      tagged_users: [
-        ...new Set([
-          ...(existing.tagged_users || []),
-          ...taggedUsers,
-        ]),
-      ],
-    };
+  timeline: Array.isArray(timeline)
+    ? timeline
+    : [],
+
+  tagged_users: Array.from(
+    new Set([
+      ...(existing.tagged_users || []),
+      ...taggedUsers,
+    ])
+  ),
+};
 
     if (title !== undefined)
       updateData.title = title;
@@ -318,7 +331,9 @@ router.put('/:id', auth, async (req, res) => {
       due_date !== undefined &&
       due_date !== ''
     ) {
-      updateData.due_date = due_date;
+updateData.due_date = new Date(due_date)
+  .toISOString()
+  .split('T')[0];
 
       timeline.push({
         type: 'due_date',
