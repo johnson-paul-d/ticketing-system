@@ -16,7 +16,7 @@ const server = http.createServer(app);
 const allowedOrigins = [
   process.env.FRONTEND_URL,
   'https://mktg-ticketing-system.vercel.app',
-  'http://localhost:3000', // for local dev
+  'http://localhost:3000', // local development
 ].filter(Boolean);
 
 const corsOptions = {
@@ -35,7 +35,8 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions)); // handle preflight
+// ❌ REMOVED the line: app.options('*', cors(corsOptions));
+// The cors() middleware already handles OPTIONS preflight requests.
 
 app.use(express.json());
 
