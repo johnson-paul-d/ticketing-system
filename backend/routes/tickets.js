@@ -329,12 +329,11 @@ router.put('/:id', auth, async (req, res) => {
 
 /*
 =====================================================
-APPROVE TICKET
+APPROVE TICKET (FIXED)
 =====================================================
 */
 router.put('/:id/approve', auth, async (req, res) => {
   try {
-    // Only admins can approve
     if (req.user.role !== 'Admin' && req.user.role !== 'Super Admin') {
       return res.status(403).json({ message: 'Only admin can approve' });
     }
@@ -349,68 +348,7 @@ router.put('/:id/approve', auth, async (req, res) => {
       return res.status(404).json({ message: 'Ticket not found' });
     }
 
-    let timeline = ticket.timeline || [];
-    if (!Array.isArray(timeline)) timeline = [];
-
-    timeline.push({
-      type: 'approval',
-      action: 'Ticket approved',
-      user: req.user.name,
-      created_at: getISTTime(),
-    });
-
-    const finalStatus = ticket.approval_requested_status || 'Open';
-    const { data, error: updateError } = await supabase
-      .from('tickets')
-      .update({
-        status: finalStatus,
-        approval_required: false,
-        approval_status: 'Approved',
-        approved_by: req.user.name,
-        approved_at: getISTTime(),
-        timeline,
-      })
-      .eq('id', req.params.id)
-      .select()
-      .single();
-
-    if (updateError) {
-      return res.status(500).json({ message: 'Approval failed' });
-    }
-
-    const io = req.app.get('io');
-    if (io) io.emit('ticketUpdated', data);
-
-    res.json(data);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-/*
-=====================================================
-REJECT TICKET (FIXED)
-=====================================================
-*/
-router.put('/:id/reject', auth, async (req, res) => {
-  try {
-    // Only admins can reject
-    if (req.user.role !== 'Admin' && req.user.role !== 'Super Admin') {
-      return res.status(403).json({ message: 'Only admin can reject' });
-    }
-
-    const { data: ticket, error } = await supabase
-      .from('tickets')
-      .select('*')
-      .eq('id', req.params.id)
-      .single();
-
-    if (error || !ticket) {
-      return res.status(404).json({ message: 'Ticket not found' });
-    }
-
-    // --- SAFE TIMELINE PARSING ---
+    // --- SAFE timeline parsing ---
     let timeline = [];
     if (ticket.timeline) {
       if (Array.isArray(ticket.timeline)) {
@@ -418,7 +356,7 @@ router.put('/:id/reject', auth, async (req, res) => {
       } else if (typeof ticket.timeline === 'string') {
         try {
           timeline = JSON.parse(ticket.timeline);
-        } catch (e) {
+        } catch (err) {
           console.warn('Failed to parse timeline JSON, starting fresh');
           timeline = [];
         }
@@ -427,32 +365,32 @@ router.put('/:id/reject', auth, async (req, res) => {
 
     timeline.push({
       type: 'approval',
-      action: 'Ticket rejected',
+      action: 'Ticket approved',
       user: req.user.name,
-      created_at: new Date().toISOString(), // ISO format for timestamps
+      created_at: new Date().toISOString(),
     });
 
-    // Use ISO timestamps for rejected_at
+    const finalStatus = ticket.approval_requested_status || 'Open';
     const nowISO = new Date().toISOString();
 
     const { data, error: updateError } = await supabase
       .from('tickets')
       .update({
-        status: 'Open',
+        status: finalStatus,
         approval_required: false,
-        approval_status: 'Rejected',
-        rejected_by: req.user.name,
-        rejected_at: nowISO,
+        approval_status: 'Approved',
+        approved_by: req.user.name,
+        approved_at: nowISO,
         updated_at: nowISO,
-        timeline, // Supabase accepts array, will store as JSONB
+        timeline,
       })
       .eq('id', req.params.id)
       .select()
       .single();
 
     if (updateError) {
-      console.error('Supabase update error in reject:', updateError);
-      return res.status(500).json({ message: 'Reject failed', error: updateError.message });
+      console.error('Supabase update error in approve:', updateError);
+      return res.status(500).json({ message: 'Approval failed', error: updateError.message });
     }
 
     const io = req.app.get('io');
@@ -460,10 +398,130 @@ router.put('/:id/reject', auth, async (req, res) => {
 
     res.json(data);
   } catch (err) {
-    console.error('❌ Unhandled error in reject route:', err);
+    console.error('❌ Unhandled error in approve route:', err);
     res.status(500).json({ message: 'Server error', details: err.message });
   }
 });
+/*
+=====================================================
+REJECT TICKET (FULLY LOGGED & SAFE)
+=====================================================
+*/
+router.put('/:id/reject', auth, async (req, res) => {
+  const startTime = Date.now();
+  console.log(`[REJECT] Start for ticket ${req.params.id} by ${req.user.name} (${req.user.role})`);
+
+  try {
+    // 1. Authorization
+    if (req.user.role !== 'Admin' && req.user.role !== 'Super Admin') {
+      console.log(`[REJECT] Unauthorized - role: ${req.user.role}`);
+      return res.status(403).json({ message: 'Only admin can reject' });
+    }
+
+    // 2. Fetch existing ticket
+    const { data: ticket, error: fetchError } = await supabase
+      .from('tickets')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+
+    if (fetchError || !ticket) {
+      console.error(`[REJECT] Fetch error:`, fetchError);
+      return res.status(404).json({ message: 'Ticket not found', error: fetchError });
+    }
+
+    console.log(`[REJECT] Fetched ticket: status=${ticket.status}, approval_status=${ticket.approval_status}`);
+
+    // 3. Safely parse timeline
+    let timeline = [];
+    if (ticket.timeline) {
+      if (Array.isArray(ticket.timeline)) {
+        timeline = ticket.timeline;
+        console.log(`[REJECT] Timeline is already an array, length=${timeline.length}`);
+      } else if (typeof ticket.timeline === 'string') {
+        try {
+          timeline = JSON.parse(ticket.timeline);
+          console.log(`[REJECT] Parsed timeline from string, length=${timeline.length}`);
+        } catch (parseErr) {
+          console.error(`[REJECT] Failed to parse timeline JSON:`, parseErr.message);
+          timeline = [];
+        }
+      } else {
+        console.warn(`[REJECT] Unexpected timeline type: ${typeof ticket.timeline}, resetting to []`);
+        timeline = [];
+      }
+    } else {
+      console.log(`[REJECT] No existing timeline, starting fresh`);
+    }
+
+    // 4. Add reject entry
+    const newEntry = {
+      type: 'approval',
+      action: 'Ticket rejected',
+      user: req.user.name,
+      created_at: new Date().toISOString(),
+    };
+    timeline.push(newEntry);
+    console.log(`[REJECT] Added timeline entry:`, newEntry);
+
+    const nowISO = new Date().toISOString();
+
+    // 5. Prepare update object
+    const updatePayload = {
+      status: 'Open',
+      approval_required: false,
+      approval_status: 'Rejected',
+      rejected_by: req.user.name,
+      rejected_at: nowISO,
+      updated_at: nowISO,
+      timeline: timeline, // Supabase accepts array, will auto-convert to JSONB
+    };
+
+    console.log(`[REJECT] Update payload:`, JSON.stringify(updatePayload, null, 2));
+
+    // 6. Perform update
+    const { data, error: updateError } = await supabase
+      .from('tickets')
+      .update(updatePayload)
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error(`[REJECT] Supabase update error:`, updateError);
+      return res.status(500).json({ 
+        message: 'Reject failed', 
+        error: updateError.message,
+        details: updateError.details,
+        hint: updateError.hint
+      });
+    }
+
+    console.log(`[REJECT] Success - ticket ${req.params.id} rejected, status now Open`);
+
+    // 7. Emit socket event
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('ticketUpdated', data);
+      console.log(`[REJECT] Socket event emitted`);
+    }
+
+    const duration = Date.now() - startTime;
+    console.log(`[REJECT] Completed in ${duration}ms`);
+
+    res.json(data);
+  } catch (err) {
+    const duration = Date.now() - startTime;
+    console.error(`[REJECT] UNHANDLED EXCEPTION after ${duration}ms:`, err);
+    console.error(err.stack);
+    res.status(500).json({ 
+      message: 'Server error', 
+      details: err.message,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
+  }
+});
+
 /*
 =====================================================
 ASSIGN TICKET
