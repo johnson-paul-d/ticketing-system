@@ -92,19 +92,23 @@ router.put('/:id', auth, async (req, res) => {
     const { id } = req.params;
     const { title, description, priority, status, category, due_date, comment } = req.body;
 
+    console.log('UPDATE received for ticket:', id);
+    console.log('Request body:', req.body);
+
     // Fetch existing ticket
     const { data: existing, error: fetchError } = await supabase
       .from('tickets')
       .select('*')
       .eq('id', id)
       .single();
-    if (fetchError) throw fetchError;
+    if (fetchError) {
+      console.error('Fetch error:', fetchError);
+      throw fetchError;
+    }
 
-    // Extract mentions
+    // Mentions and notifications (keep as is)
     const mentions = comment?.match(/@\w+/g) || [];
     const taggedUsers = mentions.map(m => m.replace('@', ''));
-
-    // Create mention notifications
     for (const username of taggedUsers) {
       await supabase.from('notifications').insert({
         user_name: username,
@@ -116,7 +120,7 @@ router.put('/:id', auth, async (req, res) => {
     const io = req.app.get('io');
     io.emit('notificationReceived');
 
-    // Build timeline
+    // Timeline
     let timeline = existing.timeline || [];
     if (comment) {
       timeline.push({
@@ -129,14 +133,12 @@ router.put('/:id', auth, async (req, res) => {
       });
     }
 
-    // Prepare update object
     const updateData = {
       updated_at: new Date(),
       timeline,
       tagged_users: [...new Set([...(existing.tagged_users || []), ...taggedUsers])],
     };
 
-    // Simple field updates
     if (title !== undefined) updateData.title = title;
     if (description !== undefined) updateData.description = description;
     if (priority !== undefined) updateData.priority = priority;
@@ -170,7 +172,7 @@ router.put('/:id', auth, async (req, res) => {
       updateData.approval_required = true;
       updateData.approval_status = 'Pending';
       updateData.approval_requested_by = req.user.name;
-      updateData.approval_requested_status = status; // requires the column
+      updateData.approval_requested_status = status;
 
       timeline.push({
         type: 'approval',
@@ -192,6 +194,8 @@ router.put('/:id', auth, async (req, res) => {
       updateData.status = status;
     }
 
+    console.log('Final updateData before Supabase:', JSON.stringify(updateData, null, 2));
+
     // Execute update
     const { data, error } = await supabase
       .from('tickets')
@@ -201,14 +205,14 @@ router.put('/:id', auth, async (req, res) => {
       .single();
 
     if (error) {
-      console.error('SUPABASE UPDATE ERROR:', error);
-      return res.status(500).json({ message: 'Database update failed', error });
+      console.error('SUPABASE UPDATE ERROR DETAILS:', error);
+      return res.status(500).json({ message: 'Database update failed', error: error.message });
     }
 
     io.emit('ticketUpdated', data);
     res.json(data);
   } catch (err) {
-    console.error('UPDATE ERROR:', err);
+    console.error('UPDATE ERROR CATCH:', err);
     res.status(500).json({ message: 'Failed to update ticket', details: err.message });
   }
 });
