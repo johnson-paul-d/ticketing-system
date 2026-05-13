@@ -1,97 +1,31 @@
-import {
-  BrowserRouter,
-  Routes,
-  Route,
-  Navigate,
-} from "react-router-dom";
-
-import Login from "./pages/login";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Tickets from "./pages/Tickets";
-import TicketDetails from "./pages/TicketDetails";
 import CreateTicket from "./pages/CreateTicket";
+import TicketDetails from "./pages/TicketDetails";
 import EditTicket from "./pages/EditTicket";
 import Kanban from "./pages/Kanban";
-import Reports from "./pages/Reports";
-import AdminPanel from "./pages/AdminPanel";
 import TicketCalendar from "./pages/TicketCalendar";
+import AdminPanel from "./pages/AdminPanel";
+import Reports from "./pages/Reports";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 function App() {
   return (
     <BrowserRouter>
-
       <Routes>
-
-        {/* LOGIN */}
-        <Route
-          path="/"
-          element={<Login />}
-        />
-
-        {/* DASHBOARD */}
-        <Route
-          path="/dashboard"
-          element={<Dashboard />}
-        />
-
-        {/* TICKETS */}
-        <Route
-          path="/tickets"
-          element={<Tickets />}
-        />
-
-        {/* TICKET DETAILS */}
-        <Route
-          path="/tickets/:id"
-          element={<TicketDetails />}
-        />
-
-        {/* EDIT TICKET */}
-        <Route
-          path="/tickets/edit/:id"
-          element={<EditTicket />}
-        />
-
-        {/* CREATE TICKET */}
-        <Route
-          path="/create-ticket"
-          element={<CreateTicket />}
-        />
-
-        {/* KANBAN */}
-        <Route
-          path="/kanban"
-          element={<Kanban />}
-        />
-
-        {/* REPORTS */}
-        <Route
-          path="/reports"
-          element={<Reports />}
-        />
-
-        {/* CALENDAR */}
-        <Route
-          path="/calendar"
-          element={<TicketCalendar />}
-        />
-
-        {/* ADMIN PANEL */}
-        <Route
-          path="/admin"
-          element={<AdminPanel />}
-        />
-
-        {/* FALLBACK */}
-        <Route
-          path="*"
-          element={
-            <Navigate to="/" />
-          }
-        />
-
+        <Route path="/" element={<Login />} />
+        <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+        <Route path="/tickets" element={<ProtectedRoute><Tickets /></ProtectedRoute>} />
+        <Route path="/create-ticket" element={<ProtectedRoute allowedRoles={["Admin", "User"]}><CreateTicket /></ProtectedRoute>} />
+        <Route path="/tickets/:id" element={<ProtectedRoute><TicketDetails /></ProtectedRoute>} />
+        <Route path="/edit-ticket/:id" element={<ProtectedRoute allowedRoles={["Admin"]}><EditTicket /></ProtectedRoute>} />
+        <Route path="/kanban" element={<ProtectedRoute><Kanban /></ProtectedRoute>} />
+        <Route path="/calendar" element={<ProtectedRoute><TicketCalendar /></ProtectedRoute>} />
+        <Route path="/admin" element={<ProtectedRoute allowedRoles={["Admin"]}><AdminPanel /></ProtectedRoute>} />
+        <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
       </Routes>
-
     </BrowserRouter>
   );
 }

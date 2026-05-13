@@ -1,10 +1,8 @@
 import { io } from "socket.io-client";
 
-const socket = io(
-  "https://ticketing-backend-6azk.onrender.com",
-  {
-    transports: ["websocket"],
-  }
-);
+const socket = io(process.env.REACT_APP_SOCKET_URL || "http://localhost:5000", {
+  transports: ["websocket"],
+  autoConnect: true
+});
 
 export default socket;
