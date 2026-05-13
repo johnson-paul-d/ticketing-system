@@ -85,7 +85,7 @@ router.get('/', auth, async (req, res) => {
     ) {
       query = query.eq(
         'assigned_to',
-        req.user.email
+        req.user.id
       );
     }
 
@@ -144,7 +144,7 @@ router.get('/:id', auth, async (req, res) => {
       req.user.role !== 'Admin' &&
       req.user.role !== 'Super Admin'
     ) {
-if (data.assigned_to !== req.user.email) {
+if (data.assigned_to !== req.user.id) {
         return res.status(403).json({
           message: 'Access denied',
         });
@@ -314,7 +314,7 @@ router.put('/:id', auth, async (req, res) => {
       req.user.role !== 'Admin' &&
       req.user.role !== 'Super Admin'
     ) {
-      if (existing.assigned_to !== req.user.email) {
+      if (existing.assigned_to !== req.user.id) {
         return res.status(403).json({
           message: 'Access denied',
         });
