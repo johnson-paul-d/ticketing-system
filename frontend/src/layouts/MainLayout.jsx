@@ -27,39 +27,67 @@ export default function MainLayout({ children }) {
 
   return (
     <div className="min-h-screen bg-gray-100 flex">
+      {/* Mobile overlay */}
       {open && <div onClick={() => setOpen(false)} className="fixed inset-0 bg-black/50 z-40 lg:hidden" />}
+
+      {/* Sidebar */}
       <div className={`fixed lg:static z-50 top-0 left-0 h-full w-72 bg-black text-white transition-transform duration-300 flex flex-col justify-between p-5 ${open ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}>
         <div>
           <div className="flex items-center justify-between mb-8">
-            <div><h1 className="text-3xl font-bold">Ticket System</h1><p className="text-gray-400 text-sm">Team Management Portal</p></div>
+            <div>
+              <h1 className="text-3xl font-bold">Ticket System</h1>
+              <p className="text-gray-400 text-sm">Team Management Portal</p>
+            </div>
             <button onClick={() => setOpen(false)} className="lg:hidden"><X /></button>
           </div>
+
+          {/* User info + Notification Bell */}
           <div className="bg-white/10 rounded-2xl p-4 mb-8 flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-red-600 flex items-center justify-center font-bold text-xl">{user?.name?.charAt(0)}</div>
-            <div className="flex-1"><h2 className="font-semibold text-lg leading-tight">{user?.name}</h2><p className="text-gray-400 text-sm">{user?.role}</p></div>
+            <div className="w-14 h-14 rounded-full bg-red-600 flex items-center justify-center font-bold text-xl">
+              {user?.name?.charAt(0)}
+            </div>
+            <div className="flex-1">
+              <h2 className="font-semibold text-lg leading-tight">{user?.name}</h2>
+              <p className="text-gray-400 text-sm">{user?.role}</p>
+            </div>
             <NotificationBell />
           </div>
+
+          {/* Menu items */}
           <div className="space-y-2">
             {menuItems.map((item) => {
               const Icon = item.icon;
               return (
-                <Link key={item.path} to={item.path} onClick={() => setOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-red-600 transition">
-                  <Icon size={20} /><span>{item.label}</span>
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  onClick={() => setOpen(false)}
+                  className="flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-red-600 transition"
+                >
+                  <Icon size={20} />
+                  <span>{item.label}</span>
                 </Link>
               );
             })}
           </div>
         </div>
+
+        {/* Logout button */}
         <button onClick={handleLogout} className="bg-red-600 hover:bg-red-700 transition rounded-2xl py-4 flex items-center justify-center gap-2 font-semibold">
           <LogOut size={18} /> Logout
         </button>
       </div>
+
+      {/* Main content area */}
       <div className="flex-1 min-w-0">
+        {/* Mobile top bar with Notification Bell */}
         <div className="lg:hidden bg-white shadow-sm p-4 flex items-center gap-4 sticky top-0 z-30">
           <button onClick={() => setOpen(true)}><Menu /></button>
           <h1 className="font-bold text-lg">Ticket System</h1>
           <div className="ml-auto"><NotificationBell /></div>
         </div>
+
+        {/* Page content */}
         <div className="p-4 md:p-6 lg:p-8">{children}</div>
       </div>
     </div>

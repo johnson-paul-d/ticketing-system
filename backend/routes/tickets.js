@@ -92,15 +92,17 @@ router.put('/:id', auth, async (req, res) => {
     const { id } = req.params;
     const { title, description, priority, status, category, due_date, comment } = req.body;
 
-    const mentions = comment?.match(/@\w+/g) || [];
-    const taggedUsers = mentions.map(m => m.replace('@', ''));
-
+    // Fetch existing ticket
     const { data: existing, error: fetchError } = await supabase
       .from('tickets')
       .select('*')
       .eq('id', id)
       .single();
     if (fetchError) throw fetchError;
+
+    // Extract mentions
+    const mentions = comment?.match(/@\w+/g) || [];
+    const taggedUsers = mentions.map(m => m.replace('@', ''));
 
     // Create mention notifications
     for (const username of taggedUsers) {
@@ -110,13 +112,12 @@ router.put('/:id', auth, async (req, res) => {
         message: `${req.user.name} tagged you in "${existing.title}"`,
         ticket_id: existing.id,
       });
-      const io = req.app.get('io');
-      io.emit('notificationReceived');
     }
+    const io = req.app.get('io');
+    io.emit('notificationReceived');
 
+    // Build timeline
     let timeline = existing.timeline || [];
-
-    // Add comment to timeline
     if (comment) {
       timeline.push({
         type: 'comment',
@@ -128,7 +129,23 @@ router.put('/:id', auth, async (req, res) => {
       });
     }
 
-    // Due date change
+    // Prepare update object
+    const updateData = {
+      updated_at: new Date(),
+      timeline,
+      tagged_users: [...new Set([...(existing.tagged_users || []), ...taggedUsers])],
+    };
+
+    // Simple field updates
+    if (title !== undefined) updateData.title = title;
+    if (description !== undefined) updateData.description = description;
+    if (priority !== undefined) updateData.priority = priority;
+    if (category !== undefined) updateData.category = category;
+    if (due_date !== undefined && due_date !== '') {
+      updateData.due_date = new Date(due_date).toISOString().split('T')[0];
+    }
+
+    // Due date change entry
     if (due_date && due_date !== existing.due_date) {
       timeline.push({
         type: 'due_date',
@@ -147,28 +164,13 @@ router.put('/:id', auth, async (req, res) => {
       } catch (mailErr) { console.error('MAIL ERROR:', mailErr); }
     }
 
-    // Status change logic (including approval flow)
-    let updateData = {
-      updated_at: new Date(),
-      timeline,
-      tagged_users: [...new Set([...(existing.tagged_users || []), ...taggedUsers])],
-    };
-
-    if (title !== undefined) updateData.title = title;
-    if (description !== undefined) updateData.description = description;
-    if (priority !== undefined) updateData.priority = priority;
-    if (category !== undefined) updateData.category = category;
-    if (due_date !== undefined && due_date !== '') {
-      updateData.due_date = new Date(due_date).toISOString().split('T')[0];
-    }
-
-    // Approval‑required status transition
+    // Status change with approval flow
     if (status === 'Completed' || status === 'Waiting For Sources') {
       updateData.status = 'Pending Approval';
       updateData.approval_required = true;
       updateData.approval_status = 'Pending';
       updateData.approval_requested_by = req.user.name;
-      updateData.approval_requested_status = status;   // store original requested status
+      updateData.approval_requested_status = status; // requires the column
 
       timeline.push({
         type: 'approval',
@@ -179,18 +181,18 @@ router.put('/:id', auth, async (req, res) => {
         created_at: getISTTime(),
       });
 
-      // Notify Admin
       await supabase.from('notifications').insert({
         user_name: 'Admin',
         title: 'Approval Required',
         message: `${req.user.name} requested approval for "${existing.title}"`,
         ticket_id: existing.id,
       });
-      req.app.get('io').emit('notificationReceived');
+      io.emit('notificationReceived');
     } else if (status !== undefined) {
       updateData.status = status;
     }
 
+    // Execute update
     const { data, error } = await supabase
       .from('tickets')
       .update(updateData)
@@ -203,22 +205,21 @@ router.put('/:id', auth, async (req, res) => {
       return res.status(500).json({ message: 'Database update failed', error });
     }
 
-    const io = req.app.get('io');
     io.emit('ticketUpdated', data);
     res.json(data);
   } catch (err) {
     console.error('UPDATE ERROR:', err);
-    res.status(500).json({ message: 'Failed to update ticket' });
+    res.status(500).json({ message: 'Failed to update ticket', details: err.message });
   }
 });
 
-// APPROVE / REJECT ticket
+// APPROVE / REJECT
 router.put('/:id/approve', auth, async (req, res) => {
   try {
     if (req.user.role !== 'Admin') {
       return res.status(403).json({ message: 'Only admin can approve' });
     }
-    const { approval_status } = req.body; // 'Approved' or 'Rejected'
+    const { approval_status } = req.body;
     const { data: existing } = await supabase
       .from('tickets')
       .select('*')
@@ -260,7 +261,6 @@ router.put('/:id/approve', auth, async (req, res) => {
 
     if (error) throw error;
 
-    // Notify requester
     await supabase.from('notifications').insert({
       user_name: existing.approval_requested_by,
       title: `Ticket ${approval_status}`,
