@@ -69,10 +69,30 @@ GET ALL TICKETS
 */
 router.get('/', auth, async (req, res) => {
   try {
-    const { data, error } = await supabase
+
+    let query = supabase
       .from('tickets')
-      .select('*')
-      .order('created_at', { ascending: false });
+      .select('*');
+
+    /*
+    ============================================
+    ADMIN CAN SEE ALL TICKETS
+    ============================================
+    */
+    if (
+      req.user.role !== 'Admin' &&
+      req.user.role !== 'Super Admin'
+    ) {
+      query = query.eq(
+        'assigned_to',
+        req.user.name
+      );
+    }
+
+    const { data, error } = await query.order(
+      'created_at',
+      { ascending: false }
+    );
 
     if (error) {
       console.error(error);
@@ -84,6 +104,7 @@ router.get('/', auth, async (req, res) => {
     }
 
     res.json(data);
+
   } catch (err) {
     console.error(err);
 
@@ -100,6 +121,7 @@ GET SINGLE TICKET
 */
 router.get('/:id', auth, async (req, res) => {
   try {
+
     const { data, error } = await supabase
       .from('tickets')
       .select('*')
@@ -112,7 +134,25 @@ router.get('/:id', auth, async (req, res) => {
       });
     }
 
+    /*
+    ============================================
+    NORMAL USERS CAN ONLY VIEW
+    THEIR ASSIGNED TICKETS
+    ============================================
+    */
+    if (
+      req.user.role !== 'Admin' &&
+      req.user.role !== 'Super Admin'
+    ) {
+      if (data.assigned_to !== req.user.name) {
+        return res.status(403).json({
+          message: 'Access denied',
+        });
+      }
+    }
+
     res.json(data);
+
   } catch (err) {
     console.error(err);
 
@@ -129,6 +169,7 @@ CREATE TICKET
 */
 router.post('/', auth, async (req, res) => {
   try {
+
     console.log('BODY:', req.body);
     console.log('USER:', req.user);
 
@@ -157,7 +198,10 @@ router.post('/', auth, async (req, res) => {
 
       status: 'Open',
 
-      created_by: req.user?.name || req.user?.email || 'Unknown',
+      created_by:
+        req.user?.name ||
+        req.user?.email ||
+        'Unknown',
 
       created_at: getISTTime(),
       updated_at: getISTTime(),
@@ -168,13 +212,14 @@ router.post('/', auth, async (req, res) => {
         {
           type: 'created',
           action: 'Ticket created',
-          user: req.user?.name || req.user?.email || 'Unknown',
+          user:
+            req.user?.name ||
+            req.user?.email ||
+            'Unknown',
           created_at: getISTTime(),
         },
       ],
     };
-
-    console.log('INSERT DATA:', insertData);
 
     const { data, error } = await supabase
       .from('tickets')
@@ -191,13 +236,31 @@ router.post('/', auth, async (req, res) => {
       });
     }
 
+    /*
+    ============================================
+    ASSIGNMENT NOTIFICATION
+    ============================================
+    */
+    if (assigned_to) {
+      await supabase
+        .from('notifications')
+        .insert({
+          user_name: assigned_to,
+          title: 'New Ticket Assigned',
+          message: `${req.user.name} assigned a ticket to you`,
+          ticket_id: data.id,
+        });
+    }
+
     const io = req.app.get('io');
 
     if (io) {
       io.emit('ticketCreated', data);
+      io.emit('notificationReceived');
     }
 
     res.status(201).json(data);
+
   } catch (err) {
     console.error('CREATE ERROR:', err);
 
@@ -215,6 +278,7 @@ UPDATE TICKET
 */
 router.put('/:id', auth, async (req, res) => {
   try {
+
     const { id } = req.params;
 
     const {
@@ -227,11 +291,12 @@ router.put('/:id', auth, async (req, res) => {
       comment,
     } = req.body;
 
-    const { data: existing, error: fetchError } = await supabase
-      .from('tickets')
-      .select('*')
-      .eq('id', id)
-      .single();
+    const { data: existing, error: fetchError } =
+      await supabase
+        .from('tickets')
+        .select('*')
+        .eq('id', id)
+        .single();
 
     if (fetchError) {
       return res.status(404).json({
@@ -239,7 +304,25 @@ router.put('/:id', auth, async (req, res) => {
       });
     }
 
-    const mentions = comment?.match(/@\w+/g) || [];
+    /*
+    ============================================
+    NORMAL USERS CAN UPDATE ONLY
+    THEIR ASSIGNED TICKETS
+    ============================================
+    */
+    if (
+      req.user.role !== 'Admin' &&
+      req.user.role !== 'Super Admin'
+    ) {
+      if (existing.assigned_to !== req.user.name) {
+        return res.status(403).json({
+          message: 'Access denied',
+        });
+      }
+    }
+
+    const mentions =
+      comment?.match(/@\w+/g) || [];
 
     const taggedUsers = mentions.map((m) =>
       m.replace('@', '')
@@ -251,12 +334,14 @@ router.put('/:id', auth, async (req, res) => {
     ============================================
     */
     for (const username of taggedUsers) {
-      await supabase.from('notifications').insert({
-        user_name: username,
-        title: 'You were tagged',
-        message: `${req.user.name} tagged you in "${existing.title}"`,
-        ticket_id: existing.id,
-      });
+      await supabase
+        .from('notifications')
+        .insert({
+          user_name: username,
+          title: 'You were tagged',
+          message: `${req.user.name} tagged you in "${existing.title}"`,
+          ticket_id: existing.id,
+        });
     }
 
     const io = req.app.get('io');
@@ -270,19 +355,22 @@ router.put('/:id', auth, async (req, res) => {
     TIMELINE
     ============================================
     */
-let timeline = [];
+    let timeline = [];
 
-if (existing.timeline) {
-  if (Array.isArray(existing.timeline)) {
-    timeline = existing.timeline;
-  } else {
-    try {
-      timeline = JSON.parse(existing.timeline);
-    } catch {
-      timeline = [];
+    if (existing.timeline) {
+
+      if (Array.isArray(existing.timeline)) {
+        timeline = existing.timeline;
+      } else {
+        try {
+          timeline = JSON.parse(
+            existing.timeline
+          );
+        } catch {
+          timeline = [];
+        }
+      }
     }
-  }
-}
 
     if (comment) {
       timeline.push({
@@ -300,20 +388,20 @@ if (existing.timeline) {
     UPDATE DATA
     ============================================
     */
-const updateData = {
-  updated_at: new Date().toISOString(),
+    const updateData = {
+      updated_at: new Date().toISOString(),
 
-  timeline: Array.isArray(timeline)
-    ? timeline
-    : [],
+      timeline: Array.isArray(timeline)
+        ? timeline
+        : [],
 
-  tagged_users: Array.from(
-    new Set([
-      ...(existing.tagged_users || []),
-      ...taggedUsers,
-    ])
-  ),
-};
+      tagged_users: Array.from(
+        new Set([
+          ...(existing.tagged_users || []),
+          ...taggedUsers,
+        ])
+      ),
+    };
 
     if (title !== undefined)
       updateData.title = title;
@@ -327,13 +415,21 @@ const updateData = {
     if (category !== undefined)
       updateData.category = category;
 
+    /*
+    ============================================
+    DUE DATE
+    ============================================
+    */
     if (
       due_date !== undefined &&
       due_date !== ''
     ) {
-updateData.due_date = new Date(due_date)
-  .toISOString()
-  .split('T')[0];
+
+      updateData.due_date = new Date(
+        due_date
+      )
+        .toISOString()
+        .split('T')[0];
 
       timeline.push({
         type: 'due_date',
@@ -348,12 +444,13 @@ updateData.due_date = new Date(due_date)
     APPROVAL FLOW
     ============================================
     */
-if (
-  status === 'Completed' ||
-  status === 'Waiting For Sources' ||
-  status === 'Waiting For Approval'
+    if (
+      status === 'Completed' ||
+      status === 'Waiting For Sources' ||
+      status === 'Waiting For Approval'
     ) {
-updateData.status = status;
+
+      updateData.status = status;
 
       updateData.approval_required = true;
 
@@ -379,19 +476,22 @@ updateData.status = status;
       ADMIN NOTIFICATION
       ========================================
       */
-      await supabase.from('notifications').insert({
-        user_name: 'Admin',
-        title: 'Approval Required',
-        message: `${req.user.name} requested approval for "${existing.title}"`,
-        ticket_id: existing.id,
-      });
+      await supabase
+        .from('notifications')
+        .insert({
+          user_name: 'Admin',
+          title: 'Approval Required',
+          message: `${req.user.name} requested approval for "${existing.title}"`,
+          ticket_id: existing.id,
+        });
 
       /*
       ========================================
       EMAIL
       ========================================
       */
-      const adminEmail = process.env.ADMIN_EMAIL;
+      const adminEmail =
+        process.env.ADMIN_EMAIL;
 
       if (adminEmail) {
         await sendApprovalEmail(
@@ -405,7 +505,9 @@ updateData.status = status;
       if (io) {
         io.emit('notificationReceived');
       }
+
     } else if (status !== undefined) {
+
       updateData.status = status;
     }
 
@@ -435,6 +537,7 @@ updateData.status = status;
     }
 
     res.json(data);
+
   } catch (err) {
     console.error('UPDATE SERVER ERROR:', err);
 
@@ -452,7 +555,14 @@ ASSIGN TICKET
 */
 router.put('/:id/assign', auth, async (req, res) => {
   try {
+
     const { assigned_to } = req.body;
+
+    const { data: existing } = await supabase
+      .from('tickets')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
 
     const { data, error } = await supabase
       .from('tickets')
@@ -470,7 +580,29 @@ router.put('/:id/assign', auth, async (req, res) => {
       });
     }
 
+    /*
+    ============================================
+    ASSIGNMENT NOTIFICATION
+    ============================================
+    */
+    await supabase
+      .from('notifications')
+      .insert({
+        user_name: assigned_to,
+        title: 'Ticket Assigned',
+        message: `${req.user.name} assigned "${existing.title}" to you`,
+        ticket_id: existing.id,
+      });
+
+    const io = req.app.get('io');
+
+    if (io) {
+      io.emit('ticketUpdated', data);
+      io.emit('notificationReceived');
+    }
+
     res.json(data);
+
   } catch (err) {
     console.error(err);
 
@@ -487,6 +619,21 @@ DELETE TICKET
 */
 router.delete('/:id', auth, async (req, res) => {
   try {
+
+    /*
+    ============================================
+    ONLY ADMIN CAN DELETE
+    ============================================
+    */
+    if (
+      req.user.role !== 'Admin' &&
+      req.user.role !== 'Super Admin'
+    ) {
+      return res.status(403).json({
+        message: 'Only admin can delete tickets',
+      });
+    }
+
     const { error } = await supabase
       .from('tickets')
       .delete()
@@ -502,6 +649,7 @@ router.delete('/:id', auth, async (req, res) => {
       success: true,
       message: 'Ticket deleted',
     });
+
   } catch (err) {
     console.error(err);
 
