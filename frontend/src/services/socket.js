@@ -1,20 +1,9 @@
 import { io } from "socket.io-client";
 
-// Get the backend URL from environment, or derive from current window location in production
-const getSocketUrl = () => {
-  if (process.env.REACT_APP_SOCKET_URL) {
-    return process.env.REACT_APP_SOCKET_URL;
-  }
-  // In production (Vercel), use the same host as API but without /api
-  if (process.env.NODE_ENV === 'production') {
-    const apiUrl = process.env.REACT_APP_API_URL || '';
-    // Remove trailing /api to get base URL
-    return apiUrl.replace(/\/api$/, '');
-  }
-  return 'http://localhost:5000';
-};
+// Use the exact Render backend URL – no environment variable needed for now (hardcode to test)
+const SOCKET_URL = "https://ticketing-backend-6azk.onrender.com";
 
-const socket = io(getSocketUrl(), {
+const socket = io(SOCKET_URL, {
   transports: ["websocket"],
   autoConnect: true,
 });
