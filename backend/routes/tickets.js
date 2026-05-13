@@ -390,7 +390,7 @@ router.put('/:id/approve', auth, async (req, res) => {
 
 /*
 =====================================================
-REJECT TICKET
+REJECT TICKET (FIXED)
 =====================================================
 */
 router.put('/:id/reject', auth, async (req, res) => {
@@ -410,15 +410,30 @@ router.put('/:id/reject', auth, async (req, res) => {
       return res.status(404).json({ message: 'Ticket not found' });
     }
 
-    let timeline = ticket.timeline || [];
-    if (!Array.isArray(timeline)) timeline = [];
+    // --- SAFE TIMELINE PARSING ---
+    let timeline = [];
+    if (ticket.timeline) {
+      if (Array.isArray(ticket.timeline)) {
+        timeline = ticket.timeline;
+      } else if (typeof ticket.timeline === 'string') {
+        try {
+          timeline = JSON.parse(ticket.timeline);
+        } catch (e) {
+          console.warn('Failed to parse timeline JSON, starting fresh');
+          timeline = [];
+        }
+      }
+    }
 
     timeline.push({
       type: 'approval',
       action: 'Ticket rejected',
       user: req.user.name,
-      created_at: getISTTime(),
+      created_at: new Date().toISOString(), // ISO format for timestamps
     });
+
+    // Use ISO timestamps for rejected_at
+    const nowISO = new Date().toISOString();
 
     const { data, error: updateError } = await supabase
       .from('tickets')
@@ -427,15 +442,17 @@ router.put('/:id/reject', auth, async (req, res) => {
         approval_required: false,
         approval_status: 'Rejected',
         rejected_by: req.user.name,
-        rejected_at: getISTTime(),
-        timeline,
+        rejected_at: nowISO,
+        updated_at: nowISO,
+        timeline, // Supabase accepts array, will store as JSONB
       })
       .eq('id', req.params.id)
       .select()
       .single();
 
     if (updateError) {
-      return res.status(500).json({ message: 'Reject failed' });
+      console.error('Supabase update error in reject:', updateError);
+      return res.status(500).json({ message: 'Reject failed', error: updateError.message });
     }
 
     const io = req.app.get('io');
@@ -443,11 +460,10 @@ router.put('/:id/reject', auth, async (req, res) => {
 
     res.json(data);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Server error' });
+    console.error('❌ Unhandled error in reject route:', err);
+    res.status(500).json({ message: 'Server error', details: err.message });
   }
 });
-
 /*
 =====================================================
 ASSIGN TICKET
