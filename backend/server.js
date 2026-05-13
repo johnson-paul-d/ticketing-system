@@ -18,11 +18,13 @@ const io = new Server(server, {
   },
 });
 
-// Make io accessible in routes
 app.set('io', io);
 
 app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000' }));
 app.use(express.json());
+
+// Test route to verify backend is alive
+app.get('/api/test', (req, res) => res.json({ message: 'Backend works' }));
 
 // Routes
 app.use('/api/auth', authRoutes);
