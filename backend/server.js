@@ -11,19 +11,44 @@ const notificationRoutes = require('./routes/notifications');
 
 const app = express();
 const server = http.createServer(app);
+
+// Allowed origins – add your Vercel frontend URL
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  'https://mktg-ticketing-system.vercel.app',
+  'http://localhost:3000', // for local dev
+].filter(Boolean);
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // handle preflight
+
+app.use(express.json());
+
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: allowedOrigins,
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
   },
 });
 
 app.set('io', io);
 
-app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000' }));
-app.use(express.json());
-
-// Test route to verify backend is alive
+// Test route
 app.get('/api/test', (req, res) => res.json({ message: 'Backend works' }));
 
 // Routes
