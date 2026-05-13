@@ -229,73 +229,117 @@ router.put('/:id', auth, async (req, res) => {
         created_at: getISTTime(),
       });
     }
+// =====================================================
+// APPROVAL FLOW – FIXED
+// =====================================================
 
-    // =====================================================
-    // APPROVAL FLOW – FIXED
-    // =====================================================
-    // Accept both 'Waiting For Resources' and 'Waiting For Sources'
-    const approvalStatuses = ['Completed', 'Waiting For Resources', 'Waiting For Sources'];
-    if (status && approvalStatuses.includes(status)) {
-      updateData.status = 'Waiting For Approval';
-      updateData.approval_required = true;
-      updateData.approval_status = 'Pending';
-      updateData.approval_requested_by = req.user.name;
-      updateData.approval_requested_status = status; // store original requested status
+const normalizedStatus = status?.trim().toLowerCase();
 
-      timeline.push({
-        type: 'approval',
-        action: `Approval requested for ${status}`,
-        user: req.user.name,
-        comment: comment || '',
-        mentions,
-        created_at: getISTTime(),
-      });
+const approvalStatuses = [
+  'completed',
+  'waiting for resources',
+  'waiting for sources',
+];
 
-      // Notify admin (by username 'Admin')
-      await supabase.from('notifications').insert({
-        user_name: 'Admin',
-        title: 'Approval Required',
-        message: `${req.user.name} requested approval for "${existing.title}"`,
-        ticket_id: existing.id,
-      });
+if (normalizedStatus && approvalStatuses.includes(normalizedStatus)) {
 
-      // Send email to admin
-      const adminEmail = process.env.ADMIN_EMAIL;
-      if (adminEmail) {
-        await sendApprovalEmail(adminEmail, existing.title, req.user.name, existing.id);
-      } else {
-        console.warn('⚠️ ADMIN_EMAIL not set – email not sent');
-      }
+  updateData.status = 'Waiting For Approval';
+  updateData.approval_required = true;
+  updateData.approval_status = 'Pending';
+  updateData.approval_requested_by = req.user.name;
 
-      const io = req.app.get('io');
-      if (io) io.emit('notificationReceived');
-    } else if (status !== undefined) {
-      // Normal status update (no approval)
-      updateData.status = status;
-    }
-
-    // Perform update
-    const { data, error } = await supabase
-      .from('tickets')
-      .update(updateData)
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) {
-      console.error(error);
-      return res.status(500).json({ message: 'Update failed', error: error.message });
-    }
-
-    const io = req.app.get('io');
-    if (io) io.emit('ticketUpdated', data);
-
-    res.json(data);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Server error' });
+  // Preserve proper final status
+  if (normalizedStatus === 'completed') {
+    updateData.approval_requested_status = 'Completed';
+  } else if (
+    normalizedStatus === 'waiting for resources' ||
+    normalizedStatus === 'waiting for sources'
+  ) {
+    updateData.approval_requested_status = 'Waiting For Resources';
   }
-});
+
+  timeline.push({
+    type: 'approval',
+    action: `Approval requested for ${status}`,
+    user: req.user.name,
+    comment: comment || '',
+    mentions,
+    created_at: getISTTime(),
+  });
+
+  // Admin notification
+  await supabase.from('notifications').insert({
+    user_name: 'Admin',
+    title: 'Approval Required',
+    message: `${req.user.name} requested approval for "${existing.title}"`,
+    ticket_id: existing.id,
+  });
+
+  // =====================================================
+  // SEND EMAIL
+  // =====================================================
+
+  try {
+    const adminEmail = process.env.ADMIN_EMAIL;
+
+    if (!adminEmail) {
+      console.log('❌ ADMIN_EMAIL missing in env');
+    } else {
+
+      console.log('📧 Sending approval email to:', adminEmail);
+
+      const emailResponse = await resend.emails.send({
+        from: process.env.FROM_EMAIL,
+        to: adminEmail,
+        subject: `Approval Required - ${existing.title}`,
+        html: `
+          <div style="font-family:Arial;padding:20px">
+            <h2>Approval Required</h2>
+
+            <p>
+              <strong>${req.user.name}</strong>
+              requested approval for ticket:
+            </p>
+
+            <p><strong>${existing.title}</strong></p>
+
+            <p>
+              Requested Status:
+              <strong>${status}</strong>
+            </p>
+
+            <a
+              href="${process.env.FRONTEND_URL}/tickets/${existing.id}"
+              style="
+                background:black;
+                color:white;
+                padding:12px 18px;
+                text-decoration:none;
+                border-radius:6px;
+                display:inline-block;
+                margin-top:10px;
+              "
+            >
+              Open Ticket
+            </a>
+          </div>
+        `,
+      });
+
+      console.log('✅ Email sent:', emailResponse);
+    }
+
+  } catch (emailError) {
+    console.error('❌ RESEND EMAIL ERROR:', emailError);
+  }
+
+  const io = req.app.get('io');
+  if (io) io.emit('notificationReceived');
+
+} else if (status !== undefined) {
+
+  updateData.status = status;
+}
 
 // =====================================================
 // APPROVE TICKET (admin only)
