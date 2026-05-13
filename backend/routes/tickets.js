@@ -6,14 +6,24 @@ const auth = require('../middleware/auth');
 const getISTTime = require('../utils/time');
 
 const { Resend } = require('resend');
+
+// Validate critical env vars at startup
+if (!process.env.RESEND_API_KEY) console.error('❌ RESEND_API_KEY is missing');
+if (!process.env.FROM_EMAIL) console.error('❌ FROM_EMAIL is missing');
+if (!process.env.ADMIN_EMAIL) console.error('❌ ADMIN_EMAIL is missing – approval emails will not be sent');
+
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// =====================================================
-// HELPER – SEND APPROVAL EMAIL
-// =====================================================
+/*
+=====================================================
+HELPER - SEND APPROVAL EMAIL (with detailed logging)
+=====================================================
+*/
 const sendApprovalEmail = async (to, ticketTitle, requesterName, ticketId) => {
+  console.log(`📧 Attempting to send approval email to ${to} for ticket "${ticketTitle}"`);
+
   try {
-    await resend.emails.send({
+    const result = await resend.emails.send({
       from: process.env.FROM_EMAIL,
       to,
       subject: `Approval Required: ${ticketTitle}`,
@@ -29,21 +39,27 @@ const sendApprovalEmail = async (to, ticketTitle, requesterName, ticketId) => {
         </div>
       `,
     });
-    console.log(`✅ Approval email sent to ${to}`);
+
+    console.log('✅ Approval email sent successfully', result);
+    return true;
   } catch (err) {
-    console.error('❌ EMAIL ERROR:', err);
-    // Don't throw – email failure shouldn't break the update, but log it
+    console.error('❌ EMAIL ERROR (Resend):', err.message || err);
+    if (err.response) console.error('Resend response details:', err.response);
+    // Do not throw – email failure should not block the update
+    return false;
   }
 };
 
-// =====================================================
-// GET ALL TICKETS (filtered by role)
-// =====================================================
+/*
+=====================================================
+GET ALL TICKETS
+=====================================================
+*/
 router.get('/', auth, async (req, res) => {
   try {
     let query = supabase.from('tickets').select('*');
 
-    // Non‑admins see only their assigned tickets
+    // Non‑admins see only tickets assigned to them
     if (req.user.role !== 'Admin' && req.user.role !== 'Super Admin') {
       query = query.eq('assigned_to', req.user.id);
     }
@@ -62,9 +78,11 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
-// =====================================================
-// GET SINGLE TICKET (with access control)
-// =====================================================
+/*
+=====================================================
+GET SINGLE TICKET
+=====================================================
+*/
 router.get('/:id', auth, async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -77,7 +95,7 @@ router.get('/:id', auth, async (req, res) => {
       return res.status(404).json({ message: 'Ticket not found' });
     }
 
-    // Non‑admins can only view their own tickets
+    // Normal users can only view their own tickets
     if (req.user.role !== 'Admin' && req.user.role !== 'Super Admin') {
       if (data.assigned_to !== req.user.id) {
         return res.status(403).json({ message: 'Access denied' });
@@ -91,9 +109,11 @@ router.get('/:id', auth, async (req, res) => {
   }
 });
 
-// =====================================================
-// CREATE TICKET
-// =====================================================
+/*
+=====================================================
+CREATE TICKET
+=====================================================
+*/
 router.post('/', auth, async (req, res) => {
   try {
     const { title, description, priority, category, assigned_to, due_date } = req.body;
@@ -114,12 +134,14 @@ router.post('/', auth, async (req, res) => {
       created_at: getISTTime(),
       updated_at: getISTTime(),
       tagged_users: [],
-      timeline: [{
-        type: 'created',
-        action: 'Ticket created',
-        user: req.user.name,
-        created_at: getISTTime(),
-      }],
+      timeline: [
+        {
+          type: 'created',
+          action: 'Ticket created',
+          user: req.user.name,
+          created_at: getISTTime(),
+        },
+      ],
     };
 
     const { data, error } = await supabase
@@ -156,15 +178,18 @@ router.post('/', auth, async (req, res) => {
   }
 });
 
-// =====================================================
-// UPDATE TICKET (includes approval flow)
-// =====================================================
+/*
+=====================================================
+UPDATE TICKET (improved approval flow)
+=====================================================
+*/
 router.put('/:id', auth, async (req, res) => {
   try {
     const { id } = req.params;
     const { title, description, priority, status, category, due_date, comment } = req.body;
 
-    // Fetch existing ticket
+    console.log(`🔍 Update ticket ${id} - received status: "${status}"`);
+
     const { data: existing, error: fetchError } = await supabase
       .from('tickets')
       .select('*')
@@ -175,16 +200,16 @@ router.put('/:id', auth, async (req, res) => {
       return res.status(404).json({ message: 'Ticket not found' });
     }
 
-    // Access control: non‑admins can only update their own tickets
+    // Access control
     if (req.user.role !== 'Admin' && req.user.role !== 'Super Admin') {
       if (existing.assigned_to !== req.user.id) {
         return res.status(403).json({ message: 'Access denied' });
       }
     }
 
-    // Handle mentions
+    // Mentions logic
     const mentions = comment?.match(/@\w+/g) || [];
-    const taggedUsers = mentions.map(m => m.replace('@', ''));
+    const taggedUsers = mentions.map((m) => m.replace('@', ''));
 
     for (const username of taggedUsers) {
       await supabase.from('notifications').insert({
@@ -195,7 +220,10 @@ router.put('/:id', auth, async (req, res) => {
       });
     }
 
-    // Prepare timeline
+    const io = req.app.get('io');
+    if (io) io.emit('notificationReceived');
+
+    // Timeline handling
     let timeline = Array.isArray(existing.timeline) ? existing.timeline : [];
     if (comment) {
       timeline.push({
@@ -229,123 +257,84 @@ router.put('/:id', auth, async (req, res) => {
         created_at: getISTTime(),
       });
     }
-// =====================================================
-// APPROVAL FLOW – FIXED
-// =====================================================
 
-const normalizedStatus = status?.trim().toLowerCase();
+    // =====================================================
+    // APPROVAL FLOW – supports both spellings
+    // =====================================================
+    const approvalTriggers = ['Completed', 'Waiting For Sources', 'Waiting For Resources'];
+    if (status && approvalTriggers.includes(status)) {
+      console.log(`✉️ Approval triggered for status: ${status}`);
 
-const approvalStatuses = [
-  'completed',
-  'waiting for resources',
-  'waiting for sources',
-];
+      updateData.status = 'Waiting For Approval';
+      updateData.approval_required = true;
+      updateData.approval_status = 'Pending';
+      updateData.approval_requested_by = req.user.name;
+      updateData.approval_requested_status = status; // remember original requested status
 
-if (normalizedStatus && approvalStatuses.includes(normalizedStatus)) {
-
-  updateData.status = 'Waiting For Approval';
-  updateData.approval_required = true;
-  updateData.approval_status = 'Pending';
-  updateData.approval_requested_by = req.user.name;
-
-  // Preserve proper final status
-  if (normalizedStatus === 'completed') {
-    updateData.approval_requested_status = 'Completed';
-  } else if (
-    normalizedStatus === 'waiting for resources' ||
-    normalizedStatus === 'waiting for sources'
-  ) {
-    updateData.approval_requested_status = 'Waiting For Resources';
-  }
-
-  timeline.push({
-    type: 'approval',
-    action: `Approval requested for ${status}`,
-    user: req.user.name,
-    comment: comment || '',
-    mentions,
-    created_at: getISTTime(),
-  });
-
-  // Admin notification
-  await supabase.from('notifications').insert({
-    user_name: 'Admin',
-    title: 'Approval Required',
-    message: `${req.user.name} requested approval for "${existing.title}"`,
-    ticket_id: existing.id,
-  });
-
-  // =====================================================
-  // SEND EMAIL
-  // =====================================================
-
-  try {
-    const adminEmail = process.env.ADMIN_EMAIL;
-
-    if (!adminEmail) {
-      console.log('❌ ADMIN_EMAIL missing in env');
-    } else {
-
-      console.log('📧 Sending approval email to:', adminEmail);
-
-      const emailResponse = await resend.emails.send({
-        from: process.env.FROM_EMAIL,
-        to: adminEmail,
-        subject: `Approval Required - ${existing.title}`,
-        html: `
-          <div style="font-family:Arial;padding:20px">
-            <h2>Approval Required</h2>
-
-            <p>
-              <strong>${req.user.name}</strong>
-              requested approval for ticket:
-            </p>
-
-            <p><strong>${existing.title}</strong></p>
-
-            <p>
-              Requested Status:
-              <strong>${status}</strong>
-            </p>
-
-            <a
-              href="${process.env.FRONTEND_URL}/tickets/${existing.id}"
-              style="
-                background:black;
-                color:white;
-                padding:12px 18px;
-                text-decoration:none;
-                border-radius:6px;
-                display:inline-block;
-                margin-top:10px;
-              "
-            >
-              Open Ticket
-            </a>
-          </div>
-        `,
+      timeline.push({
+        type: 'approval',
+        action: `Approval requested for ${status}`,
+        user: req.user.name,
+        comment: comment || '',
+        mentions,
+        created_at: getISTTime(),
       });
 
-      console.log('✅ Email sent:', emailResponse);
+      // Insert admin notification (ensure a user with name 'Admin' exists)
+      await supabase.from('notifications').insert({
+        user_name: 'Admin',
+        title: 'Approval Required',
+        message: `${req.user.name} requested approval for "${existing.title}"`,
+        ticket_id: existing.id,
+      });
+
+      // Send email to admin
+      const adminEmail = process.env.ADMIN_EMAIL;
+      if (adminEmail) {
+        const emailSent = await sendApprovalEmail(adminEmail, existing.title, req.user.name, existing.id);
+        if (!emailSent) {
+          console.warn('⚠️ Approval email failed – check Resend configuration and environment variables');
+        }
+      } else {
+        console.error('❌ ADMIN_EMAIL not set – cannot send approval email');
+      }
+
+      if (io) io.emit('notificationReceived');
+    } else if (status !== undefined) {
+      // Normal status update (no approval)
+      updateData.status = status;
     }
 
-  } catch (emailError) {
-    console.error('❌ RESEND EMAIL ERROR:', emailError);
+    // Perform the update
+    const { data, error } = await supabase
+      .from('tickets')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Database update error:', error);
+      return res.status(500).json({ message: 'Update failed', error: error.message });
+    }
+
+    if (io) io.emit('ticketUpdated', data);
+
+    res.json(data);
+  } catch (err) {
+    console.error('Server error in PUT /tickets/:id', err);
+    res.status(500).json({ message: 'Server error' });
   }
+});
 
-  const io = req.app.get('io');
-  if (io) io.emit('notificationReceived');
-
-} else if (status !== undefined) {
-
-  updateData.status = status;
-}
-
-// =====================================================
-// APPROVE TICKET (admin only)
-// =====================================================
+/*
+=====================================================
+APPROVE TICKET
+=====================================================
+*/
 router.put('/:id/approve', auth, async (req, res) => {
   try {
+    // Only admins can approve
     if (req.user.role !== 'Admin' && req.user.role !== 'Super Admin') {
       return res.status(403).json({ message: 'Only admin can approve' });
     }
@@ -360,7 +349,9 @@ router.put('/:id/approve', auth, async (req, res) => {
       return res.status(404).json({ message: 'Ticket not found' });
     }
 
-    let timeline = Array.isArray(ticket.timeline) ? ticket.timeline : [];
+    let timeline = ticket.timeline || [];
+    if (!Array.isArray(timeline)) timeline = [];
+
     timeline.push({
       type: 'approval',
       action: 'Ticket approved',
@@ -397,11 +388,14 @@ router.put('/:id/approve', auth, async (req, res) => {
   }
 });
 
-// =====================================================
-// REJECT TICKET (admin only)
-// =====================================================
+/*
+=====================================================
+REJECT TICKET
+=====================================================
+*/
 router.put('/:id/reject', auth, async (req, res) => {
   try {
+    // Only admins can reject
     if (req.user.role !== 'Admin' && req.user.role !== 'Super Admin') {
       return res.status(403).json({ message: 'Only admin can reject' });
     }
@@ -416,7 +410,9 @@ router.put('/:id/reject', auth, async (req, res) => {
       return res.status(404).json({ message: 'Ticket not found' });
     }
 
-    let timeline = Array.isArray(ticket.timeline) ? ticket.timeline : [];
+    let timeline = ticket.timeline || [];
+    if (!Array.isArray(timeline)) timeline = [];
+
     timeline.push({
       type: 'approval',
       action: 'Ticket rejected',
@@ -452,9 +448,11 @@ router.put('/:id/reject', auth, async (req, res) => {
   }
 });
 
-// =====================================================
-// ASSIGN TICKET
-// =====================================================
+/*
+=====================================================
+ASSIGN TICKET
+=====================================================
+*/
 router.put('/:id/assign', auth, async (req, res) => {
   try {
     const { assigned_to } = req.body;
@@ -467,7 +465,10 @@ router.put('/:id/assign', auth, async (req, res) => {
 
     const { data, error } = await supabase
       .from('tickets')
-      .update({ assigned_to, updated_at: getISTTime() })
+      .update({
+        assigned_to,
+        updated_at: getISTTime(),
+      })
       .eq('id', req.params.id)
       .select()
       .single();
@@ -496,9 +497,11 @@ router.put('/:id/assign', auth, async (req, res) => {
   }
 });
 
-// =====================================================
-// DELETE TICKET (admin only)
-// =====================================================
+/*
+=====================================================
+DELETE TICKET
+=====================================================
+*/
 router.delete('/:id', auth, async (req, res) => {
   try {
     if (req.user.role !== 'Admin' && req.user.role !== 'Super Admin') {
