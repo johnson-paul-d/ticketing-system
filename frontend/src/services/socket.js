@@ -1,9 +1,9 @@
 import { io } from "socket.io-client";
 
-// Use the exact Render backend URL – no environment variable needed for now (hardcode to test)
-const SOCKET_URL = "https://ticketing-backend-6azk.onrender.com";
+const socketUrl = process.env.REACT_APP_SOCKET_URL || 
+  (process.env.NODE_ENV === 'production' ? window.location.origin : 'http://localhost:5000');
 
-const socket = io(SOCKET_URL, {
+const socket = io(socketUrl, {
   transports: ["websocket"],
   autoConnect: true,
 });
