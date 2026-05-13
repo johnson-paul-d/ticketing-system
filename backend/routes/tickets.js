@@ -348,11 +348,12 @@ updateData.due_date = new Date(due_date)
     APPROVAL FLOW
     ============================================
     */
-    if (
-      status === 'Completed' ||
-      status === 'Waiting For Sources'
+if (
+  status === 'Completed' ||
+  status === 'Waiting For Sources' ||
+  status === 'Waiting For Approval'
     ) {
-      updateData.status = 'Pending Approval';
+updateData.status = status;
 
       updateData.approval_required = true;
 
