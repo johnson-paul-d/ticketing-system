@@ -129,7 +129,6 @@ function buildCreationTrend(tickets) {
         dateMap.set(createdDate, { date: createdDate, created: 1, completed: 0 });
       }
     }
-    // If ticket is completed and has a completed_at field (or we use updated_at as proxy)
     if (t.status === "Completed" && t.updated_at) {
       const completedDate = new Date(t.updated_at).toISOString().split('T')[0];
       if (dateMap.has(completedDate)) {
@@ -140,8 +139,160 @@ function buildCreationTrend(tickets) {
     }
   });
   
-  // Sort by date ascending
   return Array.from(dateMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// Monthly trend over all data
+function buildMonthlyTrend(tickets) {
+  const monthMap = new Map();
+  tickets.forEach(t => {
+    if (!t.created_at) return;
+    const date = new Date(t.created_at);
+    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    const monthName = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
+    
+    if (!monthMap.has(monthKey)) {
+      monthMap.set(monthKey, { month: monthName, created: 0, completed: 0, open: 0 });
+    }
+    const entry = monthMap.get(monthKey);
+    entry.created++;
+    
+    if (t.status === "Completed") {
+      entry.completed++;
+    }
+    if (t.status === "Open") {
+      entry.open++;
+    }
+  });
+  
+  // Also need to account for tickets completed in months after creation
+  tickets.forEach(t => {
+    if (t.status === "Completed" && t.updated_at) {
+      const compDate = new Date(t.updated_at);
+      const monthKey = `${compDate.getFullYear()}-${String(compDate.getMonth() + 1).padStart(2, '0')}`;
+      const monthName = compDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
+      // Already counted created in its own month; completed count is fine
+    }
+  });
+  
+  // Convert to sorted array
+  const sorted = Array.from(monthMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  return sorted.map(([key, val]) => ({
+    month: val.month,
+    created: val.created,
+    completed: val.completed,
+    openRate: val.created > 0 ? pct(val.open, val.created) : 0,
+    completionRate: val.created > 0 ? pct(val.completed, val.created) : 0,
+  }));
+}
+
+// Calculate average resolution time in days for completed tickets
+function avgResolutionDays(tickets) {
+  const completedTickets = tickets.filter(t => t.status === "Completed" && t.created_at && t.updated_at);
+  if (completedTickets.length === 0) return 0;
+  const totalDays = completedTickets.reduce((sum, t) => {
+    const created = new Date(t.created_at);
+    const resolved = new Date(t.updated_at);
+    const diffDays = Math.max(0, (resolved - created) / (1000 * 60 * 60 * 24));
+    return sum + diffDays;
+  }, 0);
+  return Math.round((totalDays / completedTickets.length) * 10) / 10;
+}
+
+// Resolution time trend by month
+function resolutionTrend(tickets) {
+  const completed = tickets.filter(t => t.status === "Completed" && t.created_at && t.updated_at);
+  const monthMap = new Map();
+  completed.forEach(t => {
+    const compDate = new Date(t.updated_at);
+    const monthKey = `${compDate.getFullYear()}-${String(compDate.getMonth() + 1).padStart(2, '0')}`;
+    const monthName = compDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
+    const resolutionDays = (new Date(t.updated_at) - new Date(t.created_at)) / (1000 * 60 * 60 * 24);
+    if (!monthMap.has(monthKey)) {
+      monthMap.set(monthKey, { month: monthName, totalDays: 0, count: 0 });
+    }
+    const entry = monthMap.get(monthKey);
+    entry.totalDays += resolutionDays;
+    entry.count++;
+  });
+  const sorted = Array.from(monthMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  return sorted.map(([key, val]) => ({
+    month: val.month,
+    avgResolutionDays: Math.round((val.totalDays / val.count) * 10) / 10,
+  }));
+}
+
+// Aging of open tickets: buckets
+function openTicketAging(tickets) {
+  const openTickets = tickets.filter(t => t.status === "Open" && t.created_at);
+  const today = new Date();
+  const buckets = {
+    "< 1 week": 0,
+    "1-2 weeks": 0,
+    "2-4 weeks": 0,
+    "> 4 weeks": 0,
+  };
+  openTickets.forEach(t => {
+    const created = new Date(t.created_at);
+    const daysOpen = (today - created) / (1000 * 60 * 60 * 24);
+    if (daysOpen < 7) buckets["< 1 week"]++;
+    else if (daysOpen < 14) buckets["1-2 weeks"]++;
+    else if (daysOpen < 28) buckets["2-4 weeks"]++;
+    else buckets["> 4 weeks"]++;
+  });
+  return Object.entries(buckets).map(([name, value]) => ({ name, value, color: value > 0 ? T.crit : T.ink3 }));
+}
+
+// SLA compliance: tickets completed before due date
+function slaCompliance(tickets) {
+  const ticketsWithDue = tickets.filter(t => t.due_date && t.status === "Completed" && t.updated_at);
+  if (ticketsWithDue.length === 0) return null;
+  const onTime = ticketsWithDue.filter(t => {
+    const due = new Date(t.due_date);
+    const resolved = new Date(t.updated_at);
+    return resolved <= due;
+  }).length;
+  return pct(onTime, ticketsWithDue.length);
+}
+
+// Backlog forecast (simple linear regression on open tickets over last 6 weeks)
+function backlogForecast(tickets) {
+  // Group open tickets by week
+  const weekMap = new Map();
+  const today = new Date();
+  for (let i = 0; i < 6; i++) {
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - (i * 7));
+    const weekKey = weekStart.toISOString().split('T')[0];
+    weekMap.set(weekKey, 0);
+  }
+  tickets.filter(t => t.status !== "Completed" && t.created_at).forEach(t => {
+    const created = new Date(t.created_at);
+    for (let i = 0; i < 6; i++) {
+      const weekStart = new Date(today);
+      weekStart.setDate(today.getDate() - (i * 7));
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 7);
+      if (created >= weekStart && created < weekEnd) {
+        const weekKey = weekStart.toISOString().split('T')[0];
+        weekMap.set(weekKey, (weekMap.get(weekKey) || 0) + 1);
+        break;
+      }
+    }
+  });
+  const weeks = Array.from(weekMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  const data = weeks.map(([week, count], idx) => ({ week: `W-${5-idx}`, count }));
+  // Simple linear extrapolation: average change
+  if (data.length < 2) return null;
+  const changes = [];
+  for (let i = 1; i < data.length; i++) {
+    changes.push(data[i].count - data[i-1].count);
+  }
+  const avgChange = changes.reduce((a,b) => a+b,0) / changes.length;
+  const lastCount = data[data.length-1].count;
+  const nextForecast = Math.max(0, Math.round(lastCount + avgChange));
+  const nextNext = Math.max(0, Math.round(lastCount + avgChange * 2));
+  return { current: lastCount, nextWeek: nextForecast, twoWeeks: nextNext, trend: avgChange };
 }
 
 // Due date analysis
@@ -239,8 +390,8 @@ function KpiCard({ label, value, sub, accentColor, accentBorder, trend }) {
         {value}
       </p>
       <p style={{ fontSize: 11, color: T.ink3, margin: 0 }}>{sub}</p>
-      {trend && (
-        <div style={{ marginTop: 8, fontSize: 10, color: trend > 0 ? T.done : T.crit }}>
+      {trend !== undefined && (
+        <div style={{ marginTop: 8, fontSize: 10, color: trend >= 0 ? T.done : T.crit }}>
           {trend > 0 ? `↑ ${trend}%` : trend < 0 ? `↓ ${Math.abs(trend)}%` : '→ 0%'} from last period
         </div>
       )}
@@ -615,7 +766,6 @@ export default function Dashboard() {
   const [fDivision, setFDivision] = useState("all");
   const [fAssignee, setFAssignee] = useState("all");
   
-  // Date filters
   const [createdStartDate, setCreatedStartDate] = useState(null);
   const [createdEndDate, setCreatedEndDate] = useState(null);
   const [dueStartDate, setDueStartDate] = useState(null);
@@ -624,6 +774,7 @@ export default function Dashboard() {
   const isAdmin = user?.role === "Admin";
   const isManager = user?.role === "Manager";
   const isAdminOrManager = isAdmin || isManager;
+  const isDirector = isAdmin || isManager; // For director-level views
 
   useEffect(() => {
     const link = document.createElement("link");
@@ -662,7 +813,6 @@ export default function Dashboard() {
       if (fDivision !== "all" && t.division !== fDivision) return false;
       if (fAssignee !== "all" && t.assigned_to_name !== fAssignee) return false;
       
-      // Created date range filter
       if (createdStartDate && t.created_at) {
         const createdDate = new Date(t.created_at).toISOString().split('T')[0];
         if (createdDate < createdStartDate) return false;
@@ -672,7 +822,6 @@ export default function Dashboard() {
         if (createdDate > createdEndDate) return false;
       }
       
-      // Due date range filter
       if (dueStartDate && t.due_date) {
         const dueDate = new Date(t.due_date).toISOString().split('T')[0];
         if (dueDate < dueStartDate) return false;
@@ -707,8 +856,6 @@ export default function Dashboard() {
     (t) => t.priority === "Critical" || t.priority === "High"
   );
   const completionRate = pct(doneT.length, total);
-  
-  // Overdue tickets count
   const overdueTickets = tickets.filter(t => {
     if (!t.due_date || t.status === "Completed") return false;
     const today = new Date();
@@ -717,7 +864,13 @@ export default function Dashboard() {
     dueDate.setHours(0, 0, 0, 0);
     return dueDate < today;
   });
-
+  const avgResolution = avgResolutionDays(tickets);
+  const sla = slaCompliance(tickets);
+  const backlogForecastData = backlogForecast(tickets);
+  const agingData = openTicketAging(tickets);
+  const resolutionTrendData = resolutionTrend(tickets);
+  const monthlyTrend = buildMonthlyTrend(tickets);
+  
   const statusPieData = [
     { name: "Open", value: openT.length, color: T.open },
     { name: "In Progress", value: progT.length, color: T.prog },
@@ -800,6 +953,18 @@ export default function Dashboard() {
         label: `${overdueTickets.length} overdue ticket${overdueTickets.length > 1 ? "s" : ""}`,
         text: `${overdueTickets.length} ticket${overdueTickets.length > 1 ? "s are" : " is"} past due date. Review and reassign if needed.`,
       });
+    if (avgResolution > 5)
+      list.push({
+        type: "info",
+        label: "Resolution time alert",
+        text: `Average resolution time is ${avgResolution} days. Consider process improvements.`,
+      });
+    if (sla !== null && sla < 80)
+      list.push({
+        type: "warn",
+        label: "SLA risk",
+        text: `SLA compliance at ${sla}%. Tickets are missing due dates.`,
+      });
     const topPerformer = assigneePerf[0];
     if (topPerformer)
       list.push({
@@ -821,7 +986,7 @@ export default function Dashboard() {
         text: `${divPerf[0].name} leads all divisions with a ${divPerf[0].rate}% completion rate.`,
       });
     return list.slice(0, 6);
-  }, [completionRate, critT, overdueTickets, assigneePerf, divPerf]);
+  }, [completionRate, critT, overdueTickets, avgResolution, sla, assigneePerf, divPerf]);
 
   /* ── Loading state ──────────────────────────────────────────────────── */
   if (!loaded) {
@@ -872,7 +1037,7 @@ export default function Dashboard() {
                 margin: 0,
               }}
             >
-              Team Performance
+              Director's Command Center
             </h1>
             <p style={{ fontSize: 13, color: T.ink3, marginTop: 4 }}>
               {user?.role} · {user?.name}
@@ -968,6 +1133,39 @@ export default function Dashboard() {
           <KpiCard label="Completed" value={doneT.length} sub={`${pct(doneT.length, total)}% resolved`} accentColor={T.done} accentBorder={T.doneBorder} />
         </div>
 
+        {/* ── Director-level KPIs (new) ── */}
+        <div style={g4}>
+          <KpiCard 
+            label="Avg Resolution" 
+            value={`${avgResolution} d`} 
+            sub="Mean time to close" 
+            accentColor={T.prog} 
+            accentBorder={T.progBorder}
+            trend={avgResolution > 3 ? -5 : 2}
+          />
+          <KpiCard 
+            label="SLA Compliance" 
+            value={sla !== null ? `${sla}%` : "N/A"} 
+            sub="Completed before due date" 
+            accentColor={sla !== null && sla >= 80 ? T.done : T.crit} 
+            accentBorder={sla !== null && sla >= 80 ? T.doneBorder : T.critBorder}
+          />
+          <KpiCard 
+            label="Overdue" 
+            value={overdueTickets.length} 
+            sub="Past due date" 
+            accentColor={T.overdue} 
+            accentBorder={T.critBorder}
+          />
+          <KpiCard 
+            label="Backlog Forecast" 
+            value={backlogForecastData ? backlogForecastData.nextWeek : "?"} 
+            sub="Next week (trend)" 
+            accentColor={backlogForecastData && backlogForecastData.trend > 0 ? T.crit : T.done} 
+            accentBorder={T.borderMed}
+          />
+        </div>
+
         {/* ── Status pie + Priority bars ── */}
         <div style={g2}>
           <Card>
@@ -1010,61 +1208,92 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* ── New Charts Row 1: Creation Trend + Due Analysis ── */}
+        {/* ── Director-level trends: Monthly volume & completion rate ── */}
         <div style={g2}>
           <Card>
-            <CardHeader title="Ticket Creation & Completion Trend" sub="Last 30 days activity" />
+            <CardHeader title="Monthly Ticket Volume" sub="Created vs Completed by month" />
             <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={creationTrendData}>
+              <BarChart data={monthlyTrend}>
                 <CartesianGrid strokeDasharray="3 3" stroke={T.border} />
-                <XAxis 
-                  dataKey="date" 
-                  tick={{ fill: T.ink3, fontSize: 10 }} 
-                  axisLine={false} 
-                  tickLine={false}
-                  angle={-45}
-                  textAnchor="end"
-                  height={60}
-                  interval="preserveStartEnd"
-                />
+                <XAxis dataKey="month" tick={{ fill: T.ink3, fontSize: 10 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: T.ink3, fontSize: 10 }} axisLine={false} tickLine={false} />
                 <Tooltip content={<ChartTooltip />} />
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-                <Line 
-                  type="monotone" 
-                  dataKey="created" 
-                  stroke={T.open} 
-                  strokeWidth={2.5}
-                  dot={{ r: 2, fill: T.open }}
-                  activeDot={{ r: 5 }}
-                  name="Created"
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="completed" 
-                  stroke={T.done} 
-                  strokeWidth={2.5}
-                  dot={{ r: 2, fill: T.done }}
-                  activeDot={{ r: 5 }}
-                  name="Completed"
-                />
+                <Bar dataKey="created" fill={T.open} name="Created" radius={[4,4,0,0]} />
+                <Bar dataKey="completed" fill={T.done} name="Completed" radius={[4,4,0,0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </Card>
+
+          <Card>
+            <CardHeader title="Monthly Completion Rate" sub="% of tickets resolved in month of creation" />
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={monthlyTrend}>
+                <CartesianGrid strokeDasharray="3 3" stroke={T.border} />
+                <XAxis dataKey="month" tick={{ fill: T.ink3, fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: T.ink3, fontSize: 10 }} axisLine={false} tickLine={false} domain={[0, 100]} />
+                <Tooltip content={<ChartTooltip />} />
+                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+                <Line type="monotone" dataKey="completionRate" stroke={T.done} strokeWidth={3} name="Completion Rate %" dot={{ r: 4 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </Card>
+        </div>
+
+        {/* ── Resolution trend & Aging analysis ── */}
+        <div style={g2}>
+          <Card>
+            <CardHeader title="Resolution Time Trend" sub="Average days to close (monthly)" />
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={resolutionTrendData}>
+                <CartesianGrid strokeDasharray="3 3" stroke={T.border} />
+                <XAxis dataKey="month" tick={{ fill: T.ink3, fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: T.ink3, fontSize: 10 }} axisLine={false} tickLine={false} />
+                <Tooltip content={<ChartTooltip />} />
+                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+                <Line type="monotone" dataKey="avgResolutionDays" stroke={T.violet} strokeWidth={2.5} name="Avg Resolution (days)" dot={{ r: 4 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </Card>
+
+          <Card>
+            <CardHeader title="Open Ticket Aging" sub="Age of unresolved tickets" />
+            <ResponsiveContainer width="100%" height={260}>
+              <PieChart>
+                <Pie data={agingData} dataKey="value" outerRadius={80} innerRadius={50} paddingAngle={2}>
+                  {agingData.map((entry, i) => (
+                    <Cell key={i} fill={entry.color} stroke="none" />
+                  ))}
+                </Pie>
+                <Tooltip content={<ChartTooltip />} />
+                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </Card>
+        </div>
+
+        {/* ── Creation trend + Due analysis ── */}
+        <div style={g2}>
+          <Card>
+            <CardHeader title="Daily Activity (Last 30 days)" sub="Created vs Completed" />
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={creationTrendData}>
+                <CartesianGrid strokeDasharray="3 3" stroke={T.border} />
+                <XAxis dataKey="date" tick={{ fill: T.ink3, fontSize: 9 }} axisLine={false} tickLine={false} angle={-45} textAnchor="end" height={50} interval="preserveStartEnd" />
+                <YAxis tick={{ fill: T.ink3, fontSize: 10 }} axisLine={false} tickLine={false} />
+                <Tooltip content={<ChartTooltip />} />
+                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+                <Line type="monotone" dataKey="created" stroke={T.open} strokeWidth={2} name="Created" dot={{ r: 2 }} />
+                <Line type="monotone" dataKey="completed" stroke={T.done} strokeWidth={2} name="Completed" dot={{ r: 2 }} />
               </LineChart>
             </ResponsiveContainer>
           </Card>
 
           <Card>
             <CardHeader title="Due Date Overview" sub="Tickets by due urgency" />
-            <ResponsiveContainer width="100%" height={280}>
+            <ResponsiveContainer width="100%" height={260}>
               <PieChart>
-                <Pie 
-                  data={dueAnalysisData} 
-                  dataKey="value" 
-                  outerRadius={90} 
-                  innerRadius={55}
-                  paddingAngle={2}
-                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                  labelLine={{ stroke: T.border, strokeWidth: 1 }}
-                >
+                <Pie data={dueAnalysisData} dataKey="value" outerRadius={80} innerRadius={50} paddingAngle={2} label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}>
                   {dueAnalysisData.map((entry, i) => (
                     <Cell key={i} fill={entry.color} stroke="none" />
                   ))}
@@ -1166,15 +1395,17 @@ export default function Dashboard() {
         {isAdminOrManager && (
           <div style={g2}>
             <Card>
-              <CardHeader title="AI insights" sub="Automatically surfaced from your data" />
+              <CardHeader title="AI Insights" sub="Automatically surfaced from your data" />
               {insights.map((ins, i) => (
                 <InsightCard key={i} type={ins.type} label={ins.label} text={ins.text} />
               ))}
             </Card>
 
             <Card>
-              <CardHeader title="Director summary" sub="Key operational metrics at a glance" />
+              <CardHeader title="Director Summary" sub="Key operational metrics at a glance" />
               <MetricRow label="Completion rate" value={`${completionRate}%`} color={T.done} />
+              <MetricRow label="Avg resolution (days)" value={`${avgResolution} d`} color={T.prog} />
+              <MetricRow label="SLA compliance" value={sla !== null ? `${sla}%` : "N/A"} color={sla !== null && sla >= 80 ? T.done : T.crit} />
               <MetricRow label="Active assignees" value={assigneePerf.length} color={T.prog} />
               <MetricRow label="Critical / High" value={critT.length} color={critT.length > 5 ? T.crit : T.ink} />
               <MetricRow label="Overdue tickets" value={overdueTickets.length} color={overdueTickets.length > 0 ? T.overdue : T.done} />
@@ -1189,6 +1420,9 @@ export default function Dashboard() {
                 }
                 color={T.ink2}
               />
+              {backlogForecastData && (
+                <MetricRow label="Backlog forecast (next week)" value={backlogForecastData.nextWeek} color={backlogForecastData.trend > 0 ? T.crit : T.done} />
+              )}
               <div style={{ paddingTop: 10 }}>
                 <MetricRow label="Open rate" value={`${pct(openT.length, total)}%`} color={T.open} />
               </div>
