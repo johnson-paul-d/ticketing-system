@@ -26,9 +26,8 @@ function App() {
         <Route path="/calendar" element={<ProtectedRoute><TicketCalendar /></ProtectedRoute>} />
         <Route path="/admin" element={<ProtectedRoute allowedRoles={["Admin"]}><AdminPanel /></ProtectedRoute>} />
         <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
-        <Route
-  path="/timeline"
-  element={<TicketTimeline />}
+        <Route path="/timeline" element={<TicketTimeTracker />}
+        
 />
       </Routes>
     </BrowserRouter>
