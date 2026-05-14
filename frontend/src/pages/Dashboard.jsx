@@ -15,6 +15,10 @@ import {
   Legend,
   Area,
   AreaChart,
+  ComposedChart,
+  Scatter,
+  ScatterChart,
+  ZAxis,
 } from "recharts";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
@@ -55,6 +59,10 @@ const T = {
   violet: "#5A4A9A",
   violetBg: "#EEF0FF",
   violetBorder: "#A8A0D6",
+
+  overdue: "#D63031",
+  dueSoon: "#E17055",
+  dueLater: "#00B894",
 };
 
 const AVATAR_COLORS = [
@@ -97,18 +105,104 @@ function buildWeekly(tickets) {
   return days.map((d) => ({ day: d, Open: open[d], Completed: done[d] }));
 }
 
+// Generate creation trend over time (last 30 days)
+function buildCreationTrend(tickets) {
+  const dateMap = new Map();
+  const today = new Date();
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(today.getDate() - 30);
+  
+  // Initialize last 30 days with 0
+  for (let i = 0; i < 30; i++) {
+    const d = new Date();
+    d.setDate(today.getDate() - i);
+    const dateStr = d.toISOString().split('T')[0];
+    dateMap.set(dateStr, { date: dateStr, created: 0, completed: 0 });
+  }
+  
+  tickets.forEach(t => {
+    if (t.created_at) {
+      const createdDate = new Date(t.created_at).toISOString().split('T')[0];
+      if (dateMap.has(createdDate)) {
+        dateMap.get(createdDate).created++;
+      } else if (new Date(createdDate) >= thirtyDaysAgo) {
+        dateMap.set(createdDate, { date: createdDate, created: 1, completed: 0 });
+      }
+    }
+    // If ticket is completed and has a completed_at field (or we use updated_at as proxy)
+    if (t.status === "Completed" && t.updated_at) {
+      const completedDate = new Date(t.updated_at).toISOString().split('T')[0];
+      if (dateMap.has(completedDate)) {
+        dateMap.get(completedDate).completed++;
+      } else if (new Date(completedDate) >= thirtyDaysAgo) {
+        dateMap.set(completedDate, { date: completedDate, created: 0, completed: 1 });
+      }
+    }
+  });
+  
+  // Sort by date ascending
+  return Array.from(dateMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// Due date analysis
+function buildDueAnalysis(tickets) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const nextWeek = new Date(today);
+  nextWeek.setDate(today.getDate() + 7);
+  
+  let overdue = 0;
+  let dueThisWeek = 0;
+  let dueLater = 0;
+  let noDueDate = 0;
+  
+  tickets.forEach(t => {
+    if (!t.due_date) {
+      noDueDate++;
+      return;
+    }
+    const dueDate = new Date(t.due_date);
+    dueDate.setHours(0, 0, 0, 0);
+    if (dueDate < today) {
+      overdue++;
+    } else if (dueDate <= nextWeek) {
+      dueThisWeek++;
+    } else {
+      dueLater++;
+    }
+  });
+  
+  return [
+    { name: "Overdue", value: overdue, color: T.overdue },
+    { name: "Due This Week", value: dueThisWeek, color: T.dueSoon },
+    { name: "Due Later", value: dueLater, color: T.dueLater },
+    { name: "No Due Date", value: noDueDate, color: T.ink3 },
+  ];
+}
+
 /* ─── Sub-components ────────────────────────────────────────────────────── */
 
-function KpiCard({ label, value, sub, accentColor, accentBorder }) {
+function KpiCard({ label, value, sub, accentColor, accentBorder, trend }) {
   return (
     <div
       style={{
         background: T.surface,
         border: `1px solid ${accentBorder}`,
-        borderRadius: 12,
+        borderRadius: 16,
         padding: "18px 20px",
         position: "relative",
         overflow: "hidden",
+        boxShadow: "0 2px 8px rgba(0,0,0,0.02), 0 1px 2px rgba(0,0,0,0.03)",
+        transition: "transform 0.2s ease, box-shadow 0.2s ease",
+        cursor: "default",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = "translateY(-2px)";
+        e.currentTarget.style.boxShadow = "0 8px 20px rgba(0,0,0,0.08)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = "translateY(0)";
+        e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.02)";
       }}
     >
       <div
@@ -117,9 +211,9 @@ function KpiCard({ label, value, sub, accentColor, accentBorder }) {
           left: 0,
           top: 0,
           bottom: 0,
-          width: 3,
+          width: 4,
           background: accentColor,
-          borderRadius: "3px 0 0 3px",
+          borderRadius: "4px 0 0 4px",
         }}
       />
       <p
@@ -144,7 +238,12 @@ function KpiCard({ label, value, sub, accentColor, accentBorder }) {
       >
         {value}
       </p>
-      <p style={{ fontSize: 11, color: T.ink3 }}>{sub}</p>
+      <p style={{ fontSize: 11, color: T.ink3, margin: 0 }}>{sub}</p>
+      {trend && (
+        <div style={{ marginTop: 8, fontSize: 10, color: trend > 0 ? T.done : T.crit }}>
+          {trend > 0 ? `↑ ${trend}%` : trend < 0 ? `↓ ${Math.abs(trend)}%` : '→ 0%'} from last period
+        </div>
+      )}
     </div>
   );
 }
@@ -155,9 +254,11 @@ function Card({ children, style }) {
       style={{
         background: T.surface,
         border: `1px solid ${T.border}`,
-        borderRadius: 12,
+        borderRadius: 20,
         padding: "20px 22px",
         overflow: "hidden",
+        boxShadow: "0 4px 12px rgba(0,0,0,0.03)",
+        transition: "box-shadow 0.2s ease",
         ...style,
       }}
     >
@@ -168,12 +269,12 @@ function Card({ children, style }) {
 
 function CardHeader({ title, sub }) {
   return (
-    <div style={{ marginBottom: 14 }}>
-      <p style={{ fontSize: 13, fontWeight: 600, color: T.ink, margin: 0 }}>
+    <div style={{ marginBottom: 16, borderLeft: `3px solid ${T.violet}`, paddingLeft: 12 }}>
+      <p style={{ fontSize: 14, fontWeight: 600, color: T.ink, margin: 0 }}>
         {title}
       </p>
       {sub && (
-        <p style={{ fontSize: 11, color: T.ink3, margin: "3px 0 0" }}>{sub}</p>
+        <p style={{ fontSize: 11, color: T.ink3, margin: "4px 0 0" }}>{sub}</p>
       )}
     </div>
   );
@@ -188,6 +289,7 @@ function FilterSelect({ label, value, options, onChange }) {
           color: T.ink3,
           textTransform: "uppercase",
           letterSpacing: "0.08em",
+          fontWeight: 500,
         }}
       >
         {label}
@@ -201,11 +303,14 @@ function FilterSelect({ label, value, options, onChange }) {
           color: T.ink,
           background: T.surfaceAlt,
           border: `1px solid ${T.border}`,
-          borderRadius: 8,
+          borderRadius: 10,
           padding: "6px 10px",
           cursor: "pointer",
           outline: "none",
+          transition: "border-color 0.2s ease",
         }}
+        onFocus={(e) => e.target.style.borderColor = T.violet}
+        onBlur={(e) => e.target.style.borderColor = T.border}
       >
         <option value="all">All</option>
         {options.map((o) => (
@@ -214,6 +319,60 @@ function FilterSelect({ label, value, options, onChange }) {
           </option>
         ))}
       </select>
+    </div>
+  );
+}
+
+function DateRangeFilter({ label, startDate, endDate, onStartChange, onEndChange }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <label
+        style={{
+          fontSize: 10,
+          color: T.ink3,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          fontWeight: 500,
+        }}
+      >
+        {label}
+      </label>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          type="date"
+          value={startDate || ""}
+          onChange={(e) => onStartChange(e.target.value || null)}
+          style={{
+            fontFamily: "'DM Sans', sans-serif",
+            fontSize: 12,
+            color: T.ink,
+            background: T.surfaceAlt,
+            border: `1px solid ${T.border}`,
+            borderRadius: 10,
+            padding: "6px 10px",
+            cursor: "pointer",
+            outline: "none",
+          }}
+          placeholder="Start"
+        />
+        <input
+          type="date"
+          value={endDate || ""}
+          onChange={(e) => onEndChange(e.target.value || null)}
+          style={{
+            fontFamily: "'DM Sans', sans-serif",
+            fontSize: 12,
+            color: T.ink,
+            background: T.surfaceAlt,
+            border: `1px solid ${T.border}`,
+            borderRadius: 10,
+            padding: "6px 10px",
+            cursor: "pointer",
+            outline: "none",
+          }}
+          placeholder="End"
+        />
+      </div>
     </div>
   );
 }
@@ -245,7 +404,7 @@ function HorizontalBar({ label, value, max, color }) {
         style={{
           flex: 1,
           background: T.surfaceAlt,
-          borderRadius: 4,
+          borderRadius: 6,
           height: 8,
           overflow: "hidden",
         }}
@@ -255,7 +414,7 @@ function HorizontalBar({ label, value, max, color }) {
             width: `${pct(value, max)}%`,
             height: "100%",
             background: color,
-            borderRadius: 4,
+            borderRadius: 6,
             transition: "width 0.4s ease",
           }}
         />
@@ -299,9 +458,10 @@ function InsightCard({ type, label, text }) {
       style={{
         background: s.bg,
         border: `1px solid ${s.border}`,
-        borderRadius: 10,
+        borderRadius: 12,
         padding: "12px 16px",
         marginBottom: 10,
+        transition: "transform 0.1s ease",
       }}
     >
       <p
@@ -411,9 +571,9 @@ const ChartTooltip = ({ active, payload, label }) => {
       style={{
         background: T.surface,
         border: `1px solid ${T.border}`,
-        borderRadius: 10,
+        borderRadius: 12,
         padding: "10px 14px",
-        boxShadow: "0 4px 16px rgba(15,25,35,0.10)",
+        boxShadow: "0 4px 16px rgba(15,25,35,0.12)",
         fontFamily: "'DM Sans', sans-serif",
       }}
     >
@@ -454,6 +614,12 @@ export default function Dashboard() {
   const [fCategory, setFCategory] = useState("all");
   const [fDivision, setFDivision] = useState("all");
   const [fAssignee, setFAssignee] = useState("all");
+  
+  // Date filters
+  const [createdStartDate, setCreatedStartDate] = useState(null);
+  const [createdEndDate, setCreatedEndDate] = useState(null);
+  const [dueStartDate, setDueStartDate] = useState(null);
+  const [dueEndDate, setDueEndDate] = useState(null);
 
   const isAdmin = user?.role === "Admin";
   const isManager = user?.role === "Manager";
@@ -495,9 +661,30 @@ export default function Dashboard() {
       if (fCategory !== "all" && t.category !== fCategory) return false;
       if (fDivision !== "all" && t.division !== fDivision) return false;
       if (fAssignee !== "all" && t.assigned_to_name !== fAssignee) return false;
+      
+      // Created date range filter
+      if (createdStartDate && t.created_at) {
+        const createdDate = new Date(t.created_at).toISOString().split('T')[0];
+        if (createdDate < createdStartDate) return false;
+      }
+      if (createdEndDate && t.created_at) {
+        const createdDate = new Date(t.created_at).toISOString().split('T')[0];
+        if (createdDate > createdEndDate) return false;
+      }
+      
+      // Due date range filter
+      if (dueStartDate && t.due_date) {
+        const dueDate = new Date(t.due_date).toISOString().split('T')[0];
+        if (dueDate < dueStartDate) return false;
+      }
+      if (dueEndDate && t.due_date) {
+        const dueDate = new Date(t.due_date).toISOString().split('T')[0];
+        if (dueDate > dueEndDate) return false;
+      }
+      
       return true;
     });
-  }, [allTickets, fStatus, fPriority, fCategory, fDivision, fAssignee]);
+  }, [allTickets, fStatus, fPriority, fCategory, fDivision, fAssignee, createdStartDate, createdEndDate, dueStartDate, dueEndDate]);
 
   const resetAll = () => {
     setFStatus("all");
@@ -505,6 +692,10 @@ export default function Dashboard() {
     setFCategory("all");
     setFDivision("all");
     setFAssignee("all");
+    setCreatedStartDate(null);
+    setCreatedEndDate(null);
+    setDueStartDate(null);
+    setDueEndDate(null);
   };
 
   /* ── Derived data ───────────────────────────────────────────────────── */
@@ -516,6 +707,16 @@ export default function Dashboard() {
     (t) => t.priority === "Critical" || t.priority === "High"
   );
   const completionRate = pct(doneT.length, total);
+  
+  // Overdue tickets count
+  const overdueTickets = tickets.filter(t => {
+    if (!t.due_date || t.status === "Completed") return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dueDate = new Date(t.due_date);
+    dueDate.setHours(0, 0, 0, 0);
+    return dueDate < today;
+  });
 
   const statusPieData = [
     { name: "Open", value: openT.length, color: T.open },
@@ -534,6 +735,8 @@ export default function Dashboard() {
   const priMax = Math.max(...priOrder.map((p) => priMap[p] || 0), 1);
 
   const weeklyData = useMemo(() => buildWeekly(tickets), [tickets]);
+  const creationTrendData = useMemo(() => buildCreationTrend(tickets), [tickets]);
+  const dueAnalysisData = useMemo(() => buildDueAnalysis(tickets), [tickets]);
 
   const assigneePerf = useMemo(() => {
     return unique(tickets, "assigned_to_name")
@@ -591,6 +794,12 @@ export default function Dashboard() {
         label: `${critT.length} critical/high ticket${critT.length > 1 ? "s" : ""}`,
         text: `${critT.length} ticket${critT.length > 1 ? "s" : ""} flagged Critical or High priority need immediate attention.`,
       });
+    if (overdueTickets.length > 0)
+      list.push({
+        type: "warn",
+        label: `${overdueTickets.length} overdue ticket${overdueTickets.length > 1 ? "s" : ""}`,
+        text: `${overdueTickets.length} ticket${overdueTickets.length > 1 ? "s are" : " is"} past due date. Review and reassign if needed.`,
+      });
     const topPerformer = assigneePerf[0];
     if (topPerformer)
       list.push({
@@ -611,8 +820,8 @@ export default function Dashboard() {
         label: "Division leader",
         text: `${divPerf[0].name} leads all divisions with a ${divPerf[0].rate}% completion rate.`,
       });
-    return list.slice(0, 5);
-  }, [completionRate, critT, assigneePerf, divPerf]);
+    return list.slice(0, 6);
+  }, [completionRate, critT, overdueTickets, assigneePerf, divPerf]);
 
   /* ── Loading state ──────────────────────────────────────────────────── */
   if (!loaded) {
@@ -635,12 +844,13 @@ export default function Dashboard() {
   }
 
   /* ── Layout helpers ─────────────────────────────────────────────────── */
-  const g2 = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 };
-  const g4 = { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 };
+  const g2 = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 };
+  const g3 = { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20, marginBottom: 20 };
+  const g4 = { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 };
 
   return (
     <MainLayout>
-      <div style={{ fontFamily: "'DM Sans', sans-serif", color: T.ink }}>
+      <div style={{ fontFamily: "'DM Sans', sans-serif", color: T.ink, background: T.bg, minHeight: "100vh" }}>
 
         {/* ── Header ── */}
         <div
@@ -655,7 +865,7 @@ export default function Dashboard() {
             <h1
               style={{
                 fontFamily: "'DM Serif Display', serif",
-                fontSize: 28,
+                fontSize: 32,
                 fontWeight: 400,
                 letterSpacing: "-0.3px",
                 color: T.ink,
@@ -672,7 +882,7 @@ export default function Dashboard() {
             <p
               style={{
                 fontFamily: "'DM Serif Display', serif",
-                fontSize: 42,
+                fontSize: 48,
                 color: T.done,
                 lineHeight: 1,
                 margin: 0,
@@ -695,31 +905,58 @@ export default function Dashboard() {
         </div>
 
         {/* ── Filters ── */}
-        <Card style={{ marginBottom: 20 }}>
-          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-end" }}>
-            <FilterSelect label="Status" value={fStatus} options={statusOpts} onChange={setFStatus} />
-            <FilterSelect label="Priority" value={fPriority} options={priorityOpts} onChange={setFPriority} />
-            <FilterSelect label="Category" value={fCategory} options={categoryOpts} onChange={setFCategory} />
-            <FilterSelect label="Division" value={fDivision} options={divisionOpts} onChange={setFDivision} />
-            {isAdminOrManager && (
-              <FilterSelect label="Assignee" value={fAssignee} options={assigneeOpts} onChange={setFAssignee} />
-            )}
-            <button
-              onClick={resetAll}
-              style={{
-                fontFamily: "'DM Sans', sans-serif",
-                fontSize: 12,
-                color: T.ink3,
-                background: "none",
-                border: `1px solid ${T.border}`,
-                borderRadius: 8,
-                padding: "6px 14px",
-                cursor: "pointer",
-                alignSelf: "flex-end",
-              }}
-            >
-              Clear filters
-            </button>
+        <Card style={{ marginBottom: 24 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-end" }}>
+              <FilterSelect label="Status" value={fStatus} options={statusOpts} onChange={setFStatus} />
+              <FilterSelect label="Priority" value={fPriority} options={priorityOpts} onChange={setFPriority} />
+              <FilterSelect label="Category" value={fCategory} options={categoryOpts} onChange={setFCategory} />
+              <FilterSelect label="Division" value={fDivision} options={divisionOpts} onChange={setFDivision} />
+              {isAdminOrManager && (
+                <FilterSelect label="Assignee" value={fAssignee} options={assigneeOpts} onChange={setFAssignee} />
+              )}
+              <button
+                onClick={resetAll}
+                style={{
+                  fontFamily: "'DM Sans', sans-serif",
+                  fontSize: 12,
+                  color: T.ink3,
+                  background: "none",
+                  border: `1px solid ${T.border}`,
+                  borderRadius: 10,
+                  padding: "6px 14px",
+                  cursor: "pointer",
+                  alignSelf: "flex-end",
+                  transition: "all 0.2s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.background = T.surfaceAlt;
+                  e.target.style.borderColor = T.borderMed;
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.background = "none";
+                  e.target.style.borderColor = T.border;
+                }}
+              >
+                Clear all filters
+              </button>
+            </div>
+            <div style={{ display: "flex", gap: 20, flexWrap: "wrap", borderTop: `1px solid ${T.border}`, paddingTop: 16 }}>
+              <DateRangeFilter
+                label="Created Date"
+                startDate={createdStartDate}
+                endDate={createdEndDate}
+                onStartChange={setCreatedStartDate}
+                onEndChange={setCreatedEndDate}
+              />
+              <DateRangeFilter
+                label="Due Date"
+                startDate={dueStartDate}
+                endDate={dueEndDate}
+                onStartChange={setDueStartDate}
+                onEndChange={setDueEndDate}
+              />
+            </div>
           </div>
         </Card>
 
@@ -735,11 +972,11 @@ export default function Dashboard() {
         <div style={g2}>
           <Card>
             <CardHeader title="Status distribution" sub="Current breakdown by status" />
-            <ResponsiveContainer width="100%" height={240}>
+            <ResponsiveContainer width="100%" height={260}>
               <PieChart>
-                <Pie data={statusPieData} dataKey="value" outerRadius={80} innerRadius={50}>
+                <Pie data={statusPieData} dataKey="value" outerRadius={90} innerRadius={55} paddingAngle={2}>
                   {statusPieData.map((entry, i) => (
-                    <Cell key={i} fill={entry.color} />
+                    <Cell key={i} fill={entry.color} stroke="none" />
                   ))}
                 </Pie>
                 <Tooltip content={<ChartTooltip />} />
@@ -749,7 +986,7 @@ export default function Dashboard() {
                   }
                   iconType="circle"
                   iconSize={8}
-                  wrapperStyle={{ fontSize: 11 }}
+                  wrapperStyle={{ fontSize: 11, marginTop: 8 }}
                 />
               </PieChart>
             </ResponsiveContainer>
@@ -773,13 +1010,79 @@ export default function Dashboard() {
           </Card>
         </div>
 
+        {/* ── New Charts Row 1: Creation Trend + Due Analysis ── */}
+        <div style={g2}>
+          <Card>
+            <CardHeader title="Ticket Creation & Completion Trend" sub="Last 30 days activity" />
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={creationTrendData}>
+                <CartesianGrid strokeDasharray="3 3" stroke={T.border} />
+                <XAxis 
+                  dataKey="date" 
+                  tick={{ fill: T.ink3, fontSize: 10 }} 
+                  axisLine={false} 
+                  tickLine={false}
+                  angle={-45}
+                  textAnchor="end"
+                  height={60}
+                  interval="preserveStartEnd"
+                />
+                <YAxis tick={{ fill: T.ink3, fontSize: 10 }} axisLine={false} tickLine={false} />
+                <Tooltip content={<ChartTooltip />} />
+                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+                <Line 
+                  type="monotone" 
+                  dataKey="created" 
+                  stroke={T.open} 
+                  strokeWidth={2.5}
+                  dot={{ r: 2, fill: T.open }}
+                  activeDot={{ r: 5 }}
+                  name="Created"
+                />
+                <Line 
+                  type="monotone" 
+                  dataKey="completed" 
+                  stroke={T.done} 
+                  strokeWidth={2.5}
+                  dot={{ r: 2, fill: T.done }}
+                  activeDot={{ r: 5 }}
+                  name="Completed"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </Card>
+
+          <Card>
+            <CardHeader title="Due Date Overview" sub="Tickets by due urgency" />
+            <ResponsiveContainer width="100%" height={280}>
+              <PieChart>
+                <Pie 
+                  data={dueAnalysisData} 
+                  dataKey="value" 
+                  outerRadius={90} 
+                  innerRadius={55}
+                  paddingAngle={2}
+                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                  labelLine={{ stroke: T.border, strokeWidth: 1 }}
+                >
+                  {dueAnalysisData.map((entry, i) => (
+                    <Cell key={i} fill={entry.color} stroke="none" />
+                  ))}
+                </Pie>
+                <Tooltip content={<ChartTooltip />} />
+                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </Card>
+        </div>
+
         {/* ── Team efficiency matrix ── */}
-        <Card style={{ marginBottom: 16 }}>
+        <Card style={{ marginBottom: 20 }}>
           <CardHeader
             title="Team efficiency matrix"
             sub="Completion rate and open load per assignee — top 10 by volume"
           />
-          <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+          <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
             <span style={{ fontSize: 10, color: T.ink3 }}>
               <span
                 style={{
@@ -794,7 +1097,7 @@ export default function Dashboard() {
               />
               Open load
             </span>
-            <span style={{ fontSize: 10, color: T.ink3, marginLeft: 8 }}>
+            <span style={{ fontSize: 10, color: T.ink3 }}>
               <span
                 style={{
                   display: "inline-block",
@@ -823,17 +1126,18 @@ export default function Dashboard() {
           ))}
         </Card>
 
-        {/* ── Division performance + Weekly trend ── */}
+        {/* ── Division performance + Weekly trend (Admin/Manager only) ── */}
         {isAdminOrManager && (
           <div style={g2}>
             <Card>
               <CardHeader title="Division performance" sub="Ticket status breakdown per division" />
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={divPerf} layout="vertical">
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={divPerf} layout="vertical" barCategoryGap={8}>
                   <CartesianGrid strokeDasharray="2 4" horizontal={false} />
                   <XAxis type="number" tick={{ fill: T.ink3, fontSize: 10 }} axisLine={false} tickLine={false} />
-                  <YAxis dataKey="name" type="category" tick={{ fill: T.ink2, fontSize: 11 }} axisLine={false} tickLine={false} width={80} />
+                  <YAxis dataKey="name" type="category" tick={{ fill: T.ink2, fontSize: 11 }} axisLine={false} tickLine={false} width={100} />
                   <Tooltip content={<ChartTooltip />} />
+                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
                   <Bar dataKey="Completed" stackId="a" fill={T.done} radius={[0, 0, 0, 0]} />
                   <Bar dataKey="In Progress" stackId="a" fill={T.prog} />
                   <Bar dataKey="Open" stackId="a" fill={T.open} radius={[4, 4, 0, 0]} />
@@ -842,23 +1146,23 @@ export default function Dashboard() {
             </Card>
 
             <Card>
-              <CardHeader title="Weekly activity trend" sub="Open vs. completed by day of week" />
-              <ResponsiveContainer width="100%" height={260}>
+              <CardHeader title="Weekly activity pattern" sub="Open vs. completed by day of week" />
+              <ResponsiveContainer width="100%" height={280}>
                 <AreaChart data={weeklyData}>
-                  <CartesianGrid strokeDasharray="2 4" />
-                  <XAxis dataKey="day" tick={{ fill: T.ink3, fontSize: 10 }} axisLine={false} tickLine={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke={T.border} />
+                  <XAxis dataKey="day" tick={{ fill: T.ink3, fontSize: 11 }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fill: T.ink3, fontSize: 10 }} axisLine={false} tickLine={false} />
                   <Tooltip content={<ChartTooltip />} />
-                  <Area type="monotone" dataKey="Open" stroke={T.open} fill={T.openBg} strokeWidth={2} strokeDasharray="4 3" />
-                  <Area type="monotone" dataKey="Completed" stroke={T.done} fill={T.doneBg} strokeWidth={2} />
                   <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+                  <Area type="monotone" dataKey="Open" stroke={T.open} fill={T.openBg} strokeWidth={2.5} strokeDasharray="5 3" />
+                  <Area type="monotone" dataKey="Completed" stroke={T.done} fill={T.doneBg} strokeWidth={2.5} />
                 </AreaChart>
               </ResponsiveContainer>
             </Card>
           </div>
         )}
 
-        {/* ── Insights + Director summary ── */}
+        {/* ── Insights + Director summary (Admin/Manager only) ── */}
         {isAdminOrManager && (
           <div style={g2}>
             <Card>
@@ -873,6 +1177,7 @@ export default function Dashboard() {
               <MetricRow label="Completion rate" value={`${completionRate}%`} color={T.done} />
               <MetricRow label="Active assignees" value={assigneePerf.length} color={T.prog} />
               <MetricRow label="Critical / High" value={critT.length} color={critT.length > 5 ? T.crit : T.ink} />
+              <MetricRow label="Overdue tickets" value={overdueTickets.length} color={overdueTickets.length > 0 ? T.overdue : T.done} />
               <MetricRow label="Top performer" value={assigneePerf[0]?.name || "—"} color={T.violet} />
               <MetricRow label="Best division" value={divPerf[0]?.name || "—"} color={T.violet} />
               <MetricRow
