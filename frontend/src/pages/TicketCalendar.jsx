@@ -1,3 +1,8 @@
+// =====================================================
+// TICKET CALENDAR
+// FILE: src/pages/TicketCalendar.jsx
+// =====================================================
+
 import { useEffect, useMemo, useState } from "react";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
@@ -25,7 +30,7 @@ const DnDCalendar =
   withDragAndDrop(Calendar);
 
 // =====================================================
-// ASSIGNEE COLORS
+// USER COLORS
 // =====================================================
 
 const userColors = {
@@ -46,58 +51,6 @@ const priorityBorders = {
   Low: "#22c55e",
 };
 
-// =====================================================
-// OVERDUE CHECK
-// =====================================================
-
-const isOverdue = (
-  dueDateStr,
-  status
-) => {
-  if (status === "Completed")
-    return false;
-
-  const today = new Date();
-
-  today.setUTCHours(
-    0,
-    0,
-    0,
-    0
-  );
-
-  const due = new Date(
-    dueDateStr
-  );
-
-  due.setUTCHours(
-    0,
-    0,
-    0,
-    0
-  );
-
-  return due < today;
-};
-
-// =====================================================
-// END TIME
-// =====================================================
-
-const calculateEndTime = (
-  start,
-  durationMinutes = 60
-) => {
-  const end = new Date(start);
-
-  end.setMinutes(
-    end.getMinutes() +
-      durationMinutes
-  );
-
-  return end;
-};
-
 export default function TicketCalendar() {
   const [events, setEvents] =
     useState([]);
@@ -105,8 +58,15 @@ export default function TicketCalendar() {
   const [loading, setLoading] =
     useState(true);
 
+  const [currentView, setCurrentView] =
+    useState("month");
+
   const [selectedUser, setSelectedUser] =
     useState("All");
+
+  // =====================================================
+  // FETCH
+  // =====================================================
 
   useEffect(() => {
     fetchTickets();
@@ -124,114 +84,47 @@ export default function TicketCalendar() {
         "/tickets"
       );
 
-      const formatted =
-        res.data.map((ticket) => {
-          const overdue =
-            isOverdue(
-              ticket.due_date,
-              ticket.status
-            );
+      let allEvents = [];
 
-          // =====================================================
-          // PERSON COLOR
-          // =====================================================
+      res.data.forEach((ticket) => {
+        const assignedPerson =
+          ticket.assigned_to_name ||
+          "Default";
 
-          const assignedPerson =
-            ticket.assigned_to_name ||
-            "Default";
+        const backgroundColor =
+          userColors[
+            assignedPerson
+          ] ||
+          userColors.Default;
 
-          let backgroundColor =
-            userColors[
-              assignedPerson
-            ] ||
-            userColors["Default"];
+        const borderColor =
+          priorityBorders[
+            ticket.priority
+          ] || "#d1d5db";
 
-          // =====================================================
-          // PRIORITY BORDER
-          // =====================================================
+        // =====================================================
+        // MONTH VIEW
+        // DUE DATE EVENT
+        // =====================================================
 
-          let borderColor =
-            priorityBorders[
-              ticket.priority
-            ] || "#d1d5db";
-
-          // =====================================================
-          // OVERDUE
-          // =====================================================
-
-          if (overdue) {
-            backgroundColor =
-              "#ef4444";
-          }
-
-          // =====================================================
-          // START TIME
-          // =====================================================
-
-          let startTime;
-
-          if (
-            ticket.work_start_time
-          ) {
-            startTime = new Date(
-              ticket.work_start_time
-            );
-          } else if (
-            ticket.due_date
-          ) {
-            startTime = new Date(
+        if (ticket.due_date) {
+          const dueDate =
+            new Date(
               ticket.due_date
             );
 
-            startTime.setHours(
-              9,
-              0,
-              0,
-              0
-            );
-          } else {
-            startTime =
-              new Date();
-          }
+          allEvents.push({
+            id: `due-${ticket.id}`,
 
-          // =====================================================
-          // INVALID DATE FIX
-          // =====================================================
+            title: `📌 ${ticket.title}`,
 
-          if (
-            isNaN(
-              startTime.getTime()
-            )
-          ) {
-            startTime =
-              new Date();
-          }
+            start: dueDate,
 
-          // =====================================================
-          // DURATION
-          // =====================================================
+            end: dueDate,
 
-          const duration =
-            ticket.time_spent_minutes ||
-            60;
+            allDay: true,
 
-          const endTime =
-            calculateEndTime(
-              startTime,
-              duration
-            );
-
-          return {
-            id: ticket.id,
-
-            title:
-              ticket.title,
-
-            start: startTime,
-
-            end: endTime,
-
-            allDay: false,
+            type: "due_date",
 
             backgroundColor,
 
@@ -240,43 +133,72 @@ export default function TicketCalendar() {
             resource: {
               ...ticket,
 
-              duration,
-
               assignedPerson,
             },
-          };
-        });
+          });
+        }
 
-      setEvents(formatted);
+        // =====================================================
+        // WORK LOG EVENTS
+        // =====================================================
+
+        if (
+          ticket.time_entries &&
+          ticket.time_entries.length
+        ) {
+          ticket.time_entries.forEach(
+            (entry) => {
+              const start =
+                new Date(
+                  entry.start_time
+                );
+
+              const end =
+                new Date(
+                  entry.end_time
+                );
+
+              allEvents.push({
+                id: `work-${entry.id}`,
+
+                title:
+                  ticket.title,
+
+                start,
+
+                end,
+
+                allDay: false,
+
+                type: "work_log",
+
+                backgroundColor,
+
+                borderColor,
+
+                resource: {
+                  ...ticket,
+
+                  entry,
+
+                  assignedPerson,
+
+                  duration:
+                    entry.duration_minutes,
+                },
+              });
+            }
+          );
+        }
+      });
+
+      setEvents(allEvents);
     } catch (err) {
-      console.error(
-        "Calendar fetch error:",
-        err
-      );
+      console.error(err);
     } finally {
       setLoading(false);
     }
   };
-
-  // =====================================================
-  // FILTERED EVENTS
-  // =====================================================
-
-  const filteredEvents =
-    useMemo(() => {
-      if (
-        selectedUser === "All"
-      ) {
-        return events;
-      }
-
-      return events.filter(
-        (event) =>
-          event.resource
-            ?.assignedPerson ===
-          selectedUser
-      );
-    }, [events, selectedUser]);
 
   // =====================================================
   // USERS
@@ -298,7 +220,52 @@ export default function TicketCalendar() {
     }, [events]);
 
   // =====================================================
-  // MOVE EVENT
+  // FILTERED EVENTS
+  // =====================================================
+
+  const filteredEvents =
+    useMemo(() => {
+      let filtered =
+        selectedUser === "All"
+          ? events
+          : events.filter(
+              (event) =>
+                event.resource
+                  ?.assignedPerson ===
+                selectedUser
+            );
+
+      // =====================================================
+      // MONTH VIEW
+      // =====================================================
+
+      if (
+        currentView === "month"
+      ) {
+        return filtered.filter(
+          (e) =>
+            e.type ===
+            "due_date"
+        );
+      }
+
+      // =====================================================
+      // WEEK/DAY/AGENDA
+      // =====================================================
+
+      return filtered.filter(
+        (e) =>
+          e.type ===
+          "work_log"
+      );
+    }, [
+      events,
+      selectedUser,
+      currentView,
+    ]);
+
+  // =====================================================
+  // DRAG
   // =====================================================
 
   const moveEvent = async ({
@@ -312,109 +279,85 @@ export default function TicketCalendar() {
           (end - start) / 60000
         );
 
-      const updatedEvents =
-        events.map((e) =>
+      setEvents((prev) =>
+        prev.map((e) =>
           e.id === event.id
             ? {
                 ...e,
                 start,
                 end,
-
-                resource: {
-                  ...e.resource,
-
-                  duration,
-
-                  work_start_time:
-                    start,
-
-                  time_spent_minutes:
-                    duration,
-                },
               }
             : e
-        );
-
-      setEvents(updatedEvents);
+        )
+      );
 
       await api.put(
-        `/tickets/${event.id}`,
+        `/ticket-time-entries/${event.resource.entry.id}`,
         {
-          work_start_time:
+          start_time:
             start.toISOString(),
 
-          time_spent_minutes:
+          end_time:
+            end.toISOString(),
+
+          duration_minutes:
             duration,
         }
       );
     } catch (err) {
-      console.error(
-        "Move failed:",
-        err
-      );
+      console.error(err);
     }
   };
 
   // =====================================================
-  // RESIZE EVENT
+  // RESIZE
   // =====================================================
 
-  const resizeEvent = async ({
-    event,
-    start,
-    end,
-  }) => {
-    try {
-      const duration =
-        Math.round(
-          (end - start) / 60000
+  const resizeEvent =
+    async ({
+      event,
+      start,
+      end,
+    }) => {
+      try {
+        const duration =
+          Math.round(
+            (end - start) /
+              60000
+          );
+
+        setEvents((prev) =>
+          prev.map((e) =>
+            e.id === event.id
+              ? {
+                  ...e,
+                  start,
+                  end,
+                }
+              : e
+          )
         );
 
-      const updatedEvents =
-        events.map((e) =>
-          e.id === event.id
-            ? {
-                ...e,
-                start,
-                end,
+        await api.put(
+          `/ticket-time-entries/${event.resource.entry.id}`,
+          {
+            start_time:
+              start.toISOString(),
 
-                resource: {
-                  ...e.resource,
+            end_time:
+              end.toISOString(),
 
-                  duration,
-
-                  work_start_time:
-                    start,
-
-                  time_spent_minutes:
-                    duration,
-                },
-              }
-            : e
+            duration_minutes:
+              duration,
+          }
         );
-
-      setEvents(updatedEvents);
-
-      await api.put(
-        `/tickets/${event.id}`,
-        {
-          work_start_time:
-            start.toISOString(),
-
-          time_spent_minutes:
-            duration,
-        }
-      );
-    } catch (err) {
-      console.error(
-        "Resize failed:",
-        err
-      );
-    }
-  };
+      } catch (err) {
+        console.error(err);
+      }
+    };
 
   // =====================================================
-  // EVENT STYLE
+  // STYLE
   // =====================================================
 
   const eventStyleGetter = (
@@ -426,7 +369,7 @@ export default function TicketCalendar() {
 
       borderRadius: "14px",
 
-      color: "#ffffff",
+      color: "#fff",
 
       border: `3px solid ${event.borderColor}`,
 
@@ -436,12 +379,8 @@ export default function TicketCalendar() {
 
       fontWeight: "600",
 
-      overflow: "hidden",
-
       boxShadow:
         "0 2px 8px rgba(0,0,0,0.15)",
-
-      transition: "0.2s",
     },
   });
 
@@ -451,56 +390,51 @@ export default function TicketCalendar() {
 
   const CustomEvent = ({
     event,
-  }) => {
-    return (
-      <div className="overflow-hidden">
-        {/* TITLE */}
-        <div className="font-bold truncate text-[11px]">
-          {event.title}
-        </div>
-
-        {/* ASSIGNEE */}
-        <div className="text-[10px] opacity-90 truncate">
-          👤{" "}
-          {
-            event.resource
-              ?.assignedPerson
-          }
-        </div>
-
-        {/* PRIORITY */}
-        <div className="text-[10px] opacity-90">
-          ⚡{" "}
-          {
-            event.resource
-              ?.priority
-          }
-        </div>
-
-        {/* DURATION */}
-        <div className="text-[10px] opacity-90">
-          ⏱{" "}
-          {
-            event.resource
-              ?.duration
-          }{" "}
-          mins
-        </div>
-
-        {/* TIME */}
-        <div className="text-[10px] opacity-90">
-          🕒{" "}
-          {moment(
-            event.start
-          ).format("hh:mm A")}{" "}
-          -{" "}
-          {moment(
-            event.end
-          ).format("hh:mm A")}
-        </div>
+  }) => (
+    <div className="overflow-hidden">
+      <div className="font-bold truncate text-[11px]">
+        {event.title}
       </div>
-    );
-  };
+
+      {event.type ===
+        "work_log" && (
+        <>
+          <div className="text-[10px] opacity-90 truncate">
+            👤{" "}
+            {
+              event.resource
+                ?.assignedPerson
+            }
+          </div>
+
+          <div className="text-[10px] opacity-90">
+            ⏱{" "}
+            {
+              event.resource
+                ?.duration
+            }{" "}
+            mins
+          </div>
+
+          <div className="text-[10px] opacity-90">
+            🕒{" "}
+            {moment(
+              event.start
+            ).format(
+              "hh:mm A"
+            )}{" "}
+            -
+            {" "}
+            {moment(
+              event.end
+            ).format(
+              "hh:mm A"
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
 
   // =====================================================
   // LOADING
@@ -510,24 +444,20 @@ export default function TicketCalendar() {
     return (
       <MainLayout>
         <div className="p-10">
-          <div className="text-xl font-semibold">
-            Loading calendar...
-          </div>
+          Loading...
         </div>
       </MainLayout>
     );
   }
 
   // =====================================================
-  // MAIN UI
+  // UI
   // =====================================================
 
   return (
     <MainLayout>
       <div className="p-4 lg:p-6">
-        {/* ===================================================== */}
         {/* HEADER */}
-        {/* ===================================================== */}
 
         <div className="mb-8">
           <h1 className="text-4xl font-bold">
@@ -535,15 +465,12 @@ export default function TicketCalendar() {
           </h1>
 
           <p className="text-gray-500 mt-2">
-            Jira-style team
-            scheduling with
-            swimlanes
+            Due dates +
+            work sessions
           </p>
         </div>
 
-        {/* ===================================================== */}
-        {/* SWIMLANES / USER FILTER */}
-        {/* ===================================================== */}
+        {/* USERS */}
 
         <div className="mb-6 flex flex-wrap gap-3">
           {uniqueUsers.map(
@@ -559,7 +486,7 @@ export default function TicketCalendar() {
                   selectedUser ===
                   user
                     ? "bg-black text-white"
-                    : "bg-white hover:bg-gray-100"
+                    : "bg-white"
                 }`}
               >
                 {user}
@@ -568,102 +495,9 @@ export default function TicketCalendar() {
           )}
         </div>
 
-        {/* ===================================================== */}
-        {/* LEGEND */}
-        {/* ===================================================== */}
-
-        <div className="flex flex-wrap gap-3 mb-6">
-          <Legend
-            color="bg-red-500"
-            label="High Priority"
-          />
-
-          <Legend
-            color="bg-orange-500"
-            label="Medium Priority"
-          />
-
-          <Legend
-            color="bg-green-500"
-            label="Low Priority"
-          />
-        </div>
-
-        {/* ===================================================== */}
-        {/* TEAM WORKLOAD */}
-        {/* ===================================================== */}
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          {uniqueUsers
-            .filter(
-              (u) => u !== "All"
-            )
-            .map((user) => {
-              const userEvents =
-                events.filter(
-                  (e) =>
-                    e.resource
-                      ?.assignedPerson ===
-                    user
-                );
-
-              const totalMinutes =
-                userEvents.reduce(
-                  (sum, e) =>
-                    sum +
-                    (e.resource
-                      ?.duration ||
-                      0),
-                  0
-                );
-
-              return (
-                <div
-                  key={user}
-                  className="bg-white rounded-2xl border p-4 shadow-sm"
-                >
-                  <div className="flex items-center gap-3 mb-2">
-                    <div
-                      className="w-4 h-4 rounded-full"
-                      style={{
-                        background:
-                          userColors[
-                            user
-                          ] ||
-                          "#6b7280",
-                      }}
-                    ></div>
-
-                    <h3 className="font-bold">
-                      {user}
-                    </h3>
-                  </div>
-
-                  <div className="text-sm text-gray-500">
-                    Tickets:{" "}
-                    {
-                      userEvents.length
-                    }
-                  </div>
-
-                  <div className="text-sm text-gray-500">
-                    Workload:{" "}
-                    {Math.round(
-                      totalMinutes /
-                        60
-                    )}
-                    h
-                  </div>
-                </div>
-              );
-            })}
-        </div>
-
-        {/* ===================================================== */}
         {/* CALENDAR */}
-        {/* ===================================================== */}
 
-        <div className="bg-white p-3 lg:p-6 rounded-3xl shadow-sm border overflow-hidden">
+        <div className="bg-white p-4 rounded-3xl border shadow-sm">
           <div
             style={{
               height: "82vh",
@@ -682,7 +516,15 @@ export default function TicketCalendar() {
 
               endAccessor="end"
 
-              defaultView="week"
+              defaultView="month"
+
+              view={currentView}
+
+              onView={(view) =>
+                setCurrentView(
+                  view
+                )
+              }
 
               views={[
                 "month",
@@ -695,15 +537,15 @@ export default function TicketCalendar() {
 
               popup
 
-              // =====================================================
-              // DRAG & DROP
-              // =====================================================
-
               draggableAccessor={() =>
-                true
+                currentView !==
+                "month"
               }
 
-              resizable
+              resizable={
+                currentView !==
+                "month"
+              }
 
               onEventDrop={
                 moveEvent
@@ -712,10 +554,6 @@ export default function TicketCalendar() {
               onEventResize={
                 resizeEvent
               }
-
-              // =====================================================
-              // TIME
-              // =====================================================
 
               step={15}
 
@@ -743,10 +581,6 @@ export default function TicketCalendar() {
                 )
               }
 
-              // =====================================================
-              // STYLE
-              // =====================================================
-
               eventPropGetter={
                 eventStyleGetter
               }
@@ -764,26 +598,5 @@ export default function TicketCalendar() {
         </div>
       </div>
     </MainLayout>
-  );
-}
-
-// =====================================================
-// LEGEND
-// =====================================================
-
-function Legend({
-  color,
-  label,
-}) {
-  return (
-    <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-2xl border">
-      <div
-        className={`w-4 h-4 rounded-full ${color}`}
-      ></div>
-
-      <span className="text-sm font-medium">
-        {label}
-      </span>
-    </div>
   );
 }

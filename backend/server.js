@@ -12,6 +12,9 @@ const notificationRoutes = require('./routes/notifications');
 const app = express();
 const server = http.createServer(app);
 
+const timeEntryRoutes =
+  require("./routes/timeEntries");
+
 // Allowed origins – add your Vercel frontend URL
 const allowedOrigins = [
   process.env.FRONTEND_URL,
@@ -57,6 +60,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api', timeEntryRoutes);
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
