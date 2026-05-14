@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
 
@@ -23,6 +23,28 @@ const localizer =
 
 const DnDCalendar =
   withDragAndDrop(Calendar);
+
+// =====================================================
+// ASSIGNEE COLORS
+// =====================================================
+
+const userColors = {
+  Rameenathan: "#3b82f6",
+  Kavya: "#ec4899",
+  Johnson: "#10b981",
+  Admin: "#8b5cf6",
+  Default: "#6b7280",
+};
+
+// =====================================================
+// PRIORITY BORDERS
+// =====================================================
+
+const priorityBorders = {
+  High: "#ef4444",
+  Medium: "#f59e0b",
+  Low: "#22c55e",
+};
 
 // =====================================================
 // OVERDUE CHECK
@@ -59,7 +81,7 @@ const isOverdue = (
 };
 
 // =====================================================
-// CALCULATE END TIME
+// END TIME
 // =====================================================
 
 const calculateEndTime = (
@@ -82,6 +104,9 @@ export default function TicketCalendar() {
 
   const [loading, setLoading] =
     useState(true);
+
+  const [selectedUser, setSelectedUser] =
+    useState("All");
 
   useEffect(() => {
     fetchTickets();
@@ -108,37 +133,31 @@ export default function TicketCalendar() {
             );
 
           // =====================================================
-          // EVENT COLOR
+          // PERSON COLOR
           // =====================================================
 
-          let backgroundColor =
-            "#6b7280";
+          const assignedPerson =
+            ticket.assigned_to_name ||
+            "Default";
 
-          if (
-            ticket.status ===
-            "Completed"
-          ) {
-            backgroundColor =
-              "#22c55e";
-          } else if (
-            ticket.status ===
-            "In Progress"
-          ) {
-            backgroundColor =
-              "#3b82f6";
-          } else if (
-            ticket.status ===
-            "Waiting For Sources"
-          ) {
-            backgroundColor =
-              "#f59e0b";
-          } else if (
-            ticket.status ===
-            "Pending Approval"
-          ) {
-            backgroundColor =
-              "#a855f7";
-          }
+          let backgroundColor =
+            userColors[
+              assignedPerson
+            ] ||
+            userColors["Default"];
+
+          // =====================================================
+          // PRIORITY BORDER
+          // =====================================================
+
+          let borderColor =
+            priorityBorders[
+              ticket.priority
+            ] || "#d1d5db";
+
+          // =====================================================
+          // OVERDUE
+          // =====================================================
 
           if (overdue) {
             backgroundColor =
@@ -164,7 +183,6 @@ export default function TicketCalendar() {
               ticket.due_date
             );
 
-            // DEFAULT TO 9 AM
             startTime.setHours(
               9,
               0,
@@ -172,7 +190,8 @@ export default function TicketCalendar() {
               0
             );
           } else {
-            startTime = new Date();
+            startTime =
+              new Date();
           }
 
           // =====================================================
@@ -205,9 +224,8 @@ export default function TicketCalendar() {
           return {
             id: ticket.id,
 
-            title: overdue
-              ? `🔴 ${ticket.title}`
-              : ticket.title,
+            title:
+              ticket.title,
 
             start: startTime,
 
@@ -217,9 +235,14 @@ export default function TicketCalendar() {
 
             backgroundColor,
 
+            borderColor,
+
             resource: {
               ...ticket,
+
               duration,
+
+              assignedPerson,
             },
           };
         });
@@ -236,6 +259,45 @@ export default function TicketCalendar() {
   };
 
   // =====================================================
+  // FILTERED EVENTS
+  // =====================================================
+
+  const filteredEvents =
+    useMemo(() => {
+      if (
+        selectedUser === "All"
+      ) {
+        return events;
+      }
+
+      return events.filter(
+        (event) =>
+          event.resource
+            ?.assignedPerson ===
+          selectedUser
+      );
+    }, [events, selectedUser]);
+
+  // =====================================================
+  // USERS
+  // =====================================================
+
+  const uniqueUsers =
+    useMemo(() => {
+      const users =
+        events.map(
+          (e) =>
+            e.resource
+              ?.assignedPerson
+        );
+
+      return [
+        "All",
+        ...new Set(users),
+      ];
+    }, [events]);
+
+  // =====================================================
   // MOVE EVENT
   // =====================================================
 
@@ -245,18 +307,10 @@ export default function TicketCalendar() {
     end,
   }) => {
     try {
-      // =====================================================
-      // NEW DURATION
-      // =====================================================
-
       const duration =
         Math.round(
           (end - start) / 60000
         );
-
-      // =====================================================
-      // UPDATE UI
-      // =====================================================
 
       const updatedEvents =
         events.map((e) =>
@@ -283,10 +337,6 @@ export default function TicketCalendar() {
 
       setEvents(updatedEvents);
 
-      // =====================================================
-      // SAVE TO DB
-      // =====================================================
-
       await api.put(
         `/tickets/${event.id}`,
         {
@@ -296,10 +346,6 @@ export default function TicketCalendar() {
           time_spent_minutes:
             duration,
         }
-      );
-
-      console.log(
-        "Move saved"
       );
     } catch (err) {
       console.error(
@@ -319,18 +365,10 @@ export default function TicketCalendar() {
     end,
   }) => {
     try {
-      // =====================================================
-      // NEW DURATION
-      // =====================================================
-
       const duration =
         Math.round(
           (end - start) / 60000
         );
-
-      // =====================================================
-      // UPDATE UI
-      // =====================================================
 
       const updatedEvents =
         events.map((e) =>
@@ -357,10 +395,6 @@ export default function TicketCalendar() {
 
       setEvents(updatedEvents);
 
-      // =====================================================
-      // SAVE TO DB
-      // =====================================================
-
       await api.put(
         `/tickets/${event.id}`,
         {
@@ -370,10 +404,6 @@ export default function TicketCalendar() {
           time_spent_minutes:
             duration,
         }
-      );
-
-      console.log(
-        "Resize saved"
       );
     } catch (err) {
       console.error(
@@ -394,19 +424,24 @@ export default function TicketCalendar() {
       backgroundColor:
         event.backgroundColor,
 
-      borderRadius: "12px",
+      borderRadius: "14px",
 
       color: "#ffffff",
 
-      border: "none",
+      border: `3px solid ${event.borderColor}`,
 
-      padding: "4px 6px",
+      padding: "5px 8px",
 
       fontSize: "12px",
 
       fontWeight: "600",
 
       overflow: "hidden",
+
+      boxShadow:
+        "0 2px 8px rgba(0,0,0,0.15)",
+
+      transition: "0.2s",
     },
   });
 
@@ -419,30 +454,40 @@ export default function TicketCalendar() {
   }) => {
     return (
       <div className="overflow-hidden">
-        <div className="font-semibold truncate text-[11px]">
+        {/* TITLE */}
+        <div className="font-bold truncate text-[11px]">
           {event.title}
         </div>
 
-        {event.resource
-          ?.assigned_to_name && (
-          <div className="text-[10px] opacity-90 truncate">
-            👤{" "}
-            {
-              event.resource
-                .assigned_to_name
-            }
-          </div>
-        )}
+        {/* ASSIGNEE */}
+        <div className="text-[10px] opacity-90 truncate">
+          👤{" "}
+          {
+            event.resource
+              ?.assignedPerson
+          }
+        </div>
 
+        {/* PRIORITY */}
+        <div className="text-[10px] opacity-90">
+          ⚡{" "}
+          {
+            event.resource
+              ?.priority
+          }
+        </div>
+
+        {/* DURATION */}
         <div className="text-[10px] opacity-90">
           ⏱{" "}
           {
             event.resource
-              .duration
+              ?.duration
           }{" "}
           mins
         </div>
 
+        {/* TIME */}
         <div className="text-[10px] opacity-90">
           🕒{" "}
           {moment(
@@ -486,14 +531,41 @@ export default function TicketCalendar() {
 
         <div className="mb-8">
           <h1 className="text-4xl font-bold">
-            Ticket Calendar
+            Team Calendar
           </h1>
 
           <p className="text-gray-500 mt-2">
-            Jira-style work
-            scheduling &
-            tracking
+            Jira-style team
+            scheduling with
+            swimlanes
           </p>
+        </div>
+
+        {/* ===================================================== */}
+        {/* SWIMLANES / USER FILTER */}
+        {/* ===================================================== */}
+
+        <div className="mb-6 flex flex-wrap gap-3">
+          {uniqueUsers.map(
+            (user) => (
+              <button
+                key={user}
+                onClick={() =>
+                  setSelectedUser(
+                    user
+                  )
+                }
+                className={`px-4 py-2 rounded-2xl border font-medium transition ${
+                  selectedUser ===
+                  user
+                    ? "bg-black text-white"
+                    : "bg-white hover:bg-gray-100"
+                }`}
+              >
+                {user}
+              </button>
+            )
+          )}
         </div>
 
         {/* ===================================================== */}
@@ -502,29 +574,89 @@ export default function TicketCalendar() {
 
         <div className="flex flex-wrap gap-3 mb-6">
           <Legend
-            color="bg-green-500"
-            label="Completed"
-          />
-
-          <Legend
-            color="bg-blue-500"
-            label="In Progress"
+            color="bg-red-500"
+            label="High Priority"
           />
 
           <Legend
             color="bg-orange-500"
-            label="Waiting For Sources"
+            label="Medium Priority"
           />
 
           <Legend
-            color="bg-purple-500"
-            label="Pending Approval"
+            color="bg-green-500"
+            label="Low Priority"
           />
+        </div>
 
-          <Legend
-            color="bg-red-500"
-            label="Overdue"
-          />
+        {/* ===================================================== */}
+        {/* TEAM WORKLOAD */}
+        {/* ===================================================== */}
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          {uniqueUsers
+            .filter(
+              (u) => u !== "All"
+            )
+            .map((user) => {
+              const userEvents =
+                events.filter(
+                  (e) =>
+                    e.resource
+                      ?.assignedPerson ===
+                    user
+                );
+
+              const totalMinutes =
+                userEvents.reduce(
+                  (sum, e) =>
+                    sum +
+                    (e.resource
+                      ?.duration ||
+                      0),
+                  0
+                );
+
+              return (
+                <div
+                  key={user}
+                  className="bg-white rounded-2xl border p-4 shadow-sm"
+                >
+                  <div className="flex items-center gap-3 mb-2">
+                    <div
+                      className="w-4 h-4 rounded-full"
+                      style={{
+                        background:
+                          userColors[
+                            user
+                          ] ||
+                          "#6b7280",
+                      }}
+                    ></div>
+
+                    <h3 className="font-bold">
+                      {user}
+                    </h3>
+                  </div>
+
+                  <div className="text-sm text-gray-500">
+                    Tickets:{" "}
+                    {
+                      userEvents.length
+                    }
+                  </div>
+
+                  <div className="text-sm text-gray-500">
+                    Workload:{" "}
+                    {Math.round(
+                      totalMinutes /
+                        60
+                    )}
+                    h
+                  </div>
+                </div>
+              );
+            })}
         </div>
 
         {/* ===================================================== */}
@@ -542,7 +674,9 @@ export default function TicketCalendar() {
                 localizer
               }
 
-              events={events}
+              events={
+                filteredEvents
+              }
 
               startAccessor="start"
 
@@ -580,7 +714,7 @@ export default function TicketCalendar() {
               }
 
               // =====================================================
-              // TIME SETTINGS
+              // TIME
               // =====================================================
 
               step={15}
