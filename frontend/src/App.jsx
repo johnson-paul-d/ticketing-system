@@ -17,18 +17,96 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Login />} />
-        <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-        <Route path="/tickets" element={<ProtectedRoute><Tickets /></ProtectedRoute>} />
-        <Route path="/create-ticket" element={<ProtectedRoute allowedRoles={["Admin", "User"]}><CreateTicket /></ProtectedRoute>} />
-        <Route path="/tickets/:id" element={<ProtectedRoute><TicketDetails /></ProtectedRoute>} />
-        <Route path="/edit-ticket/:id" element={<ProtectedRoute allowedRoles={["Admin"]}><EditTicket /></ProtectedRoute>} />
-        <Route path="/kanban" element={<ProtectedRoute><Kanban /></ProtectedRoute>} />
-        <Route path="/calendar" element={<ProtectedRoute><TicketCalendar /></ProtectedRoute>} />
-        <Route path="/admin" element={<ProtectedRoute allowedRoles={["Admin"]}><AdminPanel /></ProtectedRoute>} />
-        <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
-        <Route path="/timeline" element={<TicketTimeTracker />}
-        
-/>
+
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/tickets"
+          element={
+            <ProtectedRoute>
+              <Tickets />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/create-ticket"
+          element={
+            <ProtectedRoute allowedRoles={["Admin", "User"]}>
+              <CreateTicket />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/tickets/:id"
+          element={
+            <ProtectedRoute>
+              <TicketDetails />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/edit-ticket/:id"
+          element={
+            <ProtectedRoute allowedRoles={["Admin"]}>
+              <EditTicket />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/kanban"
+          element={
+            <ProtectedRoute>
+              <Kanban />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/calendar"
+          element={
+            <ProtectedRoute>
+              <TicketCalendar />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute allowedRoles={["Admin"]}>
+              <AdminPanel />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/reports"
+          element={
+            <ProtectedRoute>
+              <Reports />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/timeline"
+          element={
+            <ProtectedRoute>
+              <TicketTimeline />
+            </ProtectedRoute>
+          }
+        />
       </Routes>
     </BrowserRouter>
   );
