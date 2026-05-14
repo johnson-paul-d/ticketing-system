@@ -10,7 +10,7 @@ import TicketCalendar from "./pages/TicketCalendar";
 import AdminPanel from "./pages/AdminPanel";
 import Reports from "./pages/Reports";
 import ProtectedRoute from "./components/ProtectedRoute";
-import TicketTimeline from "./pages/TicketTimeline";
+import TicketTimeline from "./pages/TicketTimeTracker";
 
 function App() {
   return (
