@@ -5,7 +5,10 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "gantt-task-react": "^0.3.9",
     "jsonwebtoken": "^9.0.3",
+    "react-dnd": "^16.0.1",
+    "react-dnd-html5-backend": "^16.0.1",
     "socket.io": "^4.8.3",
     "uuid": "^14.0.0"
   }

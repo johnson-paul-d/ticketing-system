@@ -10,6 +10,7 @@ import TicketCalendar from "./pages/TicketCalendar";
 import AdminPanel from "./pages/AdminPanel";
 import Reports from "./pages/Reports";
 import ProtectedRoute from "./components/ProtectedRoute";
+import TicketTimeline from "./pages/TicketTimeline";
 
 function App() {
   return (
@@ -25,6 +26,10 @@ function App() {
         <Route path="/calendar" element={<ProtectedRoute><TicketCalendar /></ProtectedRoute>} />
         <Route path="/admin" element={<ProtectedRoute allowedRoles={["Admin"]}><AdminPanel /></ProtectedRoute>} />
         <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+        <Route
+  path="/timeline"
+  element={<TicketTimeline />}
+/>
       </Routes>
     </BrowserRouter>
   );

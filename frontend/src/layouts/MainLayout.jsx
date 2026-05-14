@@ -21,6 +21,7 @@ export default function MainLayout({ children }) {
     ...(user?.role !== "Team Member" ? [{ label: "Create Ticket", path: "/create-ticket", icon: PlusCircle }] : []),
     { label: "Kanban", path: "/kanban", icon: KanbanSquare },
     { label: "Calendar", path: "/calendar", icon: Calendar },
+{ label: "Timeline", path: "/timeline", icon: BarChart3 },
     ...(user?.role === "Admin" ? [{ label: "Admin Panel", path: "/admin", icon: Shield }] : []),
     { label: "Reports", path: "/reports", icon: BarChart3 },
   ];
