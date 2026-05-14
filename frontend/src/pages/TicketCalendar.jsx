@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
 
@@ -25,33 +25,77 @@ const DnDCalendar =
   withDragAndDrop(Calendar);
 
 // =====================================================
-// USER COLORS
+// ASSIGNEE COLORS
 // =====================================================
 
 const userColors = {
-  "Johnson Paul D":
-    "#10b981",
-
-  Kavinraj: "#3b82f6",
-
-  "Karthick R":
-    "#8b5cf6",
-
-  Admin: "#ec4899",
-
+  Rameenathan: "#3b82f6",
+  Kavya: "#ec4899",
+  Johnson: "#10b981",
+  Admin: "#8b5cf6",
   Default: "#6b7280",
 };
 
 // =====================================================
-// PRIORITY COLORS
+// PRIORITY BORDERS
 // =====================================================
 
 const priorityBorders = {
   High: "#ef4444",
-
   Medium: "#f59e0b",
-
   Low: "#22c55e",
+};
+
+// =====================================================
+// OVERDUE CHECK
+// =====================================================
+
+const isOverdue = (
+  dueDateStr,
+  status
+) => {
+  if (status === "Completed")
+    return false;
+
+  const today = new Date();
+
+  today.setUTCHours(
+    0,
+    0,
+    0,
+    0
+  );
+
+  const due = new Date(
+    dueDateStr
+  );
+
+  due.setUTCHours(
+    0,
+    0,
+    0,
+    0
+  );
+
+  return due < today;
+};
+
+// =====================================================
+// END TIME
+// =====================================================
+
+const calculateEndTime = (
+  start,
+  durationMinutes = 60
+) => {
+  const end = new Date(start);
+
+  end.setMinutes(
+    end.getMinutes() +
+      durationMinutes
+  );
+
+  return end;
 };
 
 export default function TicketCalendar() {
@@ -61,99 +105,197 @@ export default function TicketCalendar() {
   const [loading, setLoading] =
     useState(true);
 
-  // =====================================================
-  // FETCH EVENTS
-  // =====================================================
+  const [selectedUser, setSelectedUser] =
+    useState("All");
 
   useEffect(() => {
-    fetchCalendarEvents();
+    fetchTickets();
   }, []);
 
-  const fetchCalendarEvents =
-    async () => {
-      try {
-        setLoading(true);
+  // =====================================================
+  // FETCH TICKETS
+  // =====================================================
 
-        // =====================================================
-        // FETCH TIME ENTRIES
-        // =====================================================
+  const fetchTickets = async () => {
+    try {
+      setLoading(true);
 
-        /*
-          BACKEND SHOULD RETURN:
+      const res = await api.get(
+        "/tickets"
+      );
 
-          [
-            {
-              id,
-              ticket_id,
-              ticket_title,
-              assigned_to_name,
-              priority,
-              start_time,
-              end_time,
-              duration_minutes
-            }
-          ]
-        */
+      const formatted =
+        res.data.map((ticket) => {
+          const overdue =
+            isOverdue(
+              ticket.due_date,
+              ticket.status
+            );
 
-        const res =
-          await api.get(
-            "/ticket-time-entries"
-          );
+          // =====================================================
+          // PERSON COLOR
+          // =====================================================
 
-        const formatted =
-          res.data.map((entry) => {
-            const assignedUser =
-              entry.assigned_to_name ||
-              "Default";
+          const assignedPerson =
+            ticket.assigned_to_name ||
+            "Default";
 
-            const backgroundColor =
-              userColors[
-                assignedUser
-              ] ||
-              userColors.Default;
+          let backgroundColor =
+            userColors[
+              assignedPerson
+            ] ||
+            userColors["Default"];
 
-            const borderColor =
-              priorityBorders[
-                entry.priority
-              ] || "#d1d5db";
+          // =====================================================
+          // PRIORITY BORDER
+          // =====================================================
 
-            return {
-              id: entry.id,
+          let borderColor =
+            priorityBorders[
+              ticket.priority
+            ] || "#d1d5db";
 
-              title:
-                entry.ticket_title,
+          // =====================================================
+          // OVERDUE
+          // =====================================================
 
-              start:
-                new Date(
-                  entry.start_time
-                ),
+          if (overdue) {
+            backgroundColor =
+              "#ef4444";
+          }
 
-              end: new Date(
-                entry.end_time
-              ),
+          // =====================================================
+          // START TIME
+          // =====================================================
 
-              allDay: false,
+          let startTime;
 
-              backgroundColor,
+          if (
+            ticket.work_start_time
+          ) {
+            startTime = new Date(
+              ticket.work_start_time
+            );
+          } else if (
+            ticket.due_date
+          ) {
+            startTime = new Date(
+              ticket.due_date
+            );
 
-              borderColor,
+            startTime.setHours(
+              9,
+              0,
+              0,
+              0
+            );
+          } else {
+            startTime =
+              new Date();
+          }
 
-              resource: {
-                ...entry,
-              },
-            };
-          });
+          // =====================================================
+          // INVALID DATE FIX
+          // =====================================================
 
-        setEvents(formatted);
-      } catch (err) {
-        console.error(
-          "Calendar fetch error:",
-          err
-        );
-      } finally {
-        setLoading(false);
+          if (
+            isNaN(
+              startTime.getTime()
+            )
+          ) {
+            startTime =
+              new Date();
+          }
+
+          // =====================================================
+          // DURATION
+          // =====================================================
+
+          const duration =
+            ticket.time_spent_minutes ||
+            60;
+
+          const endTime =
+            calculateEndTime(
+              startTime,
+              duration
+            );
+
+          return {
+            id: ticket.id,
+
+            title:
+              ticket.title,
+
+            start: startTime,
+
+            end: endTime,
+
+            allDay: false,
+
+            backgroundColor,
+
+            borderColor,
+
+            resource: {
+              ...ticket,
+
+              duration,
+
+              assignedPerson,
+            },
+          };
+        });
+
+      setEvents(formatted);
+    } catch (err) {
+      console.error(
+        "Calendar fetch error:",
+        err
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // =====================================================
+  // FILTERED EVENTS
+  // =====================================================
+
+  const filteredEvents =
+    useMemo(() => {
+      if (
+        selectedUser === "All"
+      ) {
+        return events;
       }
-    };
+
+      return events.filter(
+        (event) =>
+          event.resource
+            ?.assignedPerson ===
+          selectedUser
+      );
+    }, [events, selectedUser]);
+
+  // =====================================================
+  // USERS
+  // =====================================================
+
+  const uniqueUsers =
+    useMemo(() => {
+      const users =
+        events.map(
+          (e) =>
+            e.resource
+              ?.assignedPerson
+        );
+
+      return [
+        "All",
+        ...new Set(users),
+      ];
+    }, [events]);
 
   // =====================================================
   // MOVE EVENT
@@ -165,39 +307,28 @@ export default function TicketCalendar() {
     end,
   }) => {
     try {
-      // =====================================================
-      // DURATION
-      // =====================================================
-
       const duration =
         Math.round(
           (end - start) / 60000
         );
-
-      // =====================================================
-      // UPDATE UI
-      // =====================================================
 
       const updatedEvents =
         events.map((e) =>
           e.id === event.id
             ? {
                 ...e,
-
                 start,
-
                 end,
 
                 resource: {
                   ...e.resource,
 
-                  start_time:
+                  duration,
+
+                  work_start_time:
                     start,
 
-                  end_time:
-                    end,
-
-                  duration_minutes:
+                  time_spent_minutes:
                     duration,
                 },
               }
@@ -206,26 +337,15 @@ export default function TicketCalendar() {
 
       setEvents(updatedEvents);
 
-      // =====================================================
-      // SAVE TO BACKEND
-      // =====================================================
-
       await api.put(
-        `/ticket-time-entries/${event.id}`,
+        `/tickets/${event.id}`,
         {
-          start_time:
+          work_start_time:
             start.toISOString(),
 
-          end_time:
-            end.toISOString(),
-
-          duration_minutes:
+          time_spent_minutes:
             duration,
         }
-      );
-
-      console.log(
-        "Event moved"
       );
     } catch (err) {
       console.error(
@@ -250,30 +370,23 @@ export default function TicketCalendar() {
           (end - start) / 60000
         );
 
-      // =====================================================
-      // UPDATE UI
-      // =====================================================
-
       const updatedEvents =
         events.map((e) =>
           e.id === event.id
             ? {
                 ...e,
-
                 start,
-
                 end,
 
                 resource: {
                   ...e.resource,
 
-                  start_time:
+                  duration,
+
+                  work_start_time:
                     start,
 
-                  end_time:
-                    end,
-
-                  duration_minutes:
+                  time_spent_minutes:
                     duration,
                 },
               }
@@ -282,26 +395,15 @@ export default function TicketCalendar() {
 
       setEvents(updatedEvents);
 
-      // =====================================================
-      // SAVE
-      // =====================================================
-
       await api.put(
-        `/ticket-time-entries/${event.id}`,
+        `/tickets/${event.id}`,
         {
-          start_time:
+          work_start_time:
             start.toISOString(),
 
-          end_time:
-            end.toISOString(),
-
-          duration_minutes:
+          time_spent_minutes:
             duration,
         }
-      );
-
-      console.log(
-        "Resize saved"
       );
     } catch (err) {
       console.error(
@@ -322,22 +424,24 @@ export default function TicketCalendar() {
       backgroundColor:
         event.backgroundColor,
 
-      border: `3px solid ${event.borderColor}`,
-
       borderRadius: "14px",
 
       color: "#ffffff",
+
+      border: `3px solid ${event.borderColor}`,
+
+      padding: "5px 8px",
 
       fontSize: "12px",
 
       fontWeight: "600",
 
-      padding: "4px 6px",
-
       overflow: "hidden",
 
       boxShadow:
         "0 2px 8px rgba(0,0,0,0.15)",
+
+      transition: "0.2s",
     },
   });
 
@@ -355,12 +459,12 @@ export default function TicketCalendar() {
           {event.title}
         </div>
 
-        {/* USER */}
+        {/* ASSIGNEE */}
         <div className="text-[10px] opacity-90 truncate">
           👤{" "}
           {
             event.resource
-              ?.assigned_to_name
+              ?.assignedPerson
           }
         </div>
 
@@ -378,7 +482,7 @@ export default function TicketCalendar() {
           ⏱{" "}
           {
             event.resource
-              ?.duration_minutes
+              ?.duration
           }{" "}
           mins
         </div>
@@ -427,13 +531,41 @@ export default function TicketCalendar() {
 
         <div className="mb-8">
           <h1 className="text-4xl font-bold">
-            Ticket Calendar
+            Team Calendar
           </h1>
 
           <p className="text-gray-500 mt-2">
-            Ticket work session
-            planner
+            Jira-style team
+            scheduling with
+            swimlanes
           </p>
+        </div>
+
+        {/* ===================================================== */}
+        {/* SWIMLANES / USER FILTER */}
+        {/* ===================================================== */}
+
+        <div className="mb-6 flex flex-wrap gap-3">
+          {uniqueUsers.map(
+            (user) => (
+              <button
+                key={user}
+                onClick={() =>
+                  setSelectedUser(
+                    user
+                  )
+                }
+                className={`px-4 py-2 rounded-2xl border font-medium transition ${
+                  selectedUser ===
+                  user
+                    ? "bg-black text-white"
+                    : "bg-white hover:bg-gray-100"
+                }`}
+              >
+                {user}
+              </button>
+            )
+          )}
         </div>
 
         {/* ===================================================== */}
@@ -458,10 +590,80 @@ export default function TicketCalendar() {
         </div>
 
         {/* ===================================================== */}
+        {/* TEAM WORKLOAD */}
+        {/* ===================================================== */}
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          {uniqueUsers
+            .filter(
+              (u) => u !== "All"
+            )
+            .map((user) => {
+              const userEvents =
+                events.filter(
+                  (e) =>
+                    e.resource
+                      ?.assignedPerson ===
+                    user
+                );
+
+              const totalMinutes =
+                userEvents.reduce(
+                  (sum, e) =>
+                    sum +
+                    (e.resource
+                      ?.duration ||
+                      0),
+                  0
+                );
+
+              return (
+                <div
+                  key={user}
+                  className="bg-white rounded-2xl border p-4 shadow-sm"
+                >
+                  <div className="flex items-center gap-3 mb-2">
+                    <div
+                      className="w-4 h-4 rounded-full"
+                      style={{
+                        background:
+                          userColors[
+                            user
+                          ] ||
+                          "#6b7280",
+                      }}
+                    ></div>
+
+                    <h3 className="font-bold">
+                      {user}
+                    </h3>
+                  </div>
+
+                  <div className="text-sm text-gray-500">
+                    Tickets:{" "}
+                    {
+                      userEvents.length
+                    }
+                  </div>
+
+                  <div className="text-sm text-gray-500">
+                    Workload:{" "}
+                    {Math.round(
+                      totalMinutes /
+                        60
+                    )}
+                    h
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+
+        {/* ===================================================== */}
         {/* CALENDAR */}
         {/* ===================================================== */}
 
-        <div className="bg-white rounded-3xl border shadow-sm overflow-hidden p-4">
+        <div className="bg-white p-3 lg:p-6 rounded-3xl shadow-sm border overflow-hidden">
           <div
             style={{
               height: "82vh",
@@ -472,7 +674,9 @@ export default function TicketCalendar() {
                 localizer
               }
 
-              events={events}
+              events={
+                filteredEvents
+              }
 
               startAccessor="start"
 
@@ -510,7 +714,7 @@ export default function TicketCalendar() {
               }
 
               // =====================================================
-              // TIME SETTINGS
+              // TIME
               // =====================================================
 
               step={15}
@@ -564,7 +768,7 @@ export default function TicketCalendar() {
 }
 
 // =====================================================
-// LEGEND COMPONENT
+// LEGEND
 // =====================================================
 
 function Legend({
