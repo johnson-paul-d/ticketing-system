@@ -2,20 +2,43 @@ import { useEffect, useState } from "react";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
 
-import Timeline from "react-calendar-timeline";
+import {
+  Calendar,
+  momentLocalizer,
+} from "react-big-calendar";
+
+import withDragAndDrop from "react-big-calendar/lib/addons/dragAndDrop";
 
 import moment from "moment";
 
-import "react-calendar-timeline/style.css";
+import "react-big-calendar/lib/css/react-big-calendar.css";
+import "react-big-calendar/lib/addons/dragAndDrop/styles.css";
 
 // =====================================================
-// PERSON COLORS
+// LOCALIZER
+// =====================================================
+
+const localizer =
+  momentLocalizer(moment);
+
+const DnDCalendar =
+  withDragAndDrop(Calendar);
+
+// =====================================================
+// USER COLORS
 // =====================================================
 
 const userColors = {
+  "Johnson Paul D":
+    "#10b981",
+
   Kavinraj: "#3b82f6",
-  "Johnson Paul D": "#10b981",
-  "Karthick R": "#8b5cf6",
+
+  "Karthick R":
+    "#8b5cf6",
+
+  Admin: "#ec4899",
+
   Default: "#6b7280",
 };
 
@@ -25,121 +48,63 @@ const userColors = {
 
 const priorityBorders = {
   High: "#ef4444",
+
   Medium: "#f59e0b",
+
   Low: "#22c55e",
 };
 
-export default function TicketTimeline() {
-  const [groups, setGroups] =
-    useState([]);
-
-  const [items, setItems] =
+export default function TicketCalendar() {
+  const [events, setEvents] =
     useState([]);
 
   const [loading, setLoading] =
     useState(true);
 
+  // =====================================================
+  // FETCH EVENTS
+  // =====================================================
+
   useEffect(() => {
-    fetchTickets();
+    fetchCalendarEvents();
   }, []);
 
-  // =====================================================
-  // FETCH TICKETS
-  // =====================================================
+  const fetchCalendarEvents =
+    async () => {
+      try {
+        setLoading(true);
 
-  const fetchTickets = async () => {
-    try {
-      setLoading(true);
+        // =====================================================
+        // FETCH TIME ENTRIES
+        // =====================================================
 
-      const res = await api.get(
-        "/tickets"
-      );
+        /*
+          BACKEND SHOULD RETURN:
 
-      // =====================================================
-      // CREATE USER GROUPS
-      // =====================================================
-
-      const users = [
-        ...new Set(
-          res.data.map(
-            (ticket) =>
-              ticket.assigned_to_name ||
-              "Unassigned"
-          )
-        ),
-      ];
-
-      const formattedGroups =
-        users.map((user, index) => ({
-          id: index + 1,
-
-          title: user,
-        }));
-
-      // =====================================================
-      // CREATE ITEMS
-      // =====================================================
-
-      const formattedItems =
-        res.data.map(
-          (ticket, index) => {
-            const assignedUser =
-              ticket.assigned_to_name ||
-              "Unassigned";
-
-            const group =
-              formattedGroups.find(
-                (g) =>
-                  g.title ===
-                  assignedUser
-              );
-
-            // =====================================================
-            // START TIME
-            // =====================================================
-
-            let start;
-
-            if (
-              ticket.work_start_time
-            ) {
-              start =
-                moment(
-                  ticket.work_start_time
-                ).valueOf();
-            } else if (
-              ticket.due_date
-            ) {
-              start = moment(
-                ticket.due_date
-              )
-                .hour(9)
-                .minute(0)
-                .valueOf();
-            } else {
-              start =
-                moment().valueOf();
+          [
+            {
+              id,
+              ticket_id,
+              ticket_title,
+              assigned_to_name,
+              priority,
+              start_time,
+              end_time,
+              duration_minutes
             }
+          ]
+        */
 
-            // =====================================================
-            // DURATION
-            // =====================================================
+        const res =
+          await api.get(
+            "/ticket-time-entries"
+          );
 
-            const duration =
-              ticket.time_spent_minutes ||
-              60;
-
-            const end =
-              moment(start)
-                .add(
-                  duration,
-                  "minutes"
-                )
-                .valueOf();
-
-            // =====================================================
-            // COLORS
-            // =====================================================
+        const formatted =
+          res.data.map((entry) => {
+            const assignedUser =
+              entry.assigned_to_name ||
+              "Default";
 
             const backgroundColor =
               userColors[
@@ -149,213 +114,289 @@ export default function TicketTimeline() {
 
             const borderColor =
               priorityBorders[
-                ticket.priority
+                entry.priority
               ] || "#d1d5db";
 
             return {
-              id: ticket.id,
+              id: entry.id,
 
-              group: group?.id,
+              title:
+                entry.ticket_title,
 
-              title: `
-${ticket.title}
+              start:
+                new Date(
+                  entry.start_time
+                ),
 
-👤 ${assignedUser}
-⚡ ${ticket.priority}
-⏱ ${duration} mins
-              `,
+              end: new Date(
+                entry.end_time
+              ),
 
-              start_time: start,
+              allDay: false,
 
-              end_time: end,
+              backgroundColor,
 
-              canMove: true,
+              borderColor,
 
-              canResize: "both",
-
-              canChangeGroup: false,
-
-              itemProps: {
-                style: {
-                  background:
-                    backgroundColor,
-
-                  color: "#fff",
-
-                  border: `3px solid ${borderColor}`,
-
-                  borderRadius:
-                    "12px",
-
-                  fontSize: "12px",
-
-                  fontWeight:
-                    "600",
-
-                  padding:
-                    "6px",
-
-                  boxShadow:
-                    "0 2px 8px rgba(0,0,0,0.15)",
-                },
+              resource: {
+                ...entry,
               },
             };
-          }
+          });
+
+        setEvents(formatted);
+      } catch (err) {
+        console.error(
+          "Calendar fetch error:",
+          err
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+  // =====================================================
+  // MOVE EVENT
+  // =====================================================
+
+  const moveEvent = async ({
+    event,
+    start,
+    end,
+  }) => {
+    try {
+      // =====================================================
+      // DURATION
+      // =====================================================
+
+      const duration =
+        Math.round(
+          (end - start) / 60000
         );
 
-      setGroups(
-        formattedGroups
+      // =====================================================
+      // UPDATE UI
+      // =====================================================
+
+      const updatedEvents =
+        events.map((e) =>
+          e.id === event.id
+            ? {
+                ...e,
+
+                start,
+
+                end,
+
+                resource: {
+                  ...e.resource,
+
+                  start_time:
+                    start,
+
+                  end_time:
+                    end,
+
+                  duration_minutes:
+                    duration,
+                },
+              }
+            : e
+        );
+
+      setEvents(updatedEvents);
+
+      // =====================================================
+      // SAVE TO BACKEND
+      // =====================================================
+
+      await api.put(
+        `/ticket-time-entries/${event.id}`,
+        {
+          start_time:
+            start.toISOString(),
+
+          end_time:
+            end.toISOString(),
+
+          duration_minutes:
+            duration,
+        }
       );
 
-      setItems(
-        formattedItems
+      console.log(
+        "Event moved"
       );
     } catch (err) {
       console.error(
-        "Timeline error:",
+        "Move failed:",
         err
       );
-    } finally {
-      setLoading(false);
     }
   };
 
   // =====================================================
-  // MOVE / RESIZE
+  // RESIZE EVENT
   // =====================================================
 
-  const handleItemMove =
-    async (
-      itemId,
-      dragTime,
-      newGroupOrder
-    ) => {
-      try {
-        const updatedItems =
-          items.map((item) => {
-            if (
-              item.id === itemId
-            ) {
-              const duration =
-                item.end_time -
-                item.start_time;
-
-              return {
-                ...item,
-
-                start_time:
-                  dragTime,
-
-                end_time:
-                  dragTime +
-                  duration,
-              };
-            }
-
-            return item;
-          });
-
-        setItems(updatedItems);
-
-        const movedItem =
-          updatedItems.find(
-            (i) =>
-              i.id === itemId
-          );
-
-        const durationMinutes =
-          Math.round(
-            (movedItem.end_time -
-              movedItem.start_time) /
-              60000
-          );
-
-        await api.put(
-          `/tickets/${itemId}`,
-          {
-            work_start_time:
-              new Date(
-                movedItem.start_time
-              ).toISOString(),
-
-            time_spent_minutes:
-              durationMinutes,
-          }
+  const resizeEvent = async ({
+    event,
+    start,
+    end,
+  }) => {
+    try {
+      const duration =
+        Math.round(
+          (end - start) / 60000
         );
-      } catch (err) {
-        console.error(err);
-      }
-    };
 
-  // =====================================================
-  // RESIZE
-  // =====================================================
+      // =====================================================
+      // UPDATE UI
+      // =====================================================
 
-  const handleItemResize =
-    async (
-      itemId,
-      time,
-      edge
-    ) => {
-      try {
-        const updatedItems =
-          items.map((item) => {
-            if (
-              item.id === itemId
-            ) {
-              if (
-                edge === "left"
-              ) {
-                return {
-                  ...item,
+      const updatedEvents =
+        events.map((e) =>
+          e.id === event.id
+            ? {
+                ...e,
+
+                start,
+
+                end,
+
+                resource: {
+                  ...e.resource,
 
                   start_time:
-                    time,
-                };
+                    start,
+
+                  end_time:
+                    end,
+
+                  duration_minutes:
+                    duration,
+                },
               }
-
-              return {
-                ...item,
-
-                end_time:
-                  time,
-              };
-            }
-
-            return item;
-          });
-
-        setItems(updatedItems);
-
-        const resizedItem =
-          updatedItems.find(
-            (i) =>
-              i.id === itemId
-          );
-
-        const durationMinutes =
-          Math.round(
-            (resizedItem.end_time -
-              resizedItem.start_time) /
-              60000
-          );
-
-        await api.put(
-          `/tickets/${itemId}`,
-          {
-            work_start_time:
-              new Date(
-                resizedItem.start_time
-              ).toISOString(),
-
-            time_spent_minutes:
-              durationMinutes,
-          }
+            : e
         );
-      } catch (err) {
-        console.error(err);
-      }
-    };
+
+      setEvents(updatedEvents);
+
+      // =====================================================
+      // SAVE
+      // =====================================================
+
+      await api.put(
+        `/ticket-time-entries/${event.id}`,
+        {
+          start_time:
+            start.toISOString(),
+
+          end_time:
+            end.toISOString(),
+
+          duration_minutes:
+            duration,
+        }
+      );
+
+      console.log(
+        "Resize saved"
+      );
+    } catch (err) {
+      console.error(
+        "Resize failed:",
+        err
+      );
+    }
+  };
+
+  // =====================================================
+  // EVENT STYLE
+  // =====================================================
+
+  const eventStyleGetter = (
+    event
+  ) => ({
+    style: {
+      backgroundColor:
+        event.backgroundColor,
+
+      border: `3px solid ${event.borderColor}`,
+
+      borderRadius: "14px",
+
+      color: "#ffffff",
+
+      fontSize: "12px",
+
+      fontWeight: "600",
+
+      padding: "4px 6px",
+
+      overflow: "hidden",
+
+      boxShadow:
+        "0 2px 8px rgba(0,0,0,0.15)",
+    },
+  });
+
+  // =====================================================
+  // CUSTOM EVENT
+  // =====================================================
+
+  const CustomEvent = ({
+    event,
+  }) => {
+    return (
+      <div className="overflow-hidden">
+        {/* TITLE */}
+        <div className="font-bold truncate text-[11px]">
+          {event.title}
+        </div>
+
+        {/* USER */}
+        <div className="text-[10px] opacity-90 truncate">
+          👤{" "}
+          {
+            event.resource
+              ?.assigned_to_name
+          }
+        </div>
+
+        {/* PRIORITY */}
+        <div className="text-[10px] opacity-90">
+          ⚡{" "}
+          {
+            event.resource
+              ?.priority
+          }
+        </div>
+
+        {/* DURATION */}
+        <div className="text-[10px] opacity-90">
+          ⏱{" "}
+          {
+            event.resource
+              ?.duration_minutes
+          }{" "}
+          mins
+        </div>
+
+        {/* TIME */}
+        <div className="text-[10px] opacity-90">
+          🕒{" "}
+          {moment(
+            event.start
+          ).format("hh:mm A")}{" "}
+          -{" "}
+          {moment(
+            event.end
+          ).format("hh:mm A")}
+        </div>
+      </div>
+    );
+  };
 
   // =====================================================
   // LOADING
@@ -366,8 +407,7 @@ ${ticket.title}
       <MainLayout>
         <div className="p-10">
           <div className="text-xl font-semibold">
-            Loading team
-            planner...
+            Loading calendar...
           </div>
         </div>
       </MainLayout>
@@ -387,13 +427,12 @@ ${ticket.title}
 
         <div className="mb-8">
           <h1 className="text-4xl font-bold">
-            Team Timeline
+            Ticket Calendar
           </h1>
 
           <p className="text-gray-500 mt-2">
-            Jira-style resource
-            planner with
-            swimlanes
+            Ticket work session
+            planner
           </p>
         </div>
 
@@ -419,119 +458,103 @@ ${ticket.title}
         </div>
 
         {/* ===================================================== */}
-        {/* WORKLOAD */}
+        {/* CALENDAR */}
         {/* ===================================================== */}
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          {groups.map((group) => {
-            const userItems =
-              items.filter(
-                (i) =>
-                  i.group ===
-                  group.id
-              );
-
-            const totalMinutes =
-              userItems.reduce(
-                (sum, item) =>
-                  sum +
-                  (item.end_time -
-                    item.start_time) /
-                    60000,
-                0
-              );
-
-            return (
-              <div
-                key={group.id}
-                className="bg-white rounded-2xl border p-4 shadow-sm"
-              >
-                <div className="flex items-center gap-3 mb-2">
-                  <div
-                    className="w-4 h-4 rounded-full"
-                    style={{
-                      background:
-                        userColors[
-                          group.title
-                        ] ||
-                        "#6b7280",
-                    }}
-                  ></div>
-
-                  <h3 className="font-bold">
-                    {group.title}
-                  </h3>
-                </div>
-
-                <div className="text-sm text-gray-500">
-                  Tickets:{" "}
-                  {
-                    userItems.length
-                  }
-                </div>
-
-                <div className="text-sm text-gray-500">
-                  Workload:{" "}
-                  {Math.round(
-                    totalMinutes /
-                      60
-                  )}
-                  h
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* ===================================================== */}
-        {/* TIMELINE */}
-        {/* ===================================================== */}
-
-        <div className="bg-white rounded-3xl border shadow-sm overflow-hidden">
+        <div className="bg-white rounded-3xl border shadow-sm overflow-hidden p-4">
           <div
             style={{
-              width: "100%",
-              height: "80vh",
+              height: "82vh",
             }}
           >
-            <Timeline
-              groups={groups}
-
-              items={items}
-
-              defaultTimeStart={moment()
-                .startOf("day")
-                .add(8, "hours")}
-
-              defaultTimeEnd={moment()
-                .startOf("day")
-                .add(20, "hours")}
-
-              canMove
-
-              canResize="both"
-
-              stackItems
-
-              lineHeight={70}
-
-              itemHeightRatio={
-                0.75
+            <DnDCalendar
+              localizer={
+                localizer
               }
 
-              sidebarWidth={220}
+              events={events}
 
-              itemTouchSendsClick={
-                false
+              startAccessor="start"
+
+              endAccessor="end"
+
+              defaultView="week"
+
+              views={[
+                "month",
+                "week",
+                "day",
+                "agenda",
+              ]}
+
+              selectable
+
+              popup
+
+              // =====================================================
+              // DRAG & DROP
+              // =====================================================
+
+              draggableAccessor={() =>
+                true
               }
 
-              onItemMove={
-                handleItemMove
+              resizable
+
+              onEventDrop={
+                moveEvent
               }
 
-              onItemResize={
-                handleItemResize
+              onEventResize={
+                resizeEvent
               }
+
+              // =====================================================
+              // TIME SETTINGS
+              // =====================================================
+
+              step={15}
+
+              timeslots={2}
+
+              min={
+                new Date(
+                  2026,
+                  1,
+                  1,
+                  9,
+                  0,
+                  0
+                )
+              }
+
+              max={
+                new Date(
+                  2026,
+                  1,
+                  1,
+                  22,
+                  0,
+                  0
+                )
+              }
+
+              // =====================================================
+              // STYLE
+              // =====================================================
+
+              eventPropGetter={
+                eventStyleGetter
+              }
+
+              components={{
+                event:
+                  CustomEvent,
+              }}
+
+              style={{
+                height: "100%",
+              }}
             />
           </div>
         </div>
@@ -541,7 +564,7 @@ ${ticket.title}
 }
 
 // =====================================================
-// LEGEND
+// LEGEND COMPONENT
 // =====================================================
 
 function Legend({
