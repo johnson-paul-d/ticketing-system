@@ -18,22 +18,42 @@ import "react-big-calendar/lib/addons/dragAndDrop/styles.css";
 // LOCALIZER
 // =====================================================
 
-const localizer = momentLocalizer(moment);
+const localizer =
+  momentLocalizer(moment);
 
-const DnDCalendar = withDragAndDrop(Calendar);
+const DnDCalendar =
+  withDragAndDrop(Calendar);
 
 // =====================================================
 // OVERDUE CHECK
 // =====================================================
 
-const isOverdue = (dueDateStr, status) => {
-  if (status === "Completed") return false;
+const isOverdue = (
+  dueDateStr,
+  status
+) => {
+  if (status === "Completed")
+    return false;
 
   const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
 
-  const due = new Date(dueDateStr);
-  due.setUTCHours(0, 0, 0, 0);
+  today.setUTCHours(
+    0,
+    0,
+    0,
+    0
+  );
+
+  const due = new Date(
+    dueDateStr
+  );
+
+  due.setUTCHours(
+    0,
+    0,
+    0,
+    0
+  );
 
   return due < today;
 };
@@ -49,14 +69,19 @@ const calculateEndTime = (
   const end = new Date(start);
 
   end.setMinutes(
-    end.getMinutes() + durationMinutes
+    end.getMinutes() +
+      durationMinutes
   );
 
   return end;
 };
 
 export default function TicketCalendar() {
-  const [events, setEvents] = useState([]);
+  const [events, setEvents] =
+    useState([]);
+
+  const [loading, setLoading] =
+    useState(true);
 
   useEffect(() => {
     fetchTickets();
@@ -68,61 +93,108 @@ export default function TicketCalendar() {
 
   const fetchTickets = async () => {
     try {
-      const res = await api.get("/tickets");
+      setLoading(true);
 
-      const formatted = res.data
-        .filter((ticket) => ticket.due_date)
-        .map((ticket) => {
-          const overdue = isOverdue(
-            ticket.due_date,
-            ticket.status
-          );
+      const res = await api.get(
+        "/tickets"
+      );
+
+      const formatted =
+        res.data.map((ticket) => {
+          const overdue =
+            isOverdue(
+              ticket.due_date,
+              ticket.status
+            );
 
           // =====================================================
-          // COLORS
+          // EVENT COLOR
           // =====================================================
 
-          let backgroundColor = "#6b7280";
+          let backgroundColor =
+            "#6b7280";
 
-          if (ticket.status === "Completed") {
-            backgroundColor = "#22c55e";
-          } else if (
-            ticket.status === "In Progress"
+          if (
+            ticket.status ===
+            "Completed"
           ) {
-            backgroundColor = "#3b82f6";
+            backgroundColor =
+              "#22c55e";
+          } else if (
+            ticket.status ===
+            "In Progress"
+          ) {
+            backgroundColor =
+              "#3b82f6";
           } else if (
             ticket.status ===
             "Waiting For Sources"
           ) {
-            backgroundColor = "#f59e0b";
+            backgroundColor =
+              "#f59e0b";
           } else if (
             ticket.status ===
             "Pending Approval"
           ) {
-            backgroundColor = "#a855f7";
+            backgroundColor =
+              "#a855f7";
           }
 
           if (overdue) {
-            backgroundColor = "#ef4444";
+            backgroundColor =
+              "#ef4444";
           }
 
           // =====================================================
-          // WORK START TIME
+          // START TIME
           // =====================================================
 
-          const startTime =
+          let startTime;
+
+          if (
             ticket.work_start_time
-              ? new Date(
-                  ticket.work_start_time
-                )
-              : new Date(ticket.due_date);
+          ) {
+            startTime = new Date(
+              ticket.work_start_time
+            );
+          } else if (
+            ticket.due_date
+          ) {
+            startTime = new Date(
+              ticket.due_date
+            );
+
+            // DEFAULT TO 9 AM
+            startTime.setHours(
+              9,
+              0,
+              0,
+              0
+            );
+          } else {
+            startTime = new Date();
+          }
+
+          // =====================================================
+          // INVALID DATE FIX
+          // =====================================================
+
+          if (
+            isNaN(
+              startTime.getTime()
+            )
+          ) {
+            startTime =
+              new Date();
+          }
 
           // =====================================================
           // DURATION
           // =====================================================
 
           const duration =
-            ticket.time_spent_minutes || 60;
+            ticket.time_spent_minutes ||
+            60;
 
           const endTime =
             calculateEndTime(
@@ -158,11 +230,13 @@ export default function TicketCalendar() {
         "Calendar fetch error:",
         err
       );
+    } finally {
+      setLoading(false);
     }
   };
 
   // =====================================================
-  // DRAG EVENT
+  // MOVE EVENT
   // =====================================================
 
   const moveEvent = async ({
@@ -171,31 +245,65 @@ export default function TicketCalendar() {
     end,
   }) => {
     try {
-      const updatedEvents = events.map((e) =>
-        e.id === event.id
-          ? {
-              ...e,
-              start,
-              end,
-            }
-          : e
-      );
+      // =====================================================
+      // NEW DURATION
+      // =====================================================
+
+      const duration =
+        Math.round(
+          (end - start) / 60000
+        );
+
+      // =====================================================
+      // UPDATE UI
+      // =====================================================
+
+      const updatedEvents =
+        events.map((e) =>
+          e.id === event.id
+            ? {
+                ...e,
+                start,
+                end,
+
+                resource: {
+                  ...e.resource,
+
+                  duration,
+
+                  work_start_time:
+                    start,
+
+                  time_spent_minutes:
+                    duration,
+                },
+              }
+            : e
+        );
 
       setEvents(updatedEvents);
+
+      // =====================================================
+      // SAVE TO DB
+      // =====================================================
 
       await api.put(
         `/tickets/${event.id}`,
         {
-          work_start_time: start,
+          work_start_time:
+            start.toISOString(),
+
           time_spent_minutes:
-            Math.round(
-              (end - start) / 60000
-            ),
+            duration,
         }
+      );
+
+      console.log(
+        "Move saved"
       );
     } catch (err) {
       console.error(
-        "Move event error:",
+        "Move failed:",
         err
       );
     }
@@ -211,50 +319,93 @@ export default function TicketCalendar() {
     end,
   }) => {
     try {
-      const updatedEvents = events.map((e) =>
-        e.id === event.id
-          ? {
-              ...e,
-              start,
-              end,
-            }
-          : e
-      );
+      // =====================================================
+      // NEW DURATION
+      // =====================================================
+
+      const duration =
+        Math.round(
+          (end - start) / 60000
+        );
+
+      // =====================================================
+      // UPDATE UI
+      // =====================================================
+
+      const updatedEvents =
+        events.map((e) =>
+          e.id === event.id
+            ? {
+                ...e,
+                start,
+                end,
+
+                resource: {
+                  ...e.resource,
+
+                  duration,
+
+                  work_start_time:
+                    start,
+
+                  time_spent_minutes:
+                    duration,
+                },
+              }
+            : e
+        );
 
       setEvents(updatedEvents);
+
+      // =====================================================
+      // SAVE TO DB
+      // =====================================================
 
       await api.put(
         `/tickets/${event.id}`,
         {
-          work_start_time: start,
+          work_start_time:
+            start.toISOString(),
+
           time_spent_minutes:
-            Math.round(
-              (end - start) / 60000
-            ),
+            duration,
         }
+      );
+
+      console.log(
+        "Resize saved"
       );
     } catch (err) {
       console.error(
-        "Resize event error:",
+        "Resize failed:",
         err
       );
     }
   };
 
   // =====================================================
-  // EVENT STYLING
+  // EVENT STYLE
   // =====================================================
 
-  const eventStyleGetter = (event) => ({
+  const eventStyleGetter = (
+    event
+  ) => ({
     style: {
       backgroundColor:
         event.backgroundColor,
+
       borderRadius: "12px",
+
       color: "#ffffff",
+
       border: "none",
+
       padding: "4px 6px",
+
       fontSize: "12px",
+
       fontWeight: "600",
+
       overflow: "hidden",
     },
   });
@@ -263,7 +414,9 @@ export default function TicketCalendar() {
   // CUSTOM EVENT
   // =====================================================
 
-  const CustomEvent = ({ event }) => {
+  const CustomEvent = ({
+    event,
+  }) => {
     return (
       <div className="overflow-hidden">
         <div className="font-semibold truncate text-[11px]">
@@ -283,22 +436,46 @@ export default function TicketCalendar() {
 
         <div className="text-[10px] opacity-90">
           ⏱{" "}
-          {event.resource.duration} mins
+          {
+            event.resource
+              .duration
+          }{" "}
+          mins
         </div>
 
         <div className="text-[10px] opacity-90">
           🕒{" "}
-          {moment(event.start).format(
-            "hh:mm A"
-          )}{" "}
+          {moment(
+            event.start
+          ).format("hh:mm A")}{" "}
           -{" "}
-          {moment(event.end).format(
-            "hh:mm A"
-          )}
+          {moment(
+            event.end
+          ).format("hh:mm A")}
         </div>
       </div>
     );
   };
+
+  // =====================================================
+  // LOADING
+  // =====================================================
+
+  if (loading) {
+    return (
+      <MainLayout>
+        <div className="p-10">
+          <div className="text-xl font-semibold">
+            Loading calendar...
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // =====================================================
+  // MAIN UI
+  // =====================================================
 
   return (
     <MainLayout>
@@ -308,12 +485,13 @@ export default function TicketCalendar() {
         {/* ===================================================== */}
 
         <div className="mb-8">
-          <h1 className="text-3xl lg:text-4xl font-bold">
+          <h1 className="text-4xl font-bold">
             Ticket Calendar
           </h1>
 
           <p className="text-gray-500 mt-2">
-            Jira-style work scheduling &
+            Jira-style work
+            scheduling &
             tracking
           </p>
         </div>
@@ -354,33 +532,52 @@ export default function TicketCalendar() {
         {/* ===================================================== */}
 
         <div className="bg-white p-3 lg:p-6 rounded-3xl shadow-sm border overflow-hidden">
-          <div style={{ height: "82vh" }}>
+          <div
+            style={{
+              height: "82vh",
+            }}
+          >
             <DnDCalendar
-              localizer={localizer}
+              localizer={
+                localizer
+              }
+
               events={events}
+
               startAccessor="start"
+
               endAccessor="end"
+
               defaultView="week"
+
               views={[
                 "month",
                 "week",
                 "day",
                 "agenda",
               ]}
+
               selectable
+
               popup
 
               // =====================================================
               // DRAG & DROP
               // =====================================================
 
-              draggableAccessor={() => true}
+              draggableAccessor={() =>
+                true
+              }
 
               resizable
 
-              onEventDrop={moveEvent}
+              onEventDrop={
+                moveEvent
+              }
 
-              onEventResize={resizeEvent}
+              onEventResize={
+                resizeEvent
+              }
 
               // =====================================================
               // TIME SETTINGS
@@ -421,7 +618,8 @@ export default function TicketCalendar() {
               }
 
               components={{
-                event: CustomEvent,
+                event:
+                  CustomEvent,
               }}
 
               style={{
@@ -436,10 +634,13 @@ export default function TicketCalendar() {
 }
 
 // =====================================================
-// LEGEND COMPONENT
+// LEGEND
 // =====================================================
 
-function Legend({ color, label }) {
+function Legend({
+  color,
+  label,
+}) {
   return (
     <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-2xl border">
       <div
