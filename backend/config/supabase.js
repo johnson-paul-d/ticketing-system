@@ -1,11 +1,20 @@
-const { createClient } = require('@supabase/supabase-js');
+const {
+  createClient,
+} = require(
+  "@supabase/supabase-js"
+);
 
-const supabaseUrl = process.env.SUPABASE_URL?.trim();
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+const supabaseUrl =
+  process.env.SUPABASE_URL;
 
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error('Supabase credentials missing');
-}
+const supabaseKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const supabase = createClient(supabaseUrl, supabaseKey);
-module.exports = supabase;
+const supabase =
+  createClient(
+    supabaseUrl,
+    supabaseKey
+  );
+
+module.exports =
+  supabase;
