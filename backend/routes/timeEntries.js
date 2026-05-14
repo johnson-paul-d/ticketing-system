@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 
 const supabase =
-  require("../supabase");
+  require("../config/supabase");
 
 // =====================================================
 // CREATE TIME ENTRY
