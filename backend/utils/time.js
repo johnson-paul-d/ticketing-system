@@ -1,4 +1,15 @@
 const getISTTime = () => {
-  return new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+
+  const now = new Date();
+
+  return new Date(
+    now.toLocaleString(
+      "en-US",
+      {
+        timeZone: "Asia/Kolkata",
+      }
+    )
+  ).toISOString();
 };
+
 module.exports = getISTTime;
