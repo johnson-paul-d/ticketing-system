@@ -136,7 +136,6 @@ export default function TicketCalendar() {
       // =====================================================
 
       leaves.forEach((leave) => {
-        // Backend sends from_date / to_date
         const start = new Date(leave.from_date);
         start.setHours(0, 0, 0, 0);
 
@@ -154,17 +153,16 @@ export default function TicketCalendar() {
           borderColor: "#7f1d1d",
           resource: {
             ...leave,
-            assignedPerson: leave.user_name,
+            assignedPerson: leave.user_name?.trim(),
           },
         });
       });
 
       // =====================================================
-      // PERMISSION EVENTS (timed blocks)
+      // PERMISSION EVENTS (timed blocks) – FIXED
       // =====================================================
 
       permissions.forEach((permission) => {
-        // Backend sends permission_date, from_time, to_time
         const start = new Date(
           `${permission.permission_date}T${permission.from_time}`
         );
@@ -183,7 +181,7 @@ export default function TicketCalendar() {
           borderColor: "#5b21b6",
           resource: {
             ...permission,
-            assignedPerson: permission.user_name,
+            assignedPerson: permission.user_name?.trim(),
           },
         });
       });
@@ -198,11 +196,13 @@ export default function TicketCalendar() {
   };
 
   // =====================================================
-  // USERS
+  // USERS – FIXED (single instance, no hook inside loop)
   // =====================================================
 
   const uniqueUsers = useMemo(() => {
-    const users = events.map((e) => e.resource?.assignedPerson);
+    const users = events
+      .map((e) => e.resource?.assignedPerson?.trim())
+      .filter(Boolean);
     return ["All", ...new Set(users)];
   }, [events]);
 
