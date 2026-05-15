@@ -148,15 +148,15 @@ export default function TicketCalendar() {
         ) {
           ticket.time_entries.forEach(
             (entry) => {
-              const start =
-                new Date(
-                  entry.start_time
-                );
+const start = moment
+  .utc(entry.start_time)
+  .utcOffset("+05:30")
+  .toDate();
 
-              const end =
-                new Date(
-                  entry.end_time
-                );
+const end = moment
+  .utc(entry.end_time)
+  .utcOffset("+05:30")
+  .toDate();
 
               allEvents.push({
                 id: `work-${entry.id}`,
@@ -417,20 +417,16 @@ export default function TicketCalendar() {
           </div>
 
           <div className="text-[10px] opacity-90">
-            🕒{" "}
-            {moment(
-              event.start
-            ).format(
-              "hh:mm A"
-            )}{" "}
-            -
-            {" "}
-            {moment(
-              event.end
-            ).format(
-              "hh:mm A"
-            )}
-          </div>
+  🕒{" "}
+  {moment(event.start)
+    .utcOffset("+05:30")
+    .format("hh:mm A")}
+  {" "}-
+  {" "}
+  {moment(event.end)
+    .utcOffset("+05:30")
+    .format("hh:mm A")}
+</div>
         </>
       )}
     </div>
