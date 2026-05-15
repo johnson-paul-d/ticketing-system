@@ -22,7 +22,7 @@ export default function Login() {
       const res = await api.post('/auth/login', { email, password });
       login(res.data.user, res.data.token);
       navigate('/dashboard');
-    } catch (error: any) {
+    } catch (error) {
       const message = error?.response?.data?.message || 'Invalid credentials';
       setError(message);
     } finally {
