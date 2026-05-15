@@ -85,9 +85,9 @@ router.post(
 
             work_date,
 
-            start_time,
+           start_time: new Date(start_time).toISOString(),
 
-            end_time,
+end_time: new Date(end_time).toISOString(),
 
             duration_minutes,
 
@@ -234,10 +234,12 @@ router.put(
         .from(
           "ticket_time_entries"
         )
-        .update({
-          start_time,
+.update({
+  start_time:
+    new Date(start_time).toISOString(),
 
-          end_time,
+  end_time:
+    new Date(end_time).toISOString(),
 
           duration_minutes,
         })
