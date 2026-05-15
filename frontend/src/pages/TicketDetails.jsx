@@ -121,6 +121,22 @@ export default function TicketDetails() {
   };
 
   // =====================================================
+  // UPDATE ALLOTTED TIME
+  // =====================================================
+  const updateAllottedTime = async () => {
+    try {
+      await api.put(`/tickets/${ticket.id}`, {
+        allotted_minutes: allottedMinutes,
+      });
+      alert("Allotted time updated");
+      fetchTicket();
+    } catch (err) {
+      console.error(err);
+      alert("Failed to update allotted time");
+    }
+  };
+
+  // =====================================================
   // UPDATE STATUS
   // =====================================================
   const updateStatus = async () => {
@@ -201,6 +217,25 @@ export default function TicketDetails() {
     (sum, entry) => sum + (entry.duration_minutes || 0),
     0
   );
+
+  // =====================================================
+  // TIMELINE FILTERS
+  // =====================================================
+  const generalTimeline = timeline.filter(
+    (t) =>
+      t.type !== "comment_add" &&
+      t.type !== "due_date" &&
+      t.type !== "time_log" &&
+      t.type !== "allotted_time"
+  );
+
+  const commentTimeline = timeline.filter((t) => t.type === "comment_add");
+
+  const dueDateTimeline = timeline.filter((t) => t.type === "due_date");
+
+  const timeTimeline = timeline.filter((t) => t.type === "time_log");
+
+  const allottedTimeline = timeline.filter((t) => t.type === "allotted_time");
 
   // =====================================================
   // LOADING
@@ -366,7 +401,7 @@ export default function TicketDetails() {
         </div>
 
         {/* ===================================================== */}
-        {/* ALLOTTED / CONSUMED / REMAINING UI */}
+        {/* ALLOTTED / CONSUMED / REMAINING UI + EDITABLE */}
         {/* ===================================================== */}
         <div className="mt-12 bg-black text-white rounded-3xl p-8">
           <h2 className="text-3xl font-bold">Ticket Time Allocation</h2>
@@ -394,37 +429,52 @@ export default function TicketDetails() {
               </div>
             </div>
           </div>
+
+          {/* EDIT ALLOTTED TIME (ADMIN ONLY) */}
+          {user?.role === "Admin" && (
+            <div className="mt-8 flex flex-col sm:flex-row gap-4">
+              <input
+                type="number"
+                value={allottedMinutes}
+                onChange={(e) => setAllottedMinutes(Number(e.target.value))}
+                className="border rounded-2xl px-5 py-3 text-black w-60"
+                placeholder="Minutes"
+              />
+              <button
+                onClick={updateAllottedTime}
+                className="bg-white text-black px-6 py-3 rounded-2xl font-semibold hover:bg-gray-200"
+              >
+                Update Allotted Time
+              </button>
+            </div>
+          )}
         </div>
 
         {/* ===================================================== */}
-        {/* LOG TIME SECTION (replaced with start/end) */}
+        {/* LOG TIME SECTION (with start/end) */}
         {/* ===================================================== */}
         <div className="mt-16 border-t pt-10">
           <h2 className="text-3xl font-bold mb-6">Log Work Time</h2>
           <div className="bg-gray-50 border rounded-3xl p-6">
             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-              {/* WORK DATE */}
               <input
                 type="date"
                 value={workDate}
                 onChange={(e) => setWorkDate(e.target.value)}
                 className="border rounded-2xl px-4 py-3"
               />
-              {/* START TIME */}
               <input
                 type="datetime-local"
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
                 className="border rounded-2xl px-4 py-3"
               />
-              {/* END TIME */}
               <input
                 type="datetime-local"
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
                 className="border rounded-2xl px-4 py-3"
               />
-              {/* NOTES */}
               <input
                 type="text"
                 placeholder="Work notes"
@@ -432,7 +482,6 @@ export default function TicketDetails() {
                 onChange={(e) => setNotes(e.target.value)}
                 className="border rounded-2xl px-4 py-3"
               />
-              {/* BUTTON */}
               <button
                 onClick={logTime}
                 className="bg-black hover:bg-gray-800 text-white rounded-2xl px-6 py-3 font-semibold"
@@ -472,7 +521,6 @@ export default function TicketDetails() {
                 .map((entry, idx) => (
                   <div key={idx} className="bg-gray-50 rounded-3xl border p-6">
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-                      {/* LEFT */}
                       <div>
                         <div className="flex flex-wrap items-center gap-3">
                           <span className="bg-blue-100 text-blue-700 px-4 py-2 rounded-full text-sm font-medium">
@@ -488,7 +536,6 @@ export default function TicketDetails() {
                             👤 {entry.user_name || ticket.assigned_to_name || "Unknown"}
                           </span>
                         </div>
-                        {/* START & END TIMES (IST) */}
                         {entry.start_time && entry.end_time && (
                           <div className="text-sm text-gray-500 mt-2">
                             🕒{" "}
@@ -509,8 +556,6 @@ export default function TicketDetails() {
                           <p className="mt-4 text-gray-700 whitespace-pre-wrap">{entry.notes}</p>
                         )}
                       </div>
-
-                      {/* RIGHT */}
                       <div className="flex flex-col items-start lg:items-end">
                         <div className="text-3xl font-bold">
                           {Math.floor(entry.duration_minutes / 60)}h {entry.duration_minutes % 60}m
@@ -559,15 +604,15 @@ export default function TicketDetails() {
         )}
 
         {/* ===================================================== */}
-        {/* TIMELINE */}
+        {/* MAIN TIMELINE (General) */}
         {/* ===================================================== */}
         <div className="mt-16 border-t pt-10">
           <h2 className="text-3xl font-bold mb-8">Ticket Timeline</h2>
           <div className="space-y-5">
-            {timeline.length === 0 ? (
-              <div className="text-gray-400">No timeline available</div>
+            {generalTimeline.length === 0 ? (
+              <div className="text-gray-400">No timeline events available</div>
             ) : (
-              timeline
+              generalTimeline
                 .slice()
                 .reverse()
                 .map((item, idx) => (
@@ -589,6 +634,68 @@ export default function TicketDetails() {
                     </div>
                   </div>
                 ))
+            )}
+          </div>
+        </div>
+
+        {/* ===================================================== */}
+        {/* COMMENTS TIMELINE */}
+        {/* ===================================================== */}
+        <div className="mt-16">
+          <h2 className="text-2xl font-bold mb-6">Comments Timeline</h2>
+          <div className="space-y-4">
+            {commentTimeline.length === 0 ? (
+              <div className="text-gray-400">No comments yet</div>
+            ) : (
+              commentTimeline.map((item, idx) => (
+                <div key={idx} className="bg-blue-50 border rounded-2xl p-5">
+                  <p className="font-semibold">{item.comment}</p>
+                  <div className="text-sm text-gray-500 mt-2">
+                    {item.user} •{" "}
+                    {new Date(item.created_at).toLocaleString("en-IN", {
+                      timeZone: "Asia/Kolkata",
+                    })}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* ===================================================== */}
+        {/* DUE DATE TIMELINE */}
+        {/* ===================================================== */}
+        <div className="mt-16">
+          <h2 className="text-2xl font-bold mb-6">Due Date Changes</h2>
+          <div className="space-y-4">
+            {dueDateTimeline.length === 0 ? (
+              <div className="text-gray-400">No due date changes</div>
+            ) : (
+              dueDateTimeline.map((item, idx) => (
+                <div key={idx} className="bg-yellow-50 border rounded-2xl p-5">
+                  <p className="font-semibold">{item.action}</p>
+                  <div className="text-sm text-gray-500 mt-2">{item.user}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* ===================================================== */}
+        {/* ALLOTTED TIME TIMELINE */}
+        {/* ===================================================== */}
+        <div className="mt-16">
+          <h2 className="text-2xl font-bold mb-6">Allotted Time Changes</h2>
+          <div className="space-y-4">
+            {allottedTimeline.length === 0 ? (
+              <div className="text-gray-400">No allotted time changes</div>
+            ) : (
+              allottedTimeline.map((item, idx) => (
+                <div key={idx} className="bg-green-50 border rounded-2xl p-5">
+                  <p className="font-semibold">{item.action}</p>
+                  <div className="text-sm text-gray-500 mt-2">{item.user}</div>
+                </div>
+              ))
             )}
           </div>
         </div>

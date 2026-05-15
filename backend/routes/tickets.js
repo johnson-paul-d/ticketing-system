@@ -324,6 +324,7 @@ router.post(
         category,
         assigned_to,
         due_date,
+        allotted_minutes,
       } = req.body;
 
       if (
@@ -357,6 +358,9 @@ router.post(
         due_date:
           due_date ||
           null,
+
+        allotted_minutes:
+          allotted_minutes || 0,
 
         status: 'Open',
 
@@ -484,6 +488,7 @@ router.put(
         category,
         due_date,
         comment,
+        allotted_minutes,
       } = req.body;
 
       const {
@@ -539,10 +544,13 @@ router.put(
           ? existing.timeline
           : [];
 
+      // =====================================================
+      // COMMENT (type: comment_add)
+      // =====================================================
+
       if (comment) {
         timeline.push({
-          type:
-            'comment',
+          type: 'comment_add',
 
           action:
             'Comment added',
@@ -591,17 +599,44 @@ router.put(
         updateData.category =
           category;
 
+      // =====================================================
+      // DUE DATE CHANGE TRACKING
+      // =====================================================
+
       if (
         due_date !==
           undefined &&
         due_date !== ''
       ) {
-        updateData.due_date =
-          new Date(
-            due_date
-          )
-            .toISOString()
-            .split('T')[0];
+        const oldDate = existing.due_date;
+        const newDate = new Date(due_date).toISOString().split('T')[0];
+        updateData.due_date = newDate;
+
+        if (oldDate !== newDate) {
+          timeline.push({
+            type: 'due_date',
+            action: `Due date changed from ${oldDate || 'Not set'} to ${newDate}`,
+            user: req.user.name,
+            created_at: getISTTime(),
+          });
+        }
+      }
+
+      // =====================================================
+      // ALLOTTED TIME CHANGE TRACKING
+      // =====================================================
+
+      if (
+        allotted_minutes !== undefined &&
+        allotted_minutes !== existing.allotted_minutes
+      ) {
+        timeline.push({
+          type: 'allotted_time',
+          action: `Allotted time changed from ${existing.allotted_minutes || 0} mins to ${allotted_minutes} mins`,
+          user: req.user.name,
+          created_at: getISTTime(),
+        });
+        updateData.allotted_minutes = allotted_minutes;
       }
 
       // =====================================================
