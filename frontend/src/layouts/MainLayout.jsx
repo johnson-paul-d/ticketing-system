@@ -1,6 +1,6 @@
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import {
-  Menu, X, LayoutDashboard, Ticket, KanbanSquare, Calendar,
+  Menu, X, LayoutDashboard, Grid, KanbanSquare, Calendar,
   Shield, BarChart3, LogOut, PlusCircle, ChevronRight
 } from "lucide-react";
 import { useState } from "react";
@@ -21,7 +21,7 @@ export default function MainLayout({ children }) {
 
   const menuItems = [
     { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
-    { label: "Tickets", path: "/tickets", icon: Ticket },
+    { label: "Tickets", path: "/tickets", icon: Grid },
     ...(user?.role !== "Team Member"
       ? [{ label: "Create Ticket", path: "/create-ticket", icon: PlusCircle }]
       : []),
@@ -37,43 +37,50 @@ export default function MainLayout({ children }) {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap');
 
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         :root {
-          --bg-deep:    #0a0a0f;
-          --bg-panel:   #10101a;
-          --bg-card:    #16161f;
-          --bg-hover:   #1e1e2e;
-          --accent:     #e63946;
-          --accent-dim: rgba(230, 57, 70, 0.15);
-          --accent-glow:rgba(230, 57, 70, 0.35);
-          --gold:       #f4a261;
-          --text-1:     #f0f0f5;
-          --text-2:     #8888a0;
-          --text-3:     #55556a;
-          --border:     rgba(255,255,255,0.06);
-          --sidebar-w:  280px;
-          --radius:     14px;
-          --font-display: 'Syne', sans-serif;
-          --font-body:    'DM Sans', sans-serif;
-          --transition: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+          --bg-deep: #06070a;
+          --bg-panel: rgba(14, 16, 22, 0.88);
+          --bg-card: rgba(20, 23, 30, 0.72);
+          --bg-hover: rgba(255, 255, 255, 0.06);
+
+          --accent: #00b3ff;
+          --accent-dim: rgba(0, 179, 255, 0.12);
+          --accent-glow: rgba(0, 179, 255, 0.35);
+
+          --gold: #d6a85f;
+
+          --text-1: #f5f7fa;
+          --text-2: #a4adbb;
+          --text-3: #5d6573;
+
+          --border: rgba(255, 255, 255, 0.08);
+          --sidebar-w: 280px;
+          --radius: 14px;
+
+          --font-display: 'Sora', sans-serif;
+          --font-body: 'Inter', sans-serif;
+          --transition: all 240ms cubic-bezier(0.22, 1, 0.36, 1);
         }
 
         .ml-root {
           display: flex;
           min-height: 100vh;
-          background: var(--bg-deep);
+          background: radial-gradient(circle at top left, rgba(0, 179, 255, 0.08), transparent 30%),
+                      radial-gradient(circle at bottom right, rgba(214, 168, 95, 0.06), transparent 25%),
+                      linear-gradient(180deg, #06070a 0%, #0b0d12 45%, #11141b 100%);
           font-family: var(--font-body);
           color: var(--text-1);
         }
 
-        /* ── Overlay ── */
+        /* Overlay */
         .ml-overlay {
           display: none;
           position: fixed; inset: 0;
-          background: rgba(0,0,0,0.7);
+          background: rgba(0, 0, 0, 0.7);
           backdrop-filter: blur(4px);
           z-index: 40;
           animation: fadeIn 200ms ease;
@@ -81,21 +88,34 @@ export default function MainLayout({ children }) {
         .ml-overlay.active { display: block; }
         @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
 
-        /* ── Sidebar ── */
+        /* Sidebar - Glassmorphism + Premium Effects */
         .ml-sidebar {
           position: fixed;
           top: 0; left: 0;
           width: var(--sidebar-w);
           height: 100vh;
-          background: var(--bg-panel);
-          border-right: 1px solid var(--border);
+          background: rgba(14, 16, 22, 0.88);
+          backdrop-filter: blur(16px);
+          -webkit-backdrop-filter: blur(16px);
+          border-right: 1px solid rgba(255, 255, 255, 0.08);
+          box-shadow: inset 1px 0 rgba(255, 255, 255, 0.03), 0 0 40px rgba(0, 0, 0, 0.4);
           display: flex;
           flex-direction: column;
           z-index: 50;
           transform: translateX(-100%);
-          transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1);
+          transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
           overflow: hidden;
         }
+
+        /* Ambient Glow for Sidebar */
+        .ml-sidebar::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent);
+          pointer-events: none;
+        }
+
         .ml-sidebar::before {
           content: '';
           position: absolute;
@@ -104,10 +124,10 @@ export default function MainLayout({ children }) {
           background: radial-gradient(circle, var(--accent-dim) 0%, transparent 70%);
           pointer-events: none;
         }
+
         .ml-sidebar.open,
         @media (min-width: 1024px) { .ml-sidebar { transform: translateX(0); position: static; flex-shrink: 0; } }
 
-        /* Responsive sidebar */
         @media (min-width: 1024px) {
           .ml-sidebar { transform: translateX(0) !important; position: static; flex-shrink: 0; }
         }
@@ -115,7 +135,7 @@ export default function MainLayout({ children }) {
           .ml-sidebar.open { transform: translateX(0); }
         }
 
-        /* ── Sidebar header ── */
+        /* Sidebar Header */
         .ml-sidebar-header {
           padding: 28px 24px 20px;
           border-bottom: 1px solid var(--border);
@@ -131,7 +151,7 @@ export default function MainLayout({ children }) {
           width: 32px; height: 32px;
           align-items: center; justify-content: center;
           cursor: pointer;
-          transition: all var(--transition);
+          transition: var(--transition);
         }
         .ml-close-btn:hover { color: var(--text-1); border-color: var(--accent); }
         @media (max-width: 1023px) { .ml-close-btn { display: flex; } }
@@ -168,11 +188,13 @@ export default function MainLayout({ children }) {
           padding-left: 42px;
         }
 
-        /* ── User card ── */
+        /* User Card - Premium Identity Card */
         .ml-user-card {
           margin: 16px 16px 8px;
           padding: 14px 16px;
-          background: var(--bg-card);
+          background: linear-gradient(135deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
           border: 1px solid var(--border);
           border-radius: var(--radius);
           display: flex;
@@ -180,6 +202,7 @@ export default function MainLayout({ children }) {
           gap: 12px;
           position: relative;
           overflow: hidden;
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
         }
         .ml-user-card::after {
           content: '';
@@ -191,7 +214,7 @@ export default function MainLayout({ children }) {
         .ml-avatar {
           width: 40px; height: 40px;
           border-radius: 10px;
-          background: linear-gradient(135deg, var(--accent) 0%, #c1121f 100%);
+          background: linear-gradient(135deg, var(--accent) 0%, #004e7c 100%);
           display: grid; place-items: center;
           font-family: var(--font-display);
           font-size: 17px;
@@ -216,7 +239,7 @@ export default function MainLayout({ children }) {
         }
         .ml-notif-slot { flex-shrink: 0; }
 
-        /* ── Nav section label ── */
+        /* Nav Section */
         .ml-nav-label {
           font-size: 10px;
           font-weight: 600;
@@ -226,7 +249,7 @@ export default function MainLayout({ children }) {
           padding: 16px 24px 8px;
         }
 
-        /* ── Nav items ── */
+        /* Nav Items - Futuristic Control Panel Effect */
         .ml-nav {
           flex: 1;
           overflow-y: auto;
@@ -245,16 +268,17 @@ export default function MainLayout({ children }) {
           color: var(--text-2);
           font-size: 13.5px;
           font-weight: 400;
-          transition: all var(--transition);
+          transition: var(--transition);
           position: relative;
           margin-bottom: 2px;
         }
         .ml-nav-item:hover {
           background: var(--bg-hover);
           color: var(--text-1);
+          transform: translateX(4px);
         }
         .ml-nav-item.active {
-          background: var(--accent-dim);
+          background: linear-gradient(90deg, rgba(0, 179, 255, 0.18), rgba(0, 179, 255, 0.06));
           color: var(--text-1);
           font-weight: 500;
         }
@@ -272,7 +296,7 @@ export default function MainLayout({ children }) {
           display: grid; place-items: center;
           flex-shrink: 0;
           background: var(--bg-hover);
-          transition: all var(--transition);
+          transition: var(--transition);
         }
         .ml-nav-item.active .ml-nav-icon {
           background: var(--accent);
@@ -284,7 +308,7 @@ export default function MainLayout({ children }) {
           margin-left: auto;
           opacity: 0;
           transform: translateX(-4px);
-          transition: all var(--transition);
+          transition: var(--transition);
           color: var(--accent);
         }
         .ml-nav-item:hover .ml-nav-arrow,
@@ -293,7 +317,7 @@ export default function MainLayout({ children }) {
           transform: translateX(0);
         }
 
-        /* ── Sidebar footer ── */
+        /* Sidebar Footer */
         .ml-sidebar-footer {
           padding: 16px;
           border-top: 1px solid var(--border);
@@ -313,7 +337,7 @@ export default function MainLayout({ children }) {
           font-size: 13.5px;
           font-weight: 500;
           cursor: pointer;
-          transition: all var(--transition);
+          transition: var(--transition);
           letter-spacing: 0.01em;
         }
         .ml-logout-btn:hover {
@@ -323,7 +347,7 @@ export default function MainLayout({ children }) {
           box-shadow: 0 4px 16px var(--accent-glow);
         }
 
-        /* ── Main content area ── */
+        /* Main Content Area */
         .ml-main {
           flex: 1;
           min-width: 0;
@@ -331,11 +355,13 @@ export default function MainLayout({ children }) {
           flex-direction: column;
         }
 
-        /* ── Mobile topbar ── */
+        /* Topbar - Glassmorphism */
         .ml-topbar {
           display: none;
-          background: var(--bg-panel);
-          border-bottom: 1px solid var(--border);
+          background: rgba(14, 16, 22, 0.88);
+          backdrop-filter: blur(16px);
+          -webkit-backdrop-filter: blur(16px);
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
           padding: 0 16px;
           height: 60px;
           align-items: center;
@@ -352,7 +378,7 @@ export default function MainLayout({ children }) {
           cursor: pointer;
           color: var(--text-1);
           flex-shrink: 0;
-          transition: all var(--transition);
+          transition: var(--transition);
         }
         .ml-menu-btn:hover { border-color: var(--accent); }
         .ml-topbar-title {
@@ -363,11 +389,14 @@ export default function MainLayout({ children }) {
         }
         .ml-topbar-notif { margin-left: auto; }
 
-        /* ── Page content ── */
+        /* Page Content with Subtle Grid Texture */
         .ml-content {
           flex: 1;
           padding: 28px 32px;
           overflow-x: hidden;
+          background-image: linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+                            linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+          background-size: 40px 40px;
         }
         @media (max-width: 768px) { .ml-content { padding: 16px; } }
       `}</style>
@@ -376,17 +405,17 @@ export default function MainLayout({ children }) {
         {/* Mobile overlay */}
         <div className={`ml-overlay ${open ? "active" : ""}`} onClick={() => setOpen(false)} />
 
-        {/* ── Sidebar ── */}
+        {/* Sidebar */}
         <aside className={`ml-sidebar ${open ? "open" : ""}`}>
           {/* Header */}
           <div className="ml-sidebar-header">
             <div className="ml-logo-mark">
               <div className="ml-logo-icon">
-                <Ticket />
+                <Grid />
               </div>
-              <span className="ml-logo-title">TicketFlow</span>
+              <span className="ml-logo-title">Sieger Nexus</span>
             </div>
-            <p className="ml-logo-sub">Team Management Portal</p>
+            <p className="ml-logo-sub">Automation Operations Platform</p>
             <button className="ml-close-btn" onClick={() => setOpen(false)}>
               <X size={15} />
             </button>
@@ -436,14 +465,14 @@ export default function MainLayout({ children }) {
           </div>
         </aside>
 
-        {/* ── Main area ── */}
+        {/* Main area */}
         <div className="ml-main">
           {/* Mobile topbar */}
           <div className="ml-topbar">
             <button className="ml-menu-btn" onClick={() => setOpen(true)}>
               <Menu size={18} />
             </button>
-            <span className="ml-topbar-title">TicketFlow</span>
+            <span className="ml-topbar-title">Sieger Nexus</span>
             <div className="ml-topbar-notif">
               <NotificationBell />
             </div>
