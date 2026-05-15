@@ -228,7 +228,7 @@ export default function Tickets() {
     <MainLayout>
 
       {/* HEADER */}
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4 mb-8">
 
         <div>
           <h1 className="text-3xl font-bold">
@@ -244,13 +244,7 @@ export default function Tickets() {
           onClick={() =>
             navigate("/create-ticket")
           }
-          className="
-            bg-black
-            text-white
-            px-5
-            py-3
-            rounded-xl
-            hover:bg-gray-800
+         className="bg-black text-white px-5 py-3 rounded-xl w-full lg:w-auto hover:bg-gray-800
           "
         >
           + Create Ticket
@@ -289,7 +283,7 @@ export default function Tickets() {
       {/* FILTERS */}
       <div className="bg-white rounded-2xl shadow-sm p-5 mb-6">
 
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
           {/* SEARCH */}
           <input
@@ -382,7 +376,7 @@ export default function Tickets() {
       </div>
 
       {/* TABLE */}
-      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-sm overflow-x-auto">
 
         <table className="w-full">
 
