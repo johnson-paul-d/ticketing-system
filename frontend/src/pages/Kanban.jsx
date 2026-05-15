@@ -42,9 +42,9 @@ export default function Kanban() {
 
   return (
     <MainLayout>
-      <h1 className="text-4xl font-bold mb-2">Kanban Board</h1>
+      <h1 className="text-2xl lg:text-4xl font-bold mb-2">Kanban Board</h1>
       <p className="text-gray-500 mb-8">Track ticket workflow visually</p>
-      <div className="grid grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         <Column title="Open" data={open} color="bg-red-50" />
         <Column title="In Progress" data={progress} color="bg-blue-50" />
         <Column title="Waiting for approval" data={pending} color="bg-yellow-50" />
