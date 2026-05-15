@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import useAuthStore from "./store/authStore";
-import NotificationBell from "../components/NotificationBell";
+import NotificationBell from "./components/NotificationBell";
 
 export default function MainLayout({ children }) {
   const navigate = useNavigate();
