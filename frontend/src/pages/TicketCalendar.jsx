@@ -132,28 +132,31 @@ export default function TicketCalendar() {
       });
 
       // =====================================================
-      // LEAVE EVENTS (with field fallback)
+      // LEAVE EVENTS – FULL DAY BLOCK (00:00 → 23:59:59)
       // =====================================================
 
       leaves.forEach((leave) => {
         const start = new Date(leave.start_date || leave.leave_date);
+        start.setHours(0, 0, 0, 0);
+
         const end = new Date(leave.end_date || leave.leave_date);
+        end.setHours(23, 59, 59, 999);
 
         allEvents.push({
           id: `leave-${leave.id}`,
-          title: `🏖 ${leave.user_name || leave.employee_name || "Employee"} Leave`,
+          title: `🏖 ${leave.user_name || leave.employee_name || "Employee"} On Leave`,
           start,
           end,
           allDay: true,
           type: "leave",
-          backgroundColor: "#ef4444",
-          borderColor: "#991b1b",
+          backgroundColor: "#dc2626",
+          borderColor: "#7f1d1d",
           resource: leave,
         });
       });
 
       // =====================================================
-      // PERMISSION EVENTS (with field fallback)
+      // PERMISSION EVENTS (timed blocks)
       // =====================================================
 
       permissions.forEach((permission) => {
@@ -164,7 +167,7 @@ export default function TicketCalendar() {
           end: new Date(permission.end_time || permission.to_time),
           allDay: false,
           type: "permission",
-          backgroundColor: "#8b5cf6",
+          backgroundColor: "#7c3aed",
           borderColor: "#5b21b6",
           resource: permission,
         });
@@ -189,7 +192,7 @@ export default function TicketCalendar() {
   }, [events]);
 
   // =====================================================
-  // FILTER – FIXED FOR WEEK/DAY VIEW
+  // FILTER – LEAVE VISIBLE IN WEEK/DAY VIEW
   // =====================================================
 
   const filteredEvents = useMemo(() => {
@@ -250,7 +253,7 @@ export default function TicketCalendar() {
   };
 
   // =====================================================
-  // EVENT STYLE
+  // EVENT STYLE – Enhanced Permission & Leave styling
   // =====================================================
 
   const eventStyleGetter = (event) => {
@@ -269,8 +272,18 @@ export default function TicketCalendar() {
       style.animation = "pulse 2s infinite";
       style.fontWeight = "800";
     }
-    if (event.type === "leave") style.backgroundColor = "#ef4444";
-    if (event.type === "permission") style.backgroundColor = "#8b5cf6";
+
+    if (event.type === "permission") {
+      style.backgroundColor = "#7c3aed";
+      style.border = "3px solid #5b21b6";
+      style.opacity = 0.95;
+    }
+
+    if (event.type === "leave") {
+      style.backgroundColor = "#dc2626";
+      style.border = "3px solid #7f1d1d";
+      style.fontWeight = "800";
+    }
 
     return { style };
   };
@@ -329,8 +342,8 @@ export default function TicketCalendar() {
         <div className="flex flex-wrap gap-3 mb-6">
           <Legend color="#dc2626" label="Overdue" />
           <Legend color="#3b82f6" label="Tickets" />
-          <Legend color="#ef4444" label="Leave" />
-          <Legend color="#8b5cf6" label="Permission" />
+          <Legend color="#dc2626" label="Leave" />
+          <Legend color="#7c3aed" label="Permission" />
         </div>
 
         <div className="bg-white p-4 rounded-3xl border shadow-sm">

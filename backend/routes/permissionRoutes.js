@@ -30,7 +30,7 @@ router.post("/", auth, async (req, res) => {
           to_time,
           reason,
 
-          status: "Pending",
+          status: "Approved",
 
           created_at: getISTTime(),
         },
