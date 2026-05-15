@@ -136,22 +136,26 @@ export default function TicketCalendar() {
       // =====================================================
 
       leaves.forEach((leave) => {
-        const start = new Date(leave.start_date || leave.leave_date);
+        // Backend sends from_date / to_date
+        const start = new Date(leave.from_date);
         start.setHours(0, 0, 0, 0);
 
-        const end = new Date(leave.end_date || leave.leave_date);
+        const end = new Date(leave.to_date);
         end.setHours(23, 59, 59, 999);
 
         allEvents.push({
           id: `leave-${leave.id}`,
-          title: `🏖 ${leave.user_name || leave.employee_name || "Employee"} On Leave`,
+          title: `🏖 ${leave.user_name || "Employee"} On Leave`,
           start,
           end,
           allDay: true,
           type: "leave",
           backgroundColor: "#dc2626",
           borderColor: "#7f1d1d",
-          resource: leave,
+          resource: {
+            ...leave,
+            assignedPerson: leave.user_name,
+          },
         });
       });
 
@@ -160,16 +164,27 @@ export default function TicketCalendar() {
       // =====================================================
 
       permissions.forEach((permission) => {
+        // Backend sends permission_date, from_time, to_time
+        const start = new Date(
+          `${permission.permission_date}T${permission.from_time}`
+        );
+        const end = new Date(
+          `${permission.permission_date}T${permission.to_time}`
+        );
+
         allEvents.push({
           id: `permission-${permission.id}`,
-          title: `🕒 ${permission.user_name || permission.employee_name || "Employee"} Permission`,
-          start: new Date(permission.start_time || permission.from_time),
-          end: new Date(permission.end_time || permission.to_time),
+          title: `🕒 ${permission.user_name || "Employee"} Permission`,
+          start,
+          end,
           allDay: false,
           type: "permission",
           backgroundColor: "#7c3aed",
           borderColor: "#5b21b6",
-          resource: permission,
+          resource: {
+            ...permission,
+            assignedPerson: permission.user_name,
+          },
         });
       });
 
@@ -213,7 +228,7 @@ export default function TicketCalendar() {
   }, [events, selectedUser, currentView]);
 
   // =====================================================
-  // MOVE / RESIZE (unchanged, works)
+  // MOVE / RESIZE
   // =====================================================
 
   const moveEvent = async ({ event, start, end }) => {
@@ -253,7 +268,7 @@ export default function TicketCalendar() {
   };
 
   // =====================================================
-  // EVENT STYLE – Enhanced Permission & Leave styling
+  // EVENT STYLE
   // =====================================================
 
   const eventStyleGetter = (event) => {

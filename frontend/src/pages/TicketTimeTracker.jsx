@@ -1,4 +1,3 @@
-// src/pages/TimeTracker.jsx
 import { useEffect, useState } from "react";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
@@ -8,14 +7,14 @@ export default function TimeTracker() {
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // 1. Search state
+  // Search state
   const [search, setSearch] = useState("");
 
   // Permission request state
   const [permissionStart, setPermissionStart] = useState("");
   const [permissionEnd, setPermissionEnd] = useState("");
   const [permissionReason, setPermissionReason] = useState("");
-  const [permissionType, setPermissionType] = useState("2hours"); // 1hour, 2hours, halfday
+  const [permissionType, setPermissionType] = useState("2hours");
   const [submittingPermission, setSubmittingPermission] = useState(false);
 
   // Leave request state
@@ -61,7 +60,9 @@ export default function TimeTracker() {
     }
   };
 
-  // Permission request handler
+  // =====================================================
+  // PERMISSION REQUEST – FIXED PAYLOAD
+  // =====================================================
   const handlePermissionRequest = async () => {
     if (!permissionStart || !permissionEnd || !permissionReason) {
       alert("Please fill all permission fields");
@@ -69,20 +70,17 @@ export default function TimeTracker() {
     }
     setSubmittingPermission(true);
     try {
-      // Calculate duration in minutes
       const start = new Date(permissionStart);
       const end = new Date(permissionEnd);
       const durationMinutes = Math.round((end - start) / 60000);
 
-      await api.post(
-  "/permission-requests",
-  {
-        start_time: permissionStart,
-        end_time: permissionEnd,
+      await api.post("/permission-requests", {
+        permission_date: permissionStart.split("T")[0],   // YYYY-MM-DD
+        from_time: permissionStart.split("T")[1],        // HH:MM:SS
+        to_time: permissionEnd.split("T")[1],
         duration_minutes: durationMinutes,
         reason: permissionReason,
         permission_type: permissionType,
-        // user_id and user_name will be added by backend from auth
       });
       alert("Permission request submitted");
       // Reset form
@@ -98,7 +96,9 @@ export default function TimeTracker() {
     }
   };
 
-  // Leave request handler
+  // =====================================================
+  // LEAVE REQUEST – FIXED PAYLOAD
+  // =====================================================
   const handleLeaveRequest = async () => {
     if (!leaveStartDate || !leaveEndDate || !leaveReason) {
       alert("Please fill all leave fields");
@@ -116,8 +116,8 @@ export default function TimeTracker() {
     try {
       await api.post("/leave-requests", {
         leave_type: leaveType,
-        start_date: leaveStartDate,
-        end_date: leaveEndDate,
+        from_date: leaveStartDate,   // FIXED
+        to_date: leaveEndDate,       // FIXED
         total_days: totalDays,
         reason: leaveReason,
       });
@@ -256,7 +256,7 @@ export default function TimeTracker() {
           </div>
         </div>
 
-        {/* TICKETS (with filtered mapping) */}
+        {/* TICKETS SECTION */}
         <div className="space-y-4">
           {filteredTickets.length === 0 ? (
             <div className="text-center py-10 text-gray-500">No tickets found</div>
@@ -272,7 +272,7 @@ export default function TimeTracker() {
 }
 
 // =====================================================
-// CARD (unchanged except search integration)
+// LOG TIME CARD (unchanged)
 // =====================================================
 function LogTimeCard({ ticket, onLogTime }) {
   const [workDate, setWorkDate] = useState(new Date().toISOString().split("T")[0]);
