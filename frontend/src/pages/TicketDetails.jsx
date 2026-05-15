@@ -431,7 +431,6 @@ export default function TicketDetails() {
           </div>
 
           {/* EDIT ALLOTTED TIME (ADMIN ONLY) */}
-          {user?.role === "Admin" && (
             <div className="mt-8 flex flex-col sm:flex-row gap-4">
               <input
                 type="number"
@@ -447,7 +446,6 @@ export default function TicketDetails() {
                 Update Allotted Time
               </button>
             </div>
-          )}
         </div>
 
         {/* ===================================================== */}
