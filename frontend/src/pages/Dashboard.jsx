@@ -165,16 +165,6 @@ function buildMonthlyTrend(tickets) {
     }
   });
   
-  // Also need to account for tickets completed in months after creation
-  tickets.forEach(t => {
-    if (t.status === "Completed" && t.updated_at) {
-      const compDate = new Date(t.updated_at);
-      const monthKey = `${compDate.getFullYear()}-${String(compDate.getMonth() + 1).padStart(2, '0')}`;
-      const monthName = compDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
-      // Already counted created in its own month; completed count is fine
-    }
-  });
-  
   // Convert to sorted array
   const sorted = Array.from(monthMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   return sorted.map(([key, val]) => ({
@@ -927,6 +917,101 @@ export default function Dashboard() {
       .sort((a, b) => b.rate - a.rate);
   }, [tickets]);
 
+  // ======================= NEW ADVANCED KPIs & CHARTS =======================
+  // 1. Team Utilization KPI
+  const totalAllocatedMinutes = tickets.reduce(
+    (sum, t) => sum + (t.allotted_minutes || 0),
+    0
+  );
+  const totalConsumedMinutes = tickets.reduce(
+    (sum, t) => sum + (t.consumed_minutes || 0),
+    0
+  );
+  const utilizationRate = totalAllocatedMinutes
+    ? Math.round((totalConsumedMinutes / totalAllocatedMinutes) * 100)
+    : 0;
+
+  // 2. Estimation Accuracy KPI
+  const estimationAccuracy = tickets.length
+    ? Math.round(
+        tickets.reduce((acc, t) => {
+          const allotted = t.allotted_minutes || 0;
+          const consumed = t.consumed_minutes || 0;
+          if (!allotted) return acc;
+          const accuracy = Math.max(
+            0,
+            100 - Math.abs(consumed - allotted) / allotted * 100
+          );
+          return acc + accuracy;
+        }, 0) / tickets.length
+      )
+    : 0;
+
+  // 3. Productivity Score KPI
+  const productivityScore = Math.round(
+    completionRate * 0.35 +
+    (sla || 0) * 0.25 +
+    estimationAccuracy * 0.20 +
+    utilizationRate * 0.20
+  );
+
+  // 4. Burnout Risk KPI
+  const burnoutRisk = assigneePerf.filter(
+    (a) => a.openCount >= 5 && a.eff < 50
+  ).length;
+
+  // 5. Team Health Index
+  const teamHealthIndex = Math.round(
+    completionRate * 0.30 +
+    (sla || 0) * 0.25 +
+    estimationAccuracy * 0.20 +
+    utilizationRate * 0.15 +
+    (100 - overdueTickets.length * 2) * 0.10
+  );
+
+  // 6. Utilization Heatmap Data
+  const utilizationHeatmap = assigneePerf.map((a) => {
+    const engineerTickets = tickets.filter(
+      (t) => t.assigned_to_name === a.name
+    );
+    const allocated = engineerTickets.reduce(
+      (sum, t) => sum + (t.allotted_minutes || 0),
+      0
+    );
+    const consumed = engineerTickets.reduce(
+      (sum, t) => sum + (t.consumed_minutes || 0),
+      0
+    );
+    return {
+      engineer: a.name,
+      allocated,
+      consumed,
+      utilization: allocated ? Math.round((consumed / allocated) * 100) : 0,
+    };
+  });
+
+  // 7. Productivity Leaderboard
+  const productivityLeaderboard = assigneePerf.map((a) => {
+    const score = Math.round(
+      a.eff * 0.6 + (100 - a.openCount * 5) * 0.4
+    );
+    return { ...a, score };
+  }).sort((a, b) => b.score - a.score).slice(0, 10);
+
+  // 8. Overdue Recovery Trend
+  const overdueRecoveryTrend = creationTrendData.map((d) => ({
+    date: d.date,
+    resolved: d.completed,
+    overdue: overdueTickets.length,
+  }));
+
+  // 9. Workload Distribution
+  const workloadDistribution = assigneePerf.map((a) => ({
+    name: a.name,
+    open: a.openCount,
+    completed: a.comp,
+  }));
+
   const insights = useMemo(() => {
     const list = [];
     if (completionRate >= 60)
@@ -1125,7 +1210,7 @@ export default function Dashboard() {
           </div>
         </Card>
 
-        {/* ── KPI cards ── */}
+        {/* ── KPI cards (existing) ── */}
         <div style={g4}>
           <KpiCard label="Total Tickets" value={total} sub="Across all divisions" accentColor={T.violet} accentBorder={T.violetBorder} />
           <KpiCard label="Open" value={openT.length} sub={`${pct(openT.length, total)}% of total`} accentColor={T.open} accentBorder={T.openBorder} />
@@ -1133,40 +1218,50 @@ export default function Dashboard() {
           <KpiCard label="Completed" value={doneT.length} sub={`${pct(doneT.length, total)}% resolved`} accentColor={T.done} accentBorder={T.doneBorder} />
         </div>
 
-        {/* ── Director-level KPIs (new) ── */}
+        {/* ── NEW: Executive KPIs row (Productivity & Risk) ── */}
         <div style={g4}>
-          <KpiCard 
-            label="Avg Resolution" 
-            value={`${avgResolution} d`} 
-            sub="Mean time to close" 
-            accentColor={T.prog} 
+          <KpiCard
+            label="Utilization"
+            value={`${utilizationRate}%`}
+            sub="Consumed vs allocated"
+            accentColor={T.prog}
             accentBorder={T.progBorder}
-            trend={avgResolution > 3 ? -5 : 2}
           />
-          <KpiCard 
-            label="SLA Compliance" 
-            value={sla !== null ? `${sla}%` : "N/A"} 
-            sub="Completed before due date" 
-            accentColor={sla !== null && sla >= 80 ? T.done : T.crit} 
-            accentBorder={sla !== null && sla >= 80 ? T.doneBorder : T.critBorder}
+          <KpiCard
+            label="Estimation Accuracy"
+            value={`${estimationAccuracy}%`}
+            sub="Planned vs actual effort"
+            accentColor={T.gold}
+            accentBorder={T.goldBorder}
           />
-          <KpiCard 
-            label="Overdue" 
-            value={overdueTickets.length} 
-            sub="Past due date" 
-            accentColor={T.overdue} 
+          <KpiCard
+            label="Productivity Score"
+            value={productivityScore}
+            sub="Overall operational score"
+            accentColor={T.done}
+            accentBorder={T.doneBorder}
+          />
+          <KpiCard
+            label="Burnout Risk"
+            value={burnoutRisk}
+            sub="Engineers at risk"
+            accentColor={T.crit}
             accentBorder={T.critBorder}
           />
-          <KpiCard 
-            label="Backlog Forecast" 
-            value={backlogForecastData ? backlogForecastData.nextWeek : "?"} 
-            sub="Next week (trend)" 
-            accentColor={backlogForecastData && backlogForecastData.trend > 0 ? T.crit : T.done} 
+        </div>
+
+        {/* ── Team Health Index (standalone card) ── */}
+        <div style={{ marginBottom: 24 }}>
+          <KpiCard
+            label="Team Health Index"
+            value={`${teamHealthIndex}%`}
+            sub="Operational health index"
+            accentColor={teamHealthIndex >= 80 ? T.done : teamHealthIndex >= 60 ? T.gold : T.crit}
             accentBorder={T.borderMed}
           />
         </div>
 
-        {/* ── Status pie + Priority bars ── */}
+        {/* ── Status pie + Priority bars (existing) ── */}
         <div style={g2}>
           <Card>
             <CardHeader title="Status distribution" sub="Current breakdown by status" />
@@ -1208,7 +1303,7 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* ── Director-level trends: Monthly volume & completion rate ── */}
+        {/* ── Director-level trends: Monthly volume & completion rate (existing) ── */}
         <div style={g2}>
           <Card>
             <CardHeader title="Monthly Ticket Volume" sub="Created vs Completed by month" />
@@ -1240,7 +1335,7 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* ── Resolution trend & Aging analysis ── */}
+        {/* ── Resolution trend & Aging analysis (existing) ── */}
         <div style={g2}>
           <Card>
             <CardHeader title="Resolution Time Trend" sub="Average days to close (monthly)" />
@@ -1272,7 +1367,7 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* ── Creation trend + Due analysis ── */}
+        {/* ── Creation trend + Due analysis (existing) ── */}
         <div style={g2}>
           <Card>
             <CardHeader title="Daily Activity (Last 30 days)" sub="Created vs Completed" />
@@ -1305,7 +1400,96 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* ── Team efficiency matrix ── */}
+        {/* ======================== NEW ADVANCED CHARTS SECTION ======================== */}
+        <div style={{ marginBottom: 20 }}>
+          <CardHeader title="Productivity & Performance Intelligence" sub="Advanced analytics for team efficiency" />
+        </div>
+
+        {/* Team Utilization Chart (Bar chart allocated vs consumed) */}
+        <Card style={{ marginBottom: 20 }}>
+          <CardHeader title="Team Utilization" sub="Consumed vs allocated effort per engineer" />
+          <ResponsiveContainer width="100%" height={320}>
+            <BarChart data={utilizationHeatmap}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="engineer" tick={{ fill: T.ink3, fontSize: 10 }} />
+              <YAxis tick={{ fill: T.ink3, fontSize: 10 }} />
+              <Tooltip content={<ChartTooltip />} />
+              <Legend />
+              <Bar dataKey="allocated" fill={T.gold} radius={[4, 4, 0, 0]} />
+              <Bar dataKey="consumed" fill={T.prog} radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
+
+        {/* Estimation Accuracy Chart (Scatter) */}
+        <Card style={{ marginBottom: 20 }}>
+          <CardHeader title="Estimation Accuracy" sub="Allocated vs consumed time per ticket" />
+          <ResponsiveContainer width="100%" height={320}>
+            <ScatterChart>
+              <CartesianGrid />
+              <XAxis type="number" dataKey="allotted_minutes" name="Allocated (min)" tick={{ fill: T.ink3, fontSize: 10 }} />
+              <YAxis type="number" dataKey="consumed_minutes" name="Consumed (min)" tick={{ fill: T.ink3, fontSize: 10 }} />
+              <Tooltip cursor={{ strokeDasharray: '3 3' }} />
+              <Scatter name="Tickets" data={tickets} fill={T.violet} />
+            </ScatterChart>
+          </ResponsiveContainer>
+        </Card>
+
+        {/* Productivity Leaderboard */}
+        <Card style={{ marginBottom: 20 }}>
+          <CardHeader title="Productivity Leaderboard" sub="Top performing engineers (score based on efficiency & backlog)" />
+          {productivityLeaderboard.map((u, i) => (
+            <div
+              key={u.name}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                padding: '12px 0',
+                borderBottom: `1px solid ${T.border}`,
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: 600 }}>#{i + 1} {u.name}</div>
+                <div style={{ fontSize: 11, color: T.ink3 }}>{u.comp} completed</div>
+              </div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: T.done }}>{u.score}</div>
+            </div>
+          ))}
+        </Card>
+
+        {/* Overdue Recovery Trend */}
+        <Card style={{ marginBottom: 20 }}>
+          <CardHeader title="Overdue Recovery Trend" sub="Resolved tickets vs overdue backlog over time" />
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={overdueRecoveryTrend}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="date" tick={{ fill: T.ink3, fontSize: 10 }} />
+              <YAxis tick={{ fill: T.ink3, fontSize: 10 }} />
+              <Tooltip content={<ChartTooltip />} />
+              <Legend />
+              <Line type="monotone" dataKey="resolved" stroke={T.done} strokeWidth={3} name="Resolved" />
+              <Line type="monotone" dataKey="overdue" stroke={T.crit} strokeWidth={3} name="Overdue" />
+            </LineChart>
+          </ResponsiveContainer>
+        </Card>
+
+        {/* Workload Distribution Chart */}
+        <Card style={{ marginBottom: 20 }}>
+          <CardHeader title="Workload Distribution" sub="Open vs completed workload per engineer" />
+          <ResponsiveContainer width="100%" height={320}>
+            <BarChart data={workloadDistribution}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" tick={{ fill: T.ink3, fontSize: 10 }} />
+              <YAxis tick={{ fill: T.ink3, fontSize: 10 }} />
+              <Tooltip content={<ChartTooltip />} />
+              <Legend />
+              <Bar dataKey="open" stackId="a" fill={T.open} name="Open" />
+              <Bar dataKey="completed" stackId="a" fill={T.done} name="Completed" />
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
+
+        {/* ── Existing Team efficiency matrix ── */}
         <Card style={{ marginBottom: 20 }}>
           <CardHeader
             title="Team efficiency matrix"
@@ -1426,6 +1610,10 @@ export default function Dashboard() {
               <div style={{ paddingTop: 10 }}>
                 <MetricRow label="Open rate" value={`${pct(openT.length, total)}%`} color={T.open} />
               </div>
+              <MetricRow label="Team Health Index" value={`${teamHealthIndex}%`} color={teamHealthIndex >= 80 ? T.done : teamHealthIndex >= 60 ? T.gold : T.crit} />
+              <MetricRow label="Estimation Accuracy" value={`${estimationAccuracy}%`} color={estimationAccuracy >= 80 ? T.done : T.gold} />
+              <MetricRow label="Utilization Rate" value={`${utilizationRate}%`} color={utilizationRate >= 70 ? T.done : utilizationRate >= 50 ? T.gold : T.crit} />
+              <MetricRow label="Burnout Risk Count" value={burnoutRisk} color={burnoutRisk > 2 ? T.crit : T.done} />
             </Card>
           </div>
         )}
