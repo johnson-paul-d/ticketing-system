@@ -42,7 +42,7 @@ const userColors = {
 };
 
 // =====================================================
-// PRIORITY BORDERS
+// PRIORITY COLORS
 // =====================================================
 
 const priorityBorders = {
@@ -91,7 +91,7 @@ export default function TicketCalendar() {
           ticket.assigned_to_name ||
           "Default";
 
-        const backgroundColor =
+        const userColor =
           userColors[
             assignedPerson
           ] ||
@@ -103,8 +103,18 @@ export default function TicketCalendar() {
           ] || "#d1d5db";
 
         // =====================================================
-        // MONTH VIEW
-        // DUE DATE EVENT
+        // OVERDUE CHECK
+        // =====================================================
+
+        const isOverdue =
+          ticket.due_date &&
+          new Date(ticket.due_date) <
+            new Date() &&
+          ticket.status !==
+            "Completed";
+
+        // =====================================================
+        // DUE DATE EVENTS
         // =====================================================
 
         if (ticket.due_date) {
@@ -116,7 +126,9 @@ export default function TicketCalendar() {
           allEvents.push({
             id: `due-${ticket.id}`,
 
-            title: `📌 ${ticket.title}`,
+            title: isOverdue
+              ? `🚨 OVERDUE - ${ticket.title}`
+              : `📌 ${ticket.title}`,
 
             start: dueDate,
 
@@ -124,15 +136,22 @@ export default function TicketCalendar() {
 
             allDay: true,
 
-            type: "due_date",
+            type: isOverdue
+              ? "overdue"
+              : "due_date",
 
-            backgroundColor,
+            backgroundColor:
+              isOverdue
+                ? "#dc2626"
+                : userColor,
 
-            borderColor,
+            borderColor:
+              isOverdue
+                ? "#7f1d1d"
+                : borderColor,
 
             resource: {
               ...ticket,
-
               assignedPerson,
             },
           });
@@ -148,9 +167,13 @@ export default function TicketCalendar() {
         ) {
           ticket.time_entries.forEach(
             (entry) => {
-              // FIXED: removed manual IST conversion
-              const start = new Date(entry.start_time);
-              const end = new Date(entry.end_time);
+              const start = new Date(
+                entry.start_time
+              );
+
+              const end = new Date(
+                entry.end_time
+              );
 
               allEvents.push({
                 id: `work-${entry.id}`,
@@ -166,19 +189,117 @@ export default function TicketCalendar() {
 
                 type: "work_log",
 
-                backgroundColor,
+                backgroundColor:
+                  userColor,
 
                 borderColor,
 
                 resource: {
                   ...ticket,
-
                   entry,
-
                   assignedPerson,
-
                   duration:
                     entry.duration_minutes,
+                },
+              });
+            }
+          );
+        }
+
+        // =====================================================
+        // LEAVE REQUESTS
+        // =====================================================
+
+        if (
+          ticket.leave_requests &&
+          ticket.leave_requests.length
+        ) {
+          ticket.leave_requests.forEach(
+            (leave) => {
+              const leaveDate =
+                new Date(
+                  leave.date
+                );
+
+              allEvents.push({
+                id: `leave-${leave.id}`,
+
+                title: `🏖 Leave - ${
+                  leave.employee_name ||
+                  assignedPerson
+                }`,
+
+                start: leaveDate,
+
+                end: leaveDate,
+
+                allDay: true,
+
+                type: "leave",
+
+                backgroundColor:
+                  "#ef4444",
+
+                borderColor:
+                  "#991b1b",
+
+                resource: {
+                  ...leave,
+                  assignedPerson,
+                },
+              });
+            }
+          );
+        }
+
+        // =====================================================
+        // PERMISSION REQUESTS
+        // =====================================================
+
+        if (
+          ticket.permission_requests &&
+          ticket.permission_requests
+            .length
+        ) {
+          ticket.permission_requests.forEach(
+            (
+              permission
+            ) => {
+              const start =
+                new Date(
+                  permission.start_time
+                );
+
+              const end =
+                new Date(
+                  permission.end_time
+                );
+
+              allEvents.push({
+                id: `permission-${permission.id}`,
+
+                title: `🕒 Permission - ${
+                  permission.employee_name ||
+                  assignedPerson
+                }`,
+
+                start,
+
+                end,
+
+                allDay: false,
+
+                type: "permission",
+
+                backgroundColor:
+                  "#8b5cf6",
+
+                borderColor:
+                  "#5b21b6",
+
+                resource: {
+                  ...permission,
+                  assignedPerson,
                 },
               });
             }
@@ -214,7 +335,7 @@ export default function TicketCalendar() {
     }, [events]);
 
   // =====================================================
-  // FILTERED EVENTS
+  // FILTER
   // =====================================================
 
   const filteredEvents =
@@ -229,9 +350,7 @@ export default function TicketCalendar() {
                 selectedUser
             );
 
-      // =====================================================
       // MONTH VIEW
-      // =====================================================
 
       if (
         currentView === "month"
@@ -239,18 +358,22 @@ export default function TicketCalendar() {
         return filtered.filter(
           (e) =>
             e.type ===
-            "due_date"
+              "due_date" ||
+            e.type ===
+              "overdue" ||
+            e.type ===
+              "leave"
         );
       }
 
-      // =====================================================
-      // WEEK/DAY/AGENDA
-      // =====================================================
+      // WEEK/DAY VIEW
 
       return filtered.filter(
         (e) =>
           e.type ===
-          "work_log"
+            "work_log" ||
+          e.type ===
+            "permission"
       );
     }, [
       events,
@@ -259,7 +382,7 @@ export default function TicketCalendar() {
     ]);
 
   // =====================================================
-  // DRAG
+  // MOVE EVENT
   // =====================================================
 
   const moveEvent = async ({
@@ -285,26 +408,31 @@ export default function TicketCalendar() {
         )
       );
 
-      await api.put(
-        `/ticket-time-entries/${event.resource.entry.id}`,
-        {
-          start_time:
-            start.toISOString(),
+      if (
+        event.type ===
+        "work_log"
+      ) {
+        await api.put(
+          `/ticket-time-entries/${event.resource.entry.id}`,
+          {
+            start_time:
+              start.toISOString(),
 
-          end_time:
-            end.toISOString(),
+            end_time:
+              end.toISOString(),
 
-          duration_minutes:
-            duration,
-        }
-      );
+            duration_minutes:
+              duration,
+          }
+        );
+      }
     } catch (err) {
       console.error(err);
     }
   };
 
   // =====================================================
-  // RESIZE
+  // RESIZE EVENT
   // =====================================================
 
   const resizeEvent =
@@ -332,32 +460,37 @@ export default function TicketCalendar() {
           )
         );
 
-        await api.put(
-          `/ticket-time-entries/${event.resource.entry.id}`,
-          {
-            start_time:
-              start.toISOString(),
+        if (
+          event.type ===
+          "work_log"
+        ) {
+          await api.put(
+            `/ticket-time-entries/${event.resource.entry.id}`,
+            {
+              start_time:
+                start.toISOString(),
 
-            end_time:
-              end.toISOString(),
+              end_time:
+                end.toISOString(),
 
-            duration_minutes:
-              duration,
-          }
-        );
+              duration_minutes:
+                duration,
+            }
+          );
+        }
       } catch (err) {
         console.error(err);
       }
     };
 
   // =====================================================
-  // STYLE
+  // EVENT STYLE
   // =====================================================
 
   const eventStyleGetter = (
     event
-  ) => ({
-    style: {
+  ) => {
+    let style = {
       backgroundColor:
         event.backgroundColor,
 
@@ -374,9 +507,44 @@ export default function TicketCalendar() {
       fontWeight: "600",
 
       boxShadow:
-        "0 2px 8px rgba(0,0,0,0.15)",
-    },
-  });
+        "0 4px 12px rgba(0,0,0,0.18)",
+    };
+
+    // OVERDUE PULSE
+
+    if (
+      event.type ===
+      "overdue"
+    ) {
+      style.animation =
+        "pulse 2s infinite";
+
+      style.fontWeight =
+        "800";
+    }
+
+    // LEAVE
+
+    if (
+      event.type ===
+      "leave"
+    ) {
+      style.backgroundColor =
+        "#ef4444";
+    }
+
+    // PERMISSION
+
+    if (
+      event.type ===
+      "permission"
+    ) {
+      style.backgroundColor =
+        "#8b5cf6";
+    }
+
+    return { style };
+  };
 
   // =====================================================
   // CUSTOM EVENT
@@ -390,17 +558,20 @@ export default function TicketCalendar() {
         {event.title}
       </div>
 
+      {event.resource
+        ?.assignedPerson && (
+        <div className="text-[10px] opacity-90 truncate">
+          👤{" "}
+          {
+            event.resource
+              ?.assignedPerson
+          }
+        </div>
+      )}
+
       {event.type ===
         "work_log" && (
         <>
-          <div className="text-[10px] opacity-90 truncate">
-            👤{" "}
-            {
-              event.resource
-                ?.assignedPerson
-            }
-          </div>
-
           <div className="text-[10px] opacity-90">
             ⏱{" "}
             {
@@ -412,11 +583,17 @@ export default function TicketCalendar() {
 
           <div className="text-[10px] opacity-90">
             🕒{" "}
-            {/* FIXED: removed manual IST conversion */}
-            {moment(event.start).format("hh:mm A")}
-            {" "}-
-            {" "}
-            {moment(event.end).format("hh:mm A")}
+            {moment(
+              event.start
+            ).format(
+              "hh:mm A"
+            )}{" "}
+            -{" "}
+            {moment(
+              event.end
+            ).format(
+              "hh:mm A"
+            )}
           </div>
         </>
       )}
@@ -430,8 +607,8 @@ export default function TicketCalendar() {
   if (loading) {
     return (
       <MainLayout>
-        <div className="p-10">
-          Loading...
+        <div className="p-10 text-xl font-semibold">
+          Loading calendar...
         </div>
       </MainLayout>
     );
@@ -452,12 +629,12 @@ export default function TicketCalendar() {
           </h1>
 
           <p className="text-gray-500 mt-2">
-            Due dates +
-            work sessions
+            Tickets, workload,
+            leaves & permissions
           </p>
         </div>
 
-        {/* USERS */}
+        {/* FILTER USERS */}
 
         <div className="mb-6 flex flex-wrap gap-3">
           {uniqueUsers.map(
@@ -472,14 +649,38 @@ export default function TicketCalendar() {
                 className={`px-4 py-2 rounded-2xl border font-medium transition ${
                   selectedUser ===
                   user
-                    ? "bg-black text-white"
-                    : "bg-white"
+                    ? "bg-black text-white shadow-lg"
+                    : "bg-white hover:bg-gray-100"
                 }`}
               >
                 {user}
               </button>
             )
           )}
+        </div>
+
+        {/* LEGEND */}
+
+        <div className="flex flex-wrap gap-3 mb-6">
+          <Legend
+            color="#dc2626"
+            label="Overdue"
+          />
+
+          <Legend
+            color="#3b82f6"
+            label="Tickets"
+          />
+
+          <Legend
+            color="#ef4444"
+            label="Leave"
+          />
+
+          <Legend
+            color="#8b5cf6"
+            label="Permission"
+          />
         </div>
 
         {/* CALENDAR */}
@@ -551,7 +752,7 @@ export default function TicketCalendar() {
                   2026,
                   1,
                   1,
-                  9,
+                  8,
                   0,
                   0
                 )
@@ -562,7 +763,7 @@ export default function TicketCalendar() {
                   2026,
                   1,
                   1,
-                  22,
+                  23,
                   0,
                   0
                 )
@@ -585,5 +786,30 @@ export default function TicketCalendar() {
         </div>
       </div>
     </MainLayout>
+  );
+}
+
+// =====================================================
+// LEGEND
+// =====================================================
+
+function Legend({
+  color,
+  label,
+}) {
+  return (
+    <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-2xl border shadow-sm">
+      <div
+        style={{
+          backgroundColor:
+            color,
+        }}
+        className="w-4 h-4 rounded-full"
+      ></div>
+
+      <span className="text-sm font-medium">
+        {label}
+      </span>
+    </div>
   );
 }
