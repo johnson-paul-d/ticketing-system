@@ -1,6 +1,6 @@
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import {
-  Menu, X, LayoutDashboard, Grid, KanbanSquare, Calendar,
+  Menu, X, LayoutDashboard, Cpu, KanbanSquare, Calendar,
   Shield, BarChart3, LogOut, PlusCircle, ChevronRight
 } from "lucide-react";
 import { useState } from "react";
@@ -21,7 +21,7 @@ export default function MainLayout({ children }) {
 
   const menuItems = [
     { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
-    { label: "Tickets", path: "/tickets", icon: Grid },
+    { label: "Tickets", path: "/tickets", icon: Cpu },
     ...(user?.role !== "Team Member"
       ? [{ label: "Create Ticket", path: "/create-ticket", icon: PlusCircle }]
       : []),
@@ -37,278 +37,378 @@ export default function MainLayout({ children }) {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap');
-
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-        :root {
-          --bg-deep: #06070a;
-          --bg-panel: rgba(14, 16, 22, 0.88);
-          --bg-card: rgba(20, 23, 30, 0.72);
-          --bg-hover: rgba(255, 255, 255, 0.06);
-
-          --accent: #00b3ff;
-          --accent-dim: rgba(0, 179, 255, 0.12);
-          --accent-glow: rgba(0, 179, 255, 0.35);
-
-          --gold: #d6a85f;
-
-          --text-1: #f5f7fa;
-          --text-2: #a4adbb;
-          --text-3: #5d6573;
-
-          --border: rgba(255, 255, 255, 0.08);
-          --sidebar-w: 280px;
-          --radius: 14px;
-
-          --font-display: 'Sora', sans-serif;
-          --font-body: 'Inter', sans-serif;
-          --transition: all 240ms cubic-bezier(0.22, 1, 0.36, 1);
+        /* ----- GLOBAL RESET & VARIABLES (Sieger Light Premium Theme) ----- */
+        *,
+        *::before,
+        *::after {
+          box-sizing: border-box;
+          margin: 0;
+          padding: 0;
         }
 
+        :root {
+          --bg-deep: #f8f6f2;        /* cream/off-white base */
+          --bg-panel: rgba(255, 255, 255, 0.92);
+          --bg-card: rgba(255, 255, 255, 0.86);
+          --bg-hover: rgba(0, 0, 0, 0.04);
+
+          --accent: #9b2423;          /* Sieger signal red */
+          --accent-soft: rgba(155, 36, 35, 0.12);
+          --accent-glow: rgba(155, 36, 35, 0.2);
+          --accent-border: rgba(155, 36, 35, 0.4);
+
+          --cream: #f3ece0;
+          --black: #1a1a1a;
+
+          --text-1: #1a1a1a;
+          --text-2: #4a4a4a;
+          --text-3: #7a7a7a;
+
+          --border: rgba(0, 0, 0, 0.08);
+          --border-gold: rgba(155, 36, 35, 0.15);
+
+          --sidebar-w: 280px;
+          --radius-sm: 8px;
+          --radius-md: 12px;
+          --radius-lg: 16px;
+          --transition-smooth: all 240ms cubic-bezier(0.22, 1, 0.36, 1);
+          --shadow-elevation: 0 8px 24px rgba(0, 0, 0, 0.06);
+          --shadow-glow: 0 0 10px rgba(155, 36, 35, 0.15);
+        }
+
+        /* ----- TYPOGRAPHY (Effra alternatives) ----- */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&family=Sora:wght@400;500;600;700&display=swap');
+
+        /* ----- SCROLLBAR (clean industrial) ----- */
+        ::-webkit-scrollbar {
+          width: 5px;
+          height: 5px;
+        }
+        ::-webkit-scrollbar-track {
+          background: rgba(0, 0, 0, 0.05);
+          border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+          background: var(--accent-soft);
+          border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+          background: var(--accent);
+        }
+
+        /* ----- MAIN LAYOUT ----- */
         .ml-root {
           display: flex;
           min-height: 100vh;
-          background: radial-gradient(circle at top left, rgba(0, 179, 255, 0.08), transparent 30%),
-                      radial-gradient(circle at bottom right, rgba(214, 168, 95, 0.06), transparent 25%),
-                      linear-gradient(180deg, #06070a 0%, #0b0d12 45%, #11141b 100%);
-          font-family: var(--font-body);
+          background: linear-gradient(135deg, #fefcf8 0%, #f5f1ea 100%);
+          font-family: 'Inter', sans-serif;
           color: var(--text-1);
+          position: relative;
         }
 
-        /* Overlay */
+        /* Subtle industrial grain texture */
+        .ml-root::before {
+          content: '';
+          position: fixed;
+          inset: 0;
+          background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='1' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.02'/%3E%3C/svg%3E");
+          pointer-events: none;
+          z-index: 0;
+        }
+
+        /* ----- OVERLAY (mobile) ----- */
         .ml-overlay {
           display: none;
-          position: fixed; inset: 0;
-          background: rgba(0, 0, 0, 0.7);
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.4);
           backdrop-filter: blur(4px);
           z-index: 40;
+          transition: var(--transition-smooth);
+        }
+        .ml-overlay.active {
+          display: block;
           animation: fadeIn 200ms ease;
         }
-        .ml-overlay.active { display: block; }
-        @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
 
-        /* Sidebar - Glassmorphism + Premium Effects */
+        /* ----- SIDEBAR (glass + premium light) ----- */
         .ml-sidebar {
           position: fixed;
-          top: 0; left: 0;
+          top: 0;
+          left: 0;
           width: var(--sidebar-w);
           height: 100vh;
-          background: rgba(14, 16, 22, 0.88);
-          backdrop-filter: blur(16px);
-          -webkit-backdrop-filter: blur(16px);
-          border-right: 1px solid rgba(255, 255, 255, 0.08);
-          box-shadow: inset 1px 0 rgba(255, 255, 255, 0.03), 0 0 40px rgba(0, 0, 0, 0.4);
+          background: rgba(255, 255, 255, 0.94);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          border-right: 1px solid var(--border);
+          box-shadow: inset 1px 0 rgba(255, 255, 255, 0.8), var(--shadow-elevation);
           display: flex;
           flex-direction: column;
           z-index: 50;
           transform: translateX(-100%);
           transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
-          overflow: hidden;
+          overflow-y: auto;
+          overflow-x: hidden;
         }
-
-        /* Ambient Glow for Sidebar */
+        /* Red accent glow on sidebar */
+        .ml-sidebar::before {
+          content: '';
+          position: absolute;
+          top: -20%;
+          left: -20%;
+          width: 140%;
+          height: 140%;
+          background: radial-gradient(circle, var(--accent-soft) 0%, transparent 70%);
+          pointer-events: none;
+          opacity: 0.3;
+        }
         .ml-sidebar::after {
           content: '';
           position: absolute;
           inset: 0;
-          background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent);
+          background: linear-gradient(135deg, rgba(255, 255, 255, 0.5) 0%, transparent 50%);
           pointer-events: none;
         }
 
-        .ml-sidebar::before {
-          content: '';
-          position: absolute;
-          top: -80px; left: -80px;
-          width: 260px; height: 260px;
-          background: radial-gradient(circle, var(--accent-dim) 0%, transparent 70%);
-          pointer-events: none;
+        .ml-sidebar.open {
+          transform: translateX(0);
         }
-
-        .ml-sidebar.open,
-        @media (min-width: 1024px) { .ml-sidebar { transform: translateX(0); position: static; flex-shrink: 0; } }
-
         @media (min-width: 1024px) {
-          .ml-sidebar { transform: translateX(0) !important; position: static; flex-shrink: 0; }
-        }
-        @media (max-width: 1023px) {
-          .ml-sidebar.open { transform: translateX(0); }
+          .ml-sidebar {
+            transform: translateX(0);
+            position: sticky;
+            top: 0;
+            flex-shrink: 0;
+            height: 100vh;
+          }
         }
 
-        /* Sidebar Header */
+        /* ----- SIDEBAR HEADER (Logo Area - Sieger OPS) ----- */
         .ml-sidebar-header {
-          padding: 28px 24px 20px;
+          padding: 28px 24px 24px;
           border-bottom: 1px solid var(--border);
           position: relative;
+          z-index: 2;
         }
         .ml-close-btn {
           display: none;
-          position: absolute; top: 24px; right: 20px;
-          background: var(--bg-hover);
+          position: absolute;
+          top: 24px;
+          right: 20px;
+          background: rgba(0, 0, 0, 0.03);
           border: 1px solid var(--border);
           color: var(--text-2);
-          border-radius: 8px;
-          width: 32px; height: 32px;
-          align-items: center; justify-content: center;
+          border-radius: var(--radius-sm);
+          width: 34px;
+          height: 34px;
+          align-items: center;
+          justify-content: center;
           cursor: pointer;
-          transition: var(--transition);
+          transition: var(--transition-smooth);
         }
-        .ml-close-btn:hover { color: var(--text-1); border-color: var(--accent); }
-        @media (max-width: 1023px) { .ml-close-btn { display: flex; } }
+        .ml-close-btn:hover {
+          color: var(--accent);
+          border-color: var(--accent);
+          background: var(--accent-soft);
+        }
+        @media (max-width: 1023px) {
+          .ml-close-btn {
+            display: flex;
+          }
+        }
 
         .ml-logo-mark {
           display: flex;
           align-items: center;
-          gap: 10px;
-          margin-bottom: 4px;
+          gap: 12px;
+          margin-bottom: 8px;
         }
         .ml-logo-icon {
-          width: 32px; height: 32px;
+          width: 40px;
+          height: 40px;
           background: var(--accent);
-          border-radius: 8px;
+          border-radius: 10px;
           display: grid;
           place-items: center;
           flex-shrink: 0;
-          box-shadow: 0 0 16px var(--accent-glow);
+          box-shadow: 0 0 12px var(--accent-glow);
+          transition: var(--transition-smooth);
         }
-        .ml-logo-icon svg { width: 16px; height: 16px; color: #fff; }
+        .ml-logo-icon svg {
+          width: 20px;
+          height: 20px;
+          color: white;
+        }
         .ml-logo-title {
-          font-family: var(--font-display);
-          font-size: 18px;
+          font-family: 'Sora', sans-serif;
+          font-size: 1.35rem;
           font-weight: 700;
+          letter-spacing: -0.02em;
           color: var(--text-1);
-          letter-spacing: -0.3px;
         }
         .ml-logo-sub {
-          font-size: 11px;
-          color: var(--text-3);
-          font-weight: 400;
-          letter-spacing: 0.08em;
+          font-size: 0.7rem;
+          font-weight: 500;
+          letter-spacing: 0.2em;
           text-transform: uppercase;
-          padding-left: 42px;
+          color: var(--accent);
+          padding-left: 52px;
+          margin-top: -4px;
         }
 
-        /* User Card - Premium Identity Card */
+        /* ----- USER CARD (Executive Identity Panel - light) ----- */
         .ml-user-card {
-          margin: 16px 16px 8px;
+          margin: 20px 16px 16px;
           padding: 14px 16px;
-          background: linear-gradient(135deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
+          background: rgba(255, 255, 255, 0.8);
           backdrop-filter: blur(12px);
-          -webkit-backdrop-filter: blur(12px);
           border: 1px solid var(--border);
-          border-radius: var(--radius);
+          border-radius: var(--radius-md);
           display: flex;
           align-items: center;
           gap: 12px;
           position: relative;
           overflow: hidden;
-          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+          box-shadow: 0 6px 14px rgba(0, 0, 0, 0.04);
+          transition: var(--transition-smooth);
+        }
+        .ml-user-card::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: radial-gradient(circle at 0% 20%, var(--accent-soft), transparent 70%);
+          opacity: 0.4;
+          pointer-events: none;
         }
         .ml-user-card::after {
           content: '';
-          position: absolute; top: 0; left: 0;
-          width: 3px; height: 100%;
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 3px;
+          height: 100%;
           background: var(--accent);
-          border-radius: 0 2px 2px 0;
+          box-shadow: var(--shadow-glow);
         }
         .ml-avatar {
-          width: 40px; height: 40px;
-          border-radius: 10px;
-          background: linear-gradient(135deg, var(--accent) 0%, #004e7c 100%);
-          display: grid; place-items: center;
-          font-family: var(--font-display);
-          font-size: 17px;
+          width: 44px;
+          height: 44px;
+          border-radius: 12px;
+          background: linear-gradient(145deg, var(--accent) 0%, #6b1a19 100%);
+          display: grid;
+          place-items: center;
+          font-family: 'Sora', sans-serif;
+          font-size: 1.2rem;
           font-weight: 700;
-          color: #fff;
+          color: white;
           flex-shrink: 0;
-          box-shadow: 0 4px 12px var(--accent-glow);
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         }
-        .ml-user-info { flex: 1; min-width: 0; }
+        .ml-user-info {
+          flex: 1;
+          min-width: 0;
+        }
         .ml-user-name {
-          font-family: var(--font-display);
-          font-size: 14px;
+          font-family: 'Sora', sans-serif;
+          font-size: 0.9rem;
           font-weight: 600;
           color: var(--text-1);
-          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
         .ml-user-role {
-          font-size: 11px;
+          font-size: 0.7rem;
+          font-weight: 400;
           color: var(--text-2);
-          font-weight: 300;
-          margin-top: 1px;
+          margin-top: 2px;
         }
-        .ml-notif-slot { flex-shrink: 0; }
+        .ml-notif-slot {
+          flex-shrink: 0;
+        }
 
-        /* Nav Section */
+        /* ----- NAVIGATION LABEL ----- */
         .ml-nav-label {
-          font-size: 10px;
+          font-size: 0.7rem;
           font-weight: 600;
-          letter-spacing: 0.12em;
+          letter-spacing: 0.1em;
           text-transform: uppercase;
-          color: var(--text-3);
-          padding: 16px 24px 8px;
+          color: var(--accent);
+          padding: 20px 24px 8px;
         }
 
-        /* Nav Items - Futuristic Control Panel Effect */
+        /* ----- NAVIGATION ITEMS (premium light) ----- */
         .ml-nav {
           flex: 1;
           overflow-y: auto;
-          padding: 0 10px;
-          scrollbar-width: none;
+          padding: 0 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
         }
-        .ml-nav::-webkit-scrollbar { display: none; }
-
         .ml-nav-item {
           display: flex;
           align-items: center;
-          gap: 11px;
+          gap: 12px;
           padding: 10px 14px;
           border-radius: 10px;
           text-decoration: none;
           color: var(--text-2);
-          font-size: 13.5px;
-          font-weight: 400;
-          transition: var(--transition);
+          font-size: 0.85rem;
+          font-weight: 500;
+          transition: var(--transition-smooth);
           position: relative;
-          margin-bottom: 2px;
         }
         .ml-nav-item:hover {
-          background: var(--bg-hover);
+          background: rgba(0, 0, 0, 0.03);
           color: var(--text-1);
           transform: translateX(4px);
         }
         .ml-nav-item.active {
-          background: linear-gradient(90deg, rgba(0, 179, 255, 0.18), rgba(0, 179, 255, 0.06));
-          color: var(--text-1);
-          font-weight: 500;
+          background: linear-gradient(90deg, var(--accent-soft) 0%, rgba(155, 36, 35, 0.02) 100%);
+          color: var(--accent);
+          font-weight: 600;
         }
         .ml-nav-item.active::before {
           content: '';
-          position: absolute; left: 0; top: 50%; transform: translateY(-50%);
-          width: 3px; height: 60%;
+          position: absolute;
+          left: 0;
+          top: 50%;
+          transform: translateY(-50%);
+          width: 3px;
+          height: 55%;
           background: var(--accent);
-          border-radius: 0 3px 3px 0;
-          box-shadow: 0 0 8px var(--accent-glow);
+          border-radius: 0 2px 2px 0;
+          box-shadow: var(--shadow-glow);
         }
         .ml-nav-icon {
-          width: 34px; height: 34px;
+          width: 34px;
+          height: 34px;
           border-radius: 8px;
-          display: grid; place-items: center;
+          display: grid;
+          place-items: center;
           flex-shrink: 0;
-          background: var(--bg-hover);
-          transition: var(--transition);
+          background: rgba(0, 0, 0, 0.02);
+          transition: var(--transition-smooth);
         }
         .ml-nav-item.active .ml-nav-icon {
           background: var(--accent);
-          box-shadow: 0 4px 12px var(--accent-glow);
-          color: #fff;
+          color: white;
+          box-shadow: 0 2px 8px rgba(155, 36, 35, 0.3);
         }
-        .ml-nav-item:hover .ml-nav-icon { background: var(--bg-card); }
+        .ml-nav-item:hover .ml-nav-icon {
+          background: rgba(0, 0, 0, 0.05);
+        }
         .ml-nav-arrow {
           margin-left: auto;
           opacity: 0;
-          transform: translateX(-4px);
-          transition: var(--transition);
+          transform: translateX(-6px);
+          transition: var(--transition-smooth);
           color: var(--accent);
         }
         .ml-nav-item:hover .ml-nav-arrow,
@@ -317,124 +417,240 @@ export default function MainLayout({ children }) {
           transform: translateX(0);
         }
 
-        /* Sidebar Footer */
+        /* ----- SIDEBAR FOOTER (Logout) ----- */
         .ml-sidebar-footer {
-          padding: 16px;
+          padding: 20px 16px 24px;
           border-top: 1px solid var(--border);
+          margin-top: auto;
         }
         .ml-logout-btn {
           width: 100%;
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 9px;
-          padding: 13px;
+          gap: 10px;
+          padding: 12px;
           border-radius: 10px;
           background: transparent;
           border: 1px solid var(--border);
           color: var(--text-2);
-          font-family: var(--font-body);
-          font-size: 13.5px;
+          font-family: 'Inter', sans-serif;
+          font-size: 0.8rem;
           font-weight: 500;
           cursor: pointer;
-          transition: var(--transition);
-          letter-spacing: 0.01em;
+          transition: var(--transition-smooth);
         }
         .ml-logout-btn:hover {
           background: var(--accent);
           border-color: var(--accent);
-          color: #fff;
-          box-shadow: 0 4px 16px var(--accent-glow);
+          color: white;
+          box-shadow: 0 4px 12px rgba(155, 36, 35, 0.2);
+          transform: translateY(-1px);
         }
 
-        /* Main Content Area */
+        /* ----- MAIN CONTENT AREA ----- */
         .ml-main {
           flex: 1;
           min-width: 0;
           display: flex;
           flex-direction: column;
+          background: transparent;
         }
 
-        /* Topbar - Glassmorphism */
+        /* ----- MOBILE TOPBAR (glass light) ----- */
         .ml-topbar {
           display: none;
-          background: rgba(14, 16, 22, 0.88);
-          backdrop-filter: blur(16px);
-          -webkit-backdrop-filter: blur(16px);
-          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-          padding: 0 16px;
-          height: 60px;
+          background: rgba(255, 255, 255, 0.85);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          border-bottom: 1px solid var(--border);
+          padding: 0 20px;
+          height: 64px;
           align-items: center;
-          gap: 12px;
-          position: sticky; top: 0; z-index: 30;
+          gap: 16px;
+          position: sticky;
+          top: 0;
+          z-index: 30;
         }
-        @media (max-width: 1023px) { .ml-topbar { display: flex; } }
+        @media (max-width: 1023px) {
+          .ml-topbar {
+            display: flex;
+          }
+        }
         .ml-menu-btn {
-          width: 38px; height: 38px;
-          background: var(--bg-card);
+          width: 40px;
+          height: 40px;
+          background: white;
           border: 1px solid var(--border);
-          border-radius: 9px;
-          display: grid; place-items: center;
+          border-radius: 12px;
+          display: grid;
+          place-items: center;
           cursor: pointer;
           color: var(--text-1);
-          flex-shrink: 0;
-          transition: var(--transition);
+          transition: var(--transition-smooth);
+          box-shadow: 0 2px 6px rgba(0,0,0,0.02);
         }
-        .ml-menu-btn:hover { border-color: var(--accent); }
+        .ml-menu-btn:hover {
+          border-color: var(--accent);
+          background: var(--accent-soft);
+          color: var(--accent);
+        }
         .ml-topbar-title {
-          font-family: var(--font-display);
-          font-size: 16px;
+          font-family: 'Sora', sans-serif;
+          font-size: 1.1rem;
           font-weight: 700;
           color: var(--text-1);
         }
-        .ml-topbar-notif { margin-left: auto; }
+        .ml-topbar-notif {
+          margin-left: auto;
+        }
 
-        /* Page Content with Subtle Grid Texture */
+        /* ----- CONTENT AREA (industrial grid subtle) ----- */
         .ml-content {
           flex: 1;
           padding: 28px 32px;
-          overflow-x: hidden;
-          background-image: linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-                            linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
-          background-size: 40px 40px;
+          background-image: 
+            linear-gradient(rgba(0, 0, 0, 0.02) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(0, 0, 0, 0.02) 1px, transparent 1px);
+          background-size: 44px 44px;
+          transition: var(--transition-smooth);
         }
-        @media (max-width: 768px) { .ml-content { padding: 16px; } }
+
+        /* ===== RESPONSIVE & MOBILE OPTIMIZATIONS ===== */
+        @media (max-width: 768px) {
+          .ml-content {
+            padding: 20px 16px;
+          }
+          .ml-sidebar-header {
+            padding: 20px 20px 20px;
+          }
+          .ml-user-card {
+            margin: 16px 12px;
+            padding: 12px 14px;
+          }
+          .ml-nav-label {
+            padding: 16px 20px 6px;
+          }
+          .ml-nav {
+            padding: 0 8px;
+          }
+          .ml-nav-item {
+            padding: 8px 12px;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .ml-content {
+            padding: 16px 12px;
+          }
+          .ml-topbar {
+            height: 56px;
+            padding: 0 12px;
+          }
+          .ml-menu-btn {
+            width: 36px;
+            height: 36px;
+          }
+          .ml-topbar-title {
+            font-size: 1rem;
+          }
+          .ml-sidebar {
+            width: 85%;
+            max-width: 280px;
+          }
+          .ml-logo-title {
+            font-size: 1.2rem;
+          }
+          .ml-logo-sub {
+            font-size: 0.6rem;
+            padding-left: 48px;
+          }
+          .ml-avatar {
+            width: 38px;
+            height: 38px;
+            font-size: 1rem;
+          }
+        }
+
+        /* Safe area support */
+        @supports (padding-top: env(safe-area-inset-top)) {
+          .ml-sidebar {
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+          }
+          .ml-topbar {
+            padding-top: env(safe-area-inset-top);
+            height: calc(64px + env(safe-area-inset-top));
+          }
+          @media (max-width: 480px) {
+            .ml-topbar {
+              height: calc(56px + env(safe-area-inset-top));
+            }
+          }
+        }
+
+        @media (min-width: 1024px) {
+          .ml-content {
+            padding: 32px 40px;
+          }
+          .ml-nav-item {
+            padding: 10px 16px;
+          }
+        }
+
+        @media (min-width: 1600px) {
+          .ml-content {
+            padding: 40px 56px;
+          }
+        }
+
+        /* Touch-friendly tap targets */
+        @media (hover: none) and (pointer: coarse) {
+          .ml-nav-item,
+          .ml-logout-btn,
+          .ml-menu-btn,
+          .ml-close-btn {
+            min-height: 44px;
+          }
+          .ml-nav-icon {
+            min-width: 40px;
+          }
+        }
       `}</style>
 
       <div className="ml-root">
         {/* Mobile overlay */}
         <div className={`ml-overlay ${open ? "active" : ""}`} onClick={() => setOpen(false)} />
 
-        {/* Sidebar */}
+        {/* Sidebar - Sieger Premium Light Theme */}
         <aside className={`ml-sidebar ${open ? "open" : ""}`}>
-          {/* Header */}
           <div className="ml-sidebar-header">
             <div className="ml-logo-mark">
               <div className="ml-logo-icon">
-                <Grid />
+                <Cpu strokeWidth={1.8} />
               </div>
-              <span className="ml-logo-title">Sieger Nexus</span>
+              <span className="ml-logo-title">SIEGER OPS</span>
             </div>
-            <p className="ml-logo-sub">Automation Operations Platform</p>
+            <p className="ml-logo-sub">Automation Command Center</p>
             <button className="ml-close-btn" onClick={() => setOpen(false)}>
-              <X size={15} />
+              <X size={18} />
             </button>
           </div>
 
-          {/* User card */}
+          {/* Executive Identity Card */}
           <div className="ml-user-card">
-            <div className="ml-avatar">{user?.name?.charAt(0)}</div>
+            <div className="ml-avatar">{user?.name?.charAt(0) || "U"}</div>
             <div className="ml-user-info">
-              <div className="ml-user-name">{user?.name}</div>
-              <div className="ml-user-role">{user?.role}</div>
+              <div className="ml-user-name">{user?.name || "Operator"}</div>
+              <div className="ml-user-role">{user?.role || "Engineer"}</div>
             </div>
             <div className="ml-notif-slot">
               <NotificationBell />
             </div>
           </div>
 
-          {/* Nav */}
-          <p className="ml-nav-label">Navigation</p>
+          {/* Navigation */}
+          <p className="ml-nav-label">Core Systems</p>
           <nav className="ml-nav">
             {menuItems.map((item) => {
               const Icon = item.icon;
@@ -447,38 +663,38 @@ export default function MainLayout({ children }) {
                   className={`ml-nav-item ${isActive ? "active" : ""}`}
                 >
                   <span className="ml-nav-icon">
-                    <Icon size={16} />
+                    <Icon size={16} strokeWidth={1.5} />
                   </span>
                   {item.label}
-                  <ChevronRight size={13} className="ml-nav-arrow" />
+                  <ChevronRight size={14} className="ml-nav-arrow" />
                 </Link>
               );
             })}
           </nav>
 
-          {/* Footer */}
+          {/* Footer Logout */}
           <div className="ml-sidebar-footer">
             <button className="ml-logout-btn" onClick={handleLogout}>
-              <LogOut size={15} />
-              Sign Out
+              <LogOut size={16} strokeWidth={1.6} />
+              Exit Terminal
             </button>
           </div>
         </aside>
 
-        {/* Main area */}
+        {/* Main Area */}
         <div className="ml-main">
-          {/* Mobile topbar */}
+          {/* Mobile Topbar - Glassmorphism Light */}
           <div className="ml-topbar">
             <button className="ml-menu-btn" onClick={() => setOpen(true)}>
-              <Menu size={18} />
+              <Menu size={20} strokeWidth={1.6} />
             </button>
-            <span className="ml-topbar-title">Sieger Nexus</span>
+            <span className="ml-topbar-title">SIEGER OPS</span>
             <div className="ml-topbar-notif">
               <NotificationBell />
             </div>
           </div>
 
-          {/* Page content */}
+          {/* Dynamic Content */}
           <div className="ml-content">{children}</div>
         </div>
       </div>
