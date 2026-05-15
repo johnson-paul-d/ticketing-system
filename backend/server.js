@@ -11,6 +11,8 @@ const notificationRoutes = require('./routes/notifications');
 
 const app = express();
 const server = http.createServer(app);
+const leaveRoutes = require("./routes/leaveRoutes");
+const permissionRoutes = require("./routes/permissionRoutes");
 
 const timeEntryRoutes =
   require("./routes/timeEntries");
@@ -61,6 +63,11 @@ app.use('/api/tickets', ticketRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api', timeEntryRoutes);
+app.use("/api/leave-requests", leaveRoutes);
 
+app.use(
+  "/api/permission-requests",
+  permissionRoutes
+);
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
