@@ -74,7 +74,9 @@ export default function TimeTracker() {
       const end = new Date(permissionEnd);
       const durationMinutes = Math.round((end - start) / 60000);
 
-      await api.post("/permissions", {
+      await api.post(
+  "/permission-requests",
+  {
         start_time: permissionStart,
         end_time: permissionEnd,
         duration_minutes: durationMinutes,
