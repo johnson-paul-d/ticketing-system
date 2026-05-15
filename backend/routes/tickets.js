@@ -492,23 +492,19 @@ router.put(
       } = req.body;
 
       const {
-        data: existing,
-        error:
-          fetchError,
-      } = await supabase
-        .from('tickets')
-        .select('*')
-        .eq('id', id)
-        .single();
+  data: existing,
+  error: fetchError,
+} = await supabase
+  .from("tickets")
+  .select("*")
+  .eq("id", req.params.id)
+  .single();
 
-      if (fetchError) {
-        return res
-          .status(404)
-          .json({
-            message:
-              'Ticket not found',
-          });
-      }
+if (fetchError || !existing) {
+  return res.status(404).json({
+    message: "Ticket not found",
+  });
+}
 
       // =====================================================
       // ACCESS
@@ -537,12 +533,8 @@ router.put(
       // TIMELINE
       // =====================================================
 
-      let timeline =
-        Array.isArray(
-          existing.timeline
-        )
-          ? existing.timeline
-          : [];
+let timeline =
+  existing.timeline || [];
 
       // =====================================================
       // COMMENT (type: comment_add)
