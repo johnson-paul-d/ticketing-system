@@ -77,244 +77,255 @@ export default function TicketCalendar() {
   // =====================================================
 
   const fetchTickets = async () => {
-    try {
-      setLoading(true);
+  try {
+    setLoading(true);
 
-      const res = await api.get(
-        "/tickets"
-      );
+    // =====================================================
+    // FETCH ALL APIs
+    // =====================================================
 
-      let allEvents = [];
+    const [
+      ticketsRes,
+      leavesRes,
+      permissionsRes,
+    ] = await Promise.all([
+      api.get("/tickets"),
+      api.get("/leave-requests"),
+      api.get("/permission-requests"),
+    ]);
 
-      res.data.forEach((ticket) => {
-        const assignedPerson =
-          ticket.assigned_to_name ||
-          "Default";
+    const tickets =
+      ticketsRes.data || [];
 
-        const userColor =
-          userColors[
-            assignedPerson
-          ] ||
-          userColors.Default;
+    const leaves =
+      leavesRes.data || [];
 
-        const borderColor =
-          priorityBorders[
-            ticket.priority
-          ] || "#d1d5db";
+    const permissions =
+      permissionsRes.data || [];
 
-        // =====================================================
-        // OVERDUE CHECK
-        // =====================================================
+    let allEvents = [];
 
-        const isOverdue =
-          ticket.due_date &&
-          new Date(ticket.due_date) <
-            new Date() &&
-          ticket.status !==
-            "Completed";
+    // =====================================================
+    // TICKETS
+    // =====================================================
 
-        // =====================================================
-        // DUE DATE EVENTS
-        // =====================================================
+    tickets.forEach((ticket) => {
+      const assignedPerson =
+        ticket.assigned_to_name ||
+        "Default";
 
-        if (ticket.due_date) {
-          const dueDate =
-            new Date(
-              ticket.due_date
-            );
+      const userColor =
+        userColors[
+          assignedPerson
+        ] ||
+        userColors.Default;
 
-          allEvents.push({
-            id: `due-${ticket.id}`,
+      const borderColor =
+        priorityBorders[
+          ticket.priority
+        ] || "#d1d5db";
 
-            title: isOverdue
-              ? `🚨 OVERDUE - ${ticket.title}`
-              : `📌 ${ticket.title}`,
+      // =====================================================
+      // OVERDUE CHECK
+      // =====================================================
 
-            start: dueDate,
+      const isOverdue =
+        ticket.due_date &&
+        new Date(ticket.due_date) <
+          new Date() &&
+        ticket.status !==
+          "Completed";
 
-            end: dueDate,
+      // =====================================================
+      // DUE DATE
+      // =====================================================
 
-            allDay: true,
+      if (ticket.due_date) {
+        const dueDate =
+          new Date(
+            ticket.due_date
+          );
 
-            type: isOverdue
-              ? "overdue"
-              : "due_date",
+        allEvents.push({
+          id: `due-${ticket.id}`,
 
-            backgroundColor:
-              isOverdue
-                ? "#dc2626"
-                : userColor,
+          title: isOverdue
+            ? `🚨 OVERDUE - ${ticket.title}`
+            : `📌 ${ticket.title}`,
 
-            borderColor:
-              isOverdue
-                ? "#7f1d1d"
-                : borderColor,
+          start: dueDate,
 
-            resource: {
-              ...ticket,
-              assignedPerson,
-            },
-          });
-        }
+          end: dueDate,
 
-        // =====================================================
-        // WORK LOG EVENTS
-        // =====================================================
+          allDay: true,
 
-        if (
-          ticket.time_entries &&
-          ticket.time_entries.length
-        ) {
-          ticket.time_entries.forEach(
-            (entry) => {
-              const start = new Date(
+          type: isOverdue
+            ? "overdue"
+            : "due_date",
+
+          backgroundColor:
+            isOverdue
+              ? "#dc2626"
+              : userColor,
+
+          borderColor:
+            isOverdue
+              ? "#7f1d1d"
+              : borderColor,
+
+          resource: {
+            ...ticket,
+            assignedPerson,
+          },
+        });
+      }
+
+      // =====================================================
+      // WORK LOGS
+      // =====================================================
+
+      if (
+        ticket.time_entries &&
+        ticket.time_entries.length
+      ) {
+        ticket.time_entries.forEach(
+          (entry) => {
+            const start =
+              new Date(
                 entry.start_time
               );
 
-              const end = new Date(
+            const end =
+              new Date(
                 entry.end_time
               );
 
-              allEvents.push({
-                id: `work-${entry.id}`,
+            allEvents.push({
+              id: `work-${entry.id}`,
 
-                title:
-                  ticket.title,
+              title:
+                ticket.title,
 
-                start,
+              start,
 
-                end,
+              end,
 
-                allDay: false,
+              allDay: false,
 
-                type: "work_log",
+              type: "work_log",
 
-                backgroundColor:
-                  userColor,
+              backgroundColor:
+                userColor,
 
-                borderColor,
+              borderColor,
 
-                resource: {
-                  ...ticket,
-                  entry,
-                  assignedPerson,
-                  duration:
-                    entry.duration_minutes,
-                },
-              });
-            }
-          );
-        }
+              resource: {
+                ...ticket,
+                entry,
+                assignedPerson,
+                duration:
+                  entry.duration_minutes,
+              },
+            });
+          }
+        );
+      }
+    });
 
-        // =====================================================
-        // LEAVE REQUESTS
-        // =====================================================
+    // =====================================================
+    // LEAVE EVENTS
+    // =====================================================
 
-        if (
-          ticket.leave_requests &&
-          ticket.leave_requests.length
-        ) {
-          ticket.leave_requests.forEach(
-            (leave) => {
-              const leaveDate =
-                new Date(
-                  leave.date
-                );
+    leaves.forEach((leave) => {
+      const start =
+        new Date(
+          leave.start_date
+        );
 
-              allEvents.push({
-                id: `leave-${leave.id}`,
+      const end = new Date(
+        leave.end_date
+      );
 
-                title: `🏖 Leave - ${
-                  leave.employee_name ||
-                  assignedPerson
-                }`,
+      allEvents.push({
+        id: `leave-${leave.id}`,
 
-                start: leaveDate,
+        title: `🏖 ${
+          leave.user_name ||
+          leave.employee_name ||
+          "Employee"
+        } Leave`,
 
-                end: leaveDate,
+        start,
 
-                allDay: true,
+        end,
 
-                type: "leave",
+        allDay: true,
 
-                backgroundColor:
-                  "#ef4444",
+        type: "leave",
 
-                borderColor:
-                  "#991b1b",
+        backgroundColor:
+          "#ef4444",
 
-                resource: {
-                  ...leave,
-                  assignedPerson,
-                },
-              });
-            }
-          );
-        }
+        borderColor:
+          "#991b1b",
 
-        // =====================================================
-        // PERMISSION REQUESTS
-        // =====================================================
-
-        if (
-          ticket.permission_requests &&
-          ticket.permission_requests
-            .length
-        ) {
-          ticket.permission_requests.forEach(
-            (
-              permission
-            ) => {
-              const start =
-                new Date(
-                  permission.start_time
-                );
-
-              const end =
-                new Date(
-                  permission.end_time
-                );
-
-              allEvents.push({
-                id: `permission-${permission.id}`,
-
-                title: `🕒 Permission - ${
-                  permission.employee_name ||
-                  assignedPerson
-                }`,
-
-                start,
-
-                end,
-
-                allDay: false,
-
-                type: "permission",
-
-                backgroundColor:
-                  "#8b5cf6",
-
-                borderColor:
-                  "#5b21b6",
-
-                resource: {
-                  ...permission,
-                  assignedPerson,
-                },
-              });
-            }
-          );
-        }
+        resource: leave,
       });
+    });
 
-      setEvents(allEvents);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    // =====================================================
+    // PERMISSION EVENTS
+    // =====================================================
 
+    permissions.forEach(
+      (permission) => {
+        allEvents.push({
+          id: `permission-${permission.id}`,
+
+          title: `🕒 ${
+            permission.user_name ||
+            permission.employee_name ||
+            "Employee"
+          } Permission`,
+
+          start: new Date(
+            permission.start_time
+          ),
+
+          end: new Date(
+            permission.end_time
+          ),
+
+          allDay: false,
+
+          type: "permission",
+
+          backgroundColor:
+            "#8b5cf6",
+
+          borderColor:
+            "#5b21b6",
+
+          resource: permission,
+        });
+      }
+    );
+
+    console.log(
+      "Calendar Events:",
+      allEvents
+    );
+
+    setEvents(allEvents);
+  } catch (err) {
+    console.error(
+      "Calendar fetch error:",
+      err
+    );
+  } finally {
+    setLoading(false);
+  }
+};
   // =====================================================
   // USERS
   // =====================================================
