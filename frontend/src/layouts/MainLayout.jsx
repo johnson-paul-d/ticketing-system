@@ -629,9 +629,9 @@ export default function MainLayout({ children }) {
               <div className="ml-logo-icon">
                 <Cpu strokeWidth={1.8} />
               </div>
-              <span className="ml-logo-title">SIEGER OPS</span>
+              <span className="ml-logo-title">SIEGER MKT</span>
             </div>
-            <p className="ml-logo-sub">Automation Command Center</p>
+            <p className="ml-logo-sub">MARKETING TEAM</p>
             <button className="ml-close-btn" onClick={() => setOpen(false)}>
               <X size={18} />
             </button>

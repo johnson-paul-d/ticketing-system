@@ -16,6 +16,7 @@ const permissionRoutes = require("./routes/permissionRoutes");
 
 const timeEntryRoutes =
   require("./routes/timeEntries");
+const salesforceRoutes = require("./routes/salesforce");
 
 // Allowed origins – add your Vercel frontend URL
 const allowedOrigins = [
@@ -64,6 +65,9 @@ app.use('/api/users', userRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api', timeEntryRoutes);
 app.use("/api/leave-requests", leaveRoutes);
+
+
+app.use("/api/salesforce", salesforceRoutes);
 
 app.use(
   "/api/permission-requests",

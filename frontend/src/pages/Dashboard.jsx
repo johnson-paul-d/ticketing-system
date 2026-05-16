@@ -1122,7 +1122,7 @@ export default function Dashboard() {
                 margin: 0,
               }}
             >
-              Director's Command Center
+              MARKETING TEAM DASHBOARD
             </h1>
             <p style={{ fontSize: 13, color: T.ink3, marginTop: 4 }}>
               {user?.role} · {user?.name}
