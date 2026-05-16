@@ -31,7 +31,7 @@ export default function CreateTicket() {
         due_date: dueDate || null,
       });
       navigate("/tickets");
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
       setError(err.response?.data?.message || "Failed to create ticket");
     } finally {
