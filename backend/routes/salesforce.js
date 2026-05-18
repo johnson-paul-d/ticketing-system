@@ -1,8 +1,14 @@
+const express = require("express");
+
+const router = express.Router();
+
+const supabase = require("../config/supabase");
+
 router.post("/mkt-ticket", async (req, res) => {
 
   try {
 
-    console.log(req.body);
+    console.log("BODY:", req.body);
 
     const payload =
       typeof req.body === "string"
@@ -49,3 +55,5 @@ router.post("/mkt-ticket", async (req, res) => {
   }
 
 });
+
+module.exports = router;
