@@ -4,6 +4,7 @@ import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
 import useAuthStore from "../store/authStore";
 import socket from "../services/socket";
+import moment from "moment";   // <-- ADDED for consistent time handling
 
 export default function TicketDetails() {
   const { id } = useParams();
@@ -221,7 +222,7 @@ export default function TicketDetails() {
   };
 
   // =====================================================
-  // LOG TIME (UPDATED with date + start/end time, 8h limit)
+  // LOG TIME (FIXED: use moment to create local datetime string)
   // =====================================================
   const logTime = async () => {
     try {
@@ -229,19 +230,22 @@ export default function TicketDetails() {
         return alert("Please select date, start time and end time");
       }
 
-      // Combine date + time
-      const startDateTime = new Date(`${workDate}T${startTime}`);
-      const endDateTime = new Date(`${workDate}T${endTime}`);
+      // Build local datetime strings WITHOUT timezone shift
+      const startDateTime = moment(`${workDate} ${startTime}`, "YYYY-MM-DD HH:mm")
+        .format("YYYY-MM-DDTHH:mm:ss");
+      const endDateTime = moment(`${workDate} ${endTime}`, "YYYY-MM-DD HH:mm")
+        .format("YYYY-MM-DDTHH:mm:ss");
 
-      // End must be greater
-      if (endDateTime <= startDateTime) {
+      // Parse them temporarily to calculate duration (still local)
+      const startMoment = moment(startDateTime, "YYYY-MM-DDTHH:mm:ss");
+      const endMoment = moment(endDateTime, "YYYY-MM-DDTHH:mm:ss");
+
+      if (endMoment <= startMoment) {
         return alert("End time must be greater than start time");
       }
 
-      // Duration in minutes
-      const duration = Math.round((endDateTime - startDateTime) / 60000);
+      const duration = endMoment.diff(startMoment, "minutes");
 
-      // Max 8 hours
       if (duration > 480) {
         return alert("Maximum 8 hours can be logged");
       }
@@ -270,32 +274,35 @@ export default function TicketDetails() {
   };
 
   // =====================================================
-  // START EDIT
+  // START EDIT (FIXED: use moment for time, not toISOString)
   // =====================================================
   const startEditEntry = (entry) => {
     setEditingEntryId(entry.id);
     setEditWorkDate(new Date(entry.work_date).toISOString().split("T")[0]);
-    setEditStartTime(new Date(entry.start_time).toISOString().slice(11, 16));
-    setEditEndTime(new Date(entry.end_time).toISOString().slice(11, 16));
+    setEditStartTime(moment(entry.start_time).format("HH:mm"));
+    setEditEndTime(moment(entry.end_time).format("HH:mm"));
     setEditNotes(entry.notes || "");
   };
 
   // =====================================================
-  // UPDATE TIME ENTRY
+  // UPDATE TIME ENTRY (FIXED: use moment for local datetimes)
   // =====================================================
   const updateTimeEntry = async (entryId) => {
     try {
-      const startDateTime = new Date(`${editWorkDate}T${editStartTime}`);
-      const endDateTime = new Date(`${editWorkDate}T${editEndTime}`);
+      const startDateTime = moment(`${editWorkDate} ${editStartTime}`, "YYYY-MM-DD HH:mm")
+        .format("YYYY-MM-DDTHH:mm:ss");
+      const endDateTime = moment(`${editWorkDate} ${editEndTime}`, "YYYY-MM-DD HH:mm")
+        .format("YYYY-MM-DDTHH:mm:ss");
 
-      // validation
-      if (endDateTime <= startDateTime) {
+      const startMoment = moment(startDateTime, "YYYY-MM-DDTHH:mm:ss");
+      const endMoment = moment(endDateTime, "YYYY-MM-DDTHH:mm:ss");
+
+      if (endMoment <= startMoment) {
         return alert("End time must be greater than start time");
       }
 
-      const duration = Math.round((endDateTime - startDateTime) / 60000);
+      const duration = endMoment.diff(startMoment, "minutes");
 
-      // max 8h
       if (duration > 480) {
         return alert("Maximum 8 hours can be logged");
       }
@@ -589,7 +596,7 @@ export default function TicketDetails() {
         </div>
 
         {/* ===================================================== */}
-        {/* LOG TIME SECTION (UPDATED UI) */}
+        {/* LOG TIME SECTION (FIXED UI) */}
         {/* ===================================================== */}
         <div className="mt-16 border-t pt-10">
           <h2 className="text-3xl font-bold mb-6">Log Work Time</h2>
@@ -659,7 +666,7 @@ export default function TicketDetails() {
         </div>
 
         {/* ===================================================== */}
-        {/* TIME TRACKING LIST with inline editing */}
+        {/* TIME TRACKING LIST with inline editing (FIXED display) */}
         {/* ===================================================== */}
         <div className="mt-16 border-t pt-10">
           <div className="flex items-center justify-between mb-8">
@@ -706,15 +713,7 @@ export default function TicketDetails() {
                             {entry.start_time && entry.end_time && (
                               <div className="text-sm text-gray-500 mt-2">
                                 🕒{" "}
-                                {new Date(entry.start_time).toLocaleTimeString("en-IN", {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
-                                {" - "}
-                                {new Date(entry.end_time).toLocaleTimeString("en-IN", {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
+                                {moment(entry.start_time).format("hh:mm A")} - {moment(entry.end_time).format("hh:mm A")}
                               </div>
                             )}
                             {entry.notes && (

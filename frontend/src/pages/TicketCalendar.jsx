@@ -228,7 +228,7 @@ export default function TicketCalendar() {
   }, [events, selectedUser, currentView]);
 
   // =====================================================
-  // MOVE / RESIZE
+  // MOVE / RESIZE – FIXED: use moment format, NOT toISOString()
   // =====================================================
 
   const moveEvent = async ({ event, start, end }) => {
@@ -239,8 +239,8 @@ export default function TicketCalendar() {
       );
       if (event.type === "work_log") {
         await api.put(`/ticket-time-entries/${event.resource.entry.id}`, {
-          start_time: start.toISOString(),
-          end_time: end.toISOString(),
+          start_time: moment(start).format("YYYY-MM-DDTHH:mm:ss"),
+          end_time: moment(end).format("YYYY-MM-DDTHH:mm:ss"),
           duration_minutes: duration,
         });
       }
@@ -257,8 +257,8 @@ export default function TicketCalendar() {
       );
       if (event.type === "work_log") {
         await api.put(`/ticket-time-entries/${event.resource.entry.id}`, {
-          start_time: start.toISOString(),
-          end_time: end.toISOString(),
+          start_time: moment(start).format("YYYY-MM-DDTHH:mm:ss"),
+          end_time: moment(end).format("YYYY-MM-DDTHH:mm:ss"),
           duration_minutes: duration,
         });
       }
