@@ -8,18 +8,14 @@ export default function Login() {
   const navigate = useNavigate();
   const login = useAuthStore((state) => state.login);
 
-  const [email, setEmail] = useState("");
+  const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState("");
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      setError("Please enter both email and password");
-      return;
-    }
-    setLoading(true);
-    setError("");
+    if (!email || !password) { setError("Please enter both email and password"); return; }
+    setLoading(true); setError("");
     try {
       const res = await api.post("/auth/login", { email, password });
       login(res.data.user, res.data.token);
@@ -34,463 +30,415 @@ export default function Login() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700&family=Barlow+Condensed:wght@600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap');
 
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-        .sieger-root {
+        /* ─── Root ─── */
+        .sg-root {
           min-height: 100vh;
           display: flex;
-          font-family: 'Barlow', sans-serif;
-          background-color: #0b1220;
-          overflow: hidden;
-          position: relative;
+          font-family: 'DM Sans', sans-serif;
+          background: #ffffff;
         }
 
-        /* ── Left panel (brand) ── */
-        .sieger-brand {
+        /* ─── Left: brand panel ─── */
+        .sg-brand {
           display: none;
+          position: relative;
           flex-direction: column;
           justify-content: space-between;
-          padding: 3rem;
-          background: linear-gradient(160deg, #0f1e38 0%, #0b1220 60%, #071629 100%);
-          position: relative;
+          padding: 3.5rem 3rem;
+          background: #111111;
           overflow: hidden;
+          width: 48%;
+          flex-shrink: 0;
         }
 
-        @media (min-width: 960px) {
-          .sieger-brand { display: flex; width: 46%; flex-shrink: 0; }
-        }
+        @media (min-width: 900px) { .sg-brand { display: flex; } }
 
-        /* Grid lines decoration */
-        .sieger-brand::before {
+        /* Subtle grid texture */
+        .sg-brand::before {
           content: '';
           position: absolute;
           inset: 0;
           background-image:
             linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
             linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
-          background-size: 48px 48px;
+          background-size: 52px 52px;
           pointer-events: none;
         }
 
-        /* Accent glow orb */
-        .sieger-brand::after {
-          content: '';
+        /* Large geometric triangle — echoing the arrow mark in the logo */
+        .sg-geo-main {
           position: absolute;
           bottom: -80px;
-          left: -80px;
-          width: 400px;
-          height: 400px;
-          background: radial-gradient(circle, rgba(0,112,243,0.18) 0%, transparent 70%);
+          right: -80px;
+          width: 420px;
+          height: 420px;
+          background: #c8102e;
+          clip-path: polygon(100% 0, 100% 100%, 0 100%);
+          opacity: 0.09;
           pointer-events: none;
         }
 
-        .brand-top { position: relative; z-index: 1; }
-
-        .brand-wordmark {
-          font-family: 'Barlow Condensed', sans-serif;
-          font-weight: 800;
-          font-size: 2.4rem;
-          letter-spacing: 0.08em;
-          color: #ffffff;
-          text-transform: uppercase;
+        .sg-geo-small {
+          position: absolute;
+          top: 140px;
+          left: -24px;
+          width: 100px;
+          height: 100px;
+          background: #c8102e;
+          clip-path: polygon(0 0, 100% 0, 100% 100%);
+          opacity: 0.07;
+          pointer-events: none;
         }
 
-        .brand-wordmark span {
-          color: #0070f3;
+        .sg-brand-top { position: relative; z-index: 2; }
+
+        /* Invert the black logo to white on dark background */
+        .sg-logo-img {
+          filter: brightness(0) invert(1);
+          width: 190px;
+          object-fit: contain;
         }
 
-        .brand-tagline {
-          margin-top: 0.4rem;
-          font-size: 0.7rem;
-          letter-spacing: 0.22em;
-          text-transform: uppercase;
-          color: rgba(255,255,255,0.35);
-          font-weight: 500;
+        .sg-brand-mid { position: relative; z-index: 2; }
+
+        .sg-red-bar {
+          width: 36px;
+          height: 4px;
+          background: #c8102e;
+          margin-bottom: 1.75rem;
         }
 
-        .brand-divider {
-          margin-top: 2.5rem;
-          width: 40px;
-          height: 3px;
-          background: #0070f3;
-          border-radius: 2px;
-        }
-
-        .brand-headline {
-          margin-top: 2rem;
-          font-size: 2rem;
+        .sg-brand-headline {
+          font-family: 'Rajdhani', sans-serif;
+          font-size: 2.55rem;
           font-weight: 700;
           color: #ffffff;
-          line-height: 1.25;
-          max-width: 280px;
+          line-height: 1.15;
+          letter-spacing: 0.02em;
+          text-transform: uppercase;
         }
 
-        .brand-headline em {
-          font-style: normal;
-          color: #0070f3;
-        }
+        .sg-brand-headline span { color: #c8102e; }
 
-        .brand-body {
+        .sg-brand-sub {
           margin-top: 1rem;
           font-size: 0.875rem;
-          color: rgba(255,255,255,0.45);
-          line-height: 1.7;
+          color: rgba(255,255,255,0.4);
+          line-height: 1.75;
           max-width: 300px;
         }
 
-        .brand-stats {
+        .sg-stats {
           display: flex;
-          gap: 2rem;
+          gap: 2.25rem;
           margin-top: 2.5rem;
-          position: relative;
-          z-index: 1;
         }
 
-        .stat-item {
-          display: flex;
-          flex-direction: column;
-        }
-
-        .stat-num {
-          font-family: 'Barlow Condensed', sans-serif;
-          font-size: 1.75rem;
-          font-weight: 800;
+        .sg-stat-num {
+          font-family: 'Rajdhani', sans-serif;
+          font-size: 2rem;
+          font-weight: 700;
           color: #ffffff;
           line-height: 1;
         }
 
-        .stat-label {
-          font-size: 0.65rem;
+        .sg-stat-label {
+          font-size: 0.63rem;
           text-transform: uppercase;
-          letter-spacing: 0.15em;
-          color: rgba(255,255,255,0.3);
-          margin-top: 0.25rem;
+          letter-spacing: 0.18em;
+          color: rgba(255,255,255,0.26);
+          margin-top: 0.2rem;
         }
 
-        .brand-footer {
-          font-size: 0.7rem;
-          color: rgba(255,255,255,0.2);
-          letter-spacing: 0.05em;
+        .sg-brand-foot {
           position: relative;
-          z-index: 1;
+          z-index: 2;
+          font-size: 0.68rem;
+          color: rgba(255,255,255,0.16);
+          letter-spacing: 0.04em;
         }
 
-        /* ── Right panel (form) ── */
-        .sieger-form-panel {
+        /* ─── Right: form panel ─── */
+        .sg-form-panel {
           flex: 1;
           display: flex;
           align-items: center;
           justify-content: center;
           padding: 2rem 1.5rem;
-          background: #f5f6f8;
+          background: #ffffff;
           position: relative;
         }
 
-        /* Top bar accent on mobile */
-        .sieger-form-panel::before {
+        /* Red top stripe — mobile only */
+        .sg-form-panel::before {
           content: '';
           position: absolute;
           top: 0; left: 0; right: 0;
           height: 4px;
-          background: linear-gradient(90deg, #0070f3, #00aaff);
+          background: #c8102e;
         }
 
-        @media (min-width: 960px) {
-          .sieger-form-panel::before { display: none; }
-        }
+        @media (min-width: 900px) { .sg-form-panel::before { display: none; } }
 
-        .form-card {
+        .sg-form-card {
           width: 100%;
-          max-width: 420px;
+          max-width: 400px;
         }
 
-        /* Mobile logo (hidden on desktop) */
-        .mobile-logo {
+        /* Mobile logo */
+        .sg-mobile-logo {
           display: flex;
           align-items: center;
-          gap: 1rem;
-          margin-bottom: 2.5rem;
+          margin-bottom: 2.75rem;
         }
 
-        @media (min-width: 960px) {
-          .mobile-logo { display: none; }
-        }
+        @media (min-width: 900px) { .sg-mobile-logo { display: none; } }
 
-        .mobile-logo img {
-          width: 48px;
-          height: 48px;
+        .sg-mobile-logo img {
+          width: 170px;
           object-fit: contain;
         }
 
-        .mobile-brand-name {
-          font-family: 'Barlow Condensed', sans-serif;
-          font-weight: 800;
-          font-size: 1.6rem;
-          letter-spacing: 0.08em;
+        /* Form header */
+        .sg-eyebrow {
+          display: flex;
+          align-items: center;
+          gap: 0.55rem;
+          font-size: 0.63rem;
           text-transform: uppercase;
-          color: #0b1220;
-        }
-
-        .mobile-brand-name span { color: #0070f3; }
-
-        .form-label-heading {
-          font-size: 0.65rem;
-          letter-spacing: 0.2em;
-          text-transform: uppercase;
-          color: #0070f3;
+          letter-spacing: 0.22em;
+          color: #c8102e;
           font-weight: 600;
-          margin-bottom: 0.5rem;
+          margin-bottom: 0.55rem;
         }
 
-        .form-heading {
-          font-family: 'Barlow Condensed', sans-serif;
-          font-size: 2rem;
-          font-weight: 800;
-          color: #0b1220;
+        .sg-eyebrow::before {
+          content: '';
+          display: block;
+          width: 18px;
+          height: 2px;
+          background: #c8102e;
+          flex-shrink: 0;
+        }
+
+        .sg-form-title {
+          font-family: 'Rajdhani', sans-serif;
+          font-size: 2.2rem;
+          font-weight: 700;
+          color: #111111;
+          text-transform: uppercase;
+          letter-spacing: 0.02em;
           line-height: 1.1;
-          margin-bottom: 0.5rem;
+          margin-bottom: 0.4rem;
         }
 
-        .form-subheading {
+        .sg-form-desc {
           font-size: 0.85rem;
-          color: #8892a4;
+          color: #999;
           margin-bottom: 2.25rem;
         }
 
         /* Error */
-        .error-box {
+        .sg-error {
           display: flex;
           align-items: flex-start;
-          gap: 0.75rem;
-          background: #fff1f0;
-          border-left: 3px solid #e53e3e;
-          border-radius: 6px;
-          padding: 0.75rem 1rem;
+          gap: 0.6rem;
+          background: #fff5f5;
+          border-left: 3px solid #c8102e;
+          border-radius: 4px;
+          padding: 0.7rem 0.9rem;
           margin-bottom: 1.5rem;
-          font-size: 0.83rem;
-          color: #c53030;
+          font-size: 0.82rem;
+          color: #c8102e;
+          font-weight: 500;
         }
 
-        .error-icon {
-          width: 16px;
-          height: 16px;
-          flex-shrink: 0;
-          margin-top: 1px;
-        }
+        .sg-error svg { flex-shrink: 0; margin-top: 1px; }
 
         /* Fields */
-        .field-group { margin-bottom: 1.25rem; }
+        .sg-field { margin-bottom: 1.2rem; }
 
-        .field-label {
+        .sg-label {
           display: block;
-          font-size: 0.75rem;
+          font-size: 0.68rem;
           font-weight: 600;
-          letter-spacing: 0.05em;
-          color: #3d4a60;
-          margin-bottom: 0.5rem;
           text-transform: uppercase;
+          letter-spacing: 0.1em;
+          color: #555;
+          margin-bottom: 0.45rem;
         }
 
-        .field-input {
+        .sg-input {
           width: 100%;
-          background: #ffffff;
-          border: 1.5px solid #dde2ec;
-          border-radius: 8px;
-          padding: 0.85rem 1rem;
-          font-size: 0.925rem;
-          font-family: 'Barlow', sans-serif;
-          color: #0b1220;
+          border: 1.5px solid #e2e2e2;
+          border-radius: 6px;
+          padding: 0.8rem 1rem;
+          font-size: 0.92rem;
+          font-family: 'DM Sans', sans-serif;
+          color: #111;
+          background: #fafafa;
           outline: none;
-          transition: border-color 0.15s, box-shadow 0.15s;
+          transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
         }
 
-        .field-input::placeholder { color: #b0bac8; }
+        .sg-input::placeholder { color: #c0c0c0; }
 
-        .field-input:focus {
-          border-color: #0070f3;
-          box-shadow: 0 0 0 3px rgba(0,112,243,0.12);
+        .sg-input:focus {
+          border-color: #c8102e;
+          background: #fff;
+          box-shadow: 0 0 0 3px rgba(200,16,46,0.08);
         }
 
-        .field-input:disabled {
-          background: #f0f2f5;
-          color: #8892a4;
+        .sg-input:disabled {
+          background: #f2f2f2;
+          color: #aaa;
           cursor: not-allowed;
         }
 
-        /* Submit button */
-        .submit-btn {
+        /* Button */
+        .sg-btn {
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 0.5rem;
+          gap: 0.55rem;
           width: 100%;
-          padding: 0.9rem 1.5rem;
-          background: #0b1220;
-          color: #ffffff;
-          font-family: 'Barlow Condensed', sans-serif;
-          font-size: 1.05rem;
-          font-weight: 700;
-          letter-spacing: 0.12em;
-          text-transform: uppercase;
-          border: none;
-          border-radius: 8px;
-          cursor: pointer;
+          padding: 0.875rem 1.5rem;
           margin-top: 0.5rem;
+          background: #c8102e;
+          color: #fff;
+          font-family: 'Rajdhani', sans-serif;
+          font-size: 1.1rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.1em;
+          border: none;
+          border-radius: 6px;
+          cursor: pointer;
           position: relative;
           overflow: hidden;
-          transition: background 0.2s, transform 0.1s;
+          transition: background 0.18s, transform 0.1s;
         }
 
-        .submit-btn::after {
+        .sg-btn::after {
           content: '';
           position: absolute;
-          bottom: 0; left: 0; right: 0;
-          height: 3px;
-          background: linear-gradient(90deg, #0070f3, #00aaff);
-          transition: height 0.2s;
+          inset: 0;
+          background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 55%);
+          pointer-events: none;
         }
 
-        .submit-btn:hover:not(:disabled) {
-          background: #16213e;
-        }
+        .sg-btn:hover:not(:disabled) { background: #a80d26; }
+        .sg-btn:active:not(:disabled) { transform: scale(0.99); }
+        .sg-btn:disabled { background: #e08090; cursor: not-allowed; }
 
-        .submit-btn:hover:not(:disabled)::after {
-          height: 4px;
-        }
-
-        .submit-btn:active:not(:disabled) { transform: scale(0.99); }
-
-        .submit-btn:disabled {
-          background: #8892a4;
-          cursor: not-allowed;
-        }
-
-        .submit-btn:disabled::after { display: none; }
-
-        /* Spinner */
-        .spinner {
-          width: 18px;
-          height: 18px;
-          border: 2px solid rgba(255,255,255,0.3);
+        .sg-spinner {
+          width: 17px; height: 17px;
+          border: 2px solid rgba(255,255,255,0.35);
           border-top-color: #fff;
           border-radius: 50%;
-          animation: spin 0.7s linear infinite;
+          animation: sg-spin 0.65s linear infinite;
           flex-shrink: 0;
         }
+        @keyframes sg-spin { to { transform: rotate(360deg); } }
 
-        @keyframes spin { to { transform: rotate(360deg); } }
-
-        /* Arrow icon */
-        .arrow-icon {
-          width: 16px;
-          height: 16px;
+        .sg-arrow {
+          width: 15px; height: 15px;
           flex-shrink: 0;
-          transition: transform 0.2s;
+          transition: transform 0.18s;
         }
+        .sg-btn:hover .sg-arrow { transform: translateX(3px); }
 
-        .submit-btn:hover .arrow-icon { transform: translateX(3px); }
-
-        /* Footer note */
-        .form-footer {
+        /* Footer */
+        .sg-footer {
           display: flex;
           align-items: center;
-          gap: 0.5rem;
+          gap: 0.45rem;
           margin-top: 2rem;
           padding-top: 1.5rem;
-          border-top: 1px solid #e2e6ef;
+          border-top: 1px solid #ebebeb;
         }
 
-        .lock-icon {
-          width: 14px;
-          height: 14px;
-          color: #8892a4;
-          flex-shrink: 0;
-        }
-
-        .form-footer-text {
-          font-size: 0.72rem;
-          color: #8892a4;
+        .sg-footer-text {
+          font-size: 0.7rem;
+          color: #c0c0c0;
           letter-spacing: 0.03em;
         }
+
+        .sg-footer svg { color: #ccc; flex-shrink: 0; }
       `}</style>
 
-      <div className="sieger-root">
+      <div className="sg-root">
 
-        {/* ── Brand Panel (desktop only) ── */}
-        <div className="sieger-brand">
-          <div className="brand-top">
-            <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-              <img src={logo} alt="Sieger" style={{ width: 44, height: 44, objectFit: "contain", borderRadius: 6 }} />
-              <div>
-                <div className="brand-wordmark">Siege<span>R</span></div>
-                <div className="brand-tagline">Partnering Progress</div>
-              </div>
-            </div>
+        {/* ── Brand Panel (desktop) ── */}
+        <div className="sg-brand">
+          <div className="sg-geo-main" />
+          <div className="sg-geo-small" />
 
-            <div className="brand-divider" />
+          <div className="sg-brand-top">
+            <img src={logo} alt="Sieger" className="sg-logo-img" />
+          </div>
 
-            <h2 className="brand-headline">
-              Engineering <em>progress,</em> one solution at a time.
+          <div className="sg-brand-mid">
+            <div className="sg-red-bar" />
+            <h2 className="sg-brand-headline">
+              Engineering<br /><span>Progress.</span><br />Delivering Value.
             </h2>
-
-            <p className="brand-body">
-              Sieger Spintech's internal portal — streamlining operations across Textile Automation, Parking Systems, and Storage Solutions.
+            <p className="sg-brand-sub">
+              Sieger Spintech's Marketing portal — streamlining operations across Marketing, Sales, and Support divisions with efficiency and precision.
             </p>
-
-            <div className="brand-stats">
-              <div className="stat-item">
-                <div className="stat-num">30+</div>
-                <div className="stat-label">Years</div>
+            <div className="sg-stats">
+              <div>
+                <div className="sg-stat-num">30+</div>
+                <div className="sg-stat-label">Years</div>
               </div>
-              <div className="stat-item">
-                <div className="stat-num">500+</div>
-                <div className="stat-label">Clients</div>
+              <div>
+                <div className="sg-stat-num">500+</div>
+                <div className="sg-stat-label">Clients</div>
               </div>
-              <div className="stat-item">
-                <div className="stat-num">3</div>
-                <div className="stat-label">Divisions</div>
+              <div>
+                <div className="sg-stat-num">3</div>
+                <div className="sg-stat-label">Divisions</div>
               </div>
             </div>
           </div>
 
-          <div className="brand-footer">
+          <div className="sg-brand-foot">
             © {new Date().getFullYear()} Sieger Spintech Equipments Pvt. Ltd. · Coimbatore, India
           </div>
         </div>
 
         {/* ── Form Panel ── */}
-        <div className="sieger-form-panel">
-          <div className="form-card">
+        <div className="sg-form-panel">
+          <div className="sg-form-card">
 
             {/* Mobile logo */}
-            <div className="mobile-logo">
+            <div className="sg-mobile-logo">
               <img src={logo} alt="Sieger" />
-              <div className="mobile-brand-name">Siege<span>R</span></div>
             </div>
 
-            <p className="form-label-heading">Internal Access</p>
-            <h1 className="form-heading">Team Login</h1>
-            <p className="form-subheading">Sign in to the Sieger Ticketing System</p>
+            <div className="sg-eyebrow">Ticketing System</div>
+            <h1 className="sg-form-title">Team Sign In</h1>
+            <p className="sg-form-desc">Secure access for Sieger Marketing members</p>
 
-            {/* Error */}
             {error && (
-              <div className="error-box">
-                <svg className="error-icon" viewBox="0 0 20 20" fill="currentColor">
+              <div className="sg-error">
+                <svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                 </svg>
                 {error}
               </div>
             )}
 
-            {/* Email */}
-            <div className="field-group">
-              <label className="field-label" htmlFor="email">Email Address</label>
+            <div className="sg-field">
+              <label className="sg-label" htmlFor="sg-email">Email Address</label>
               <input
-                id="email"
+                id="sg-email"
                 type="email"
-                className="field-input"
+                className="sg-input"
                 placeholder="you@siegerglobal.net"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -499,13 +447,12 @@ export default function Login() {
               />
             </div>
 
-            {/* Password */}
-            <div className="field-group">
-              <label className="field-label" htmlFor="password">Password</label>
+            <div className="sg-field">
+              <label className="sg-label" htmlFor="sg-pass">Password</label>
               <input
-                id="password"
+                id="sg-pass"
                 type="password"
-                className="field-input"
+                className="sg-input"
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -515,29 +462,24 @@ export default function Login() {
               />
             </div>
 
-            {/* Submit */}
-            <button className="submit-btn" onClick={handleLogin} disabled={loading}>
+            <button className="sg-btn" onClick={handleLogin} disabled={loading}>
               {loading ? (
-                <>
-                  <div className="spinner" />
-                  Verifying...
-                </>
+                <><div className="sg-spinner" /> Verifying...</>
               ) : (
                 <>
                   Sign In
-                  <svg className="arrow-icon" viewBox="0 0 20 20" fill="currentColor">
+                  <svg className="sg-arrow" viewBox="0 0 20 20" fill="currentColor">
                     <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" />
                   </svg>
                 </>
               )}
             </button>
 
-            {/* Footer */}
-            <div className="form-footer">
-              <svg className="lock-icon" viewBox="0 0 20 20" fill="currentColor">
+            <div className="sg-footer">
+              <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
               </svg>
-              <span className="form-footer-text">Secure access for Sieger team members only</span>
+              <span className="sg-footer-text">Protected · Sieger MKT use only</span>
             </div>
 
           </div>
