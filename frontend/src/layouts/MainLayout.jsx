@@ -77,7 +77,7 @@ export default function MainLayout({ children }) {
         }
 
         /* ----- TYPOGRAPHY (Effra alternatives) ----- */
-        @import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&family=Sora:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Poppins:wght@500;600;700&display=swap');
 
         /* ----- SCROLLBAR (clean industrial) ----- */
         ::-webkit-scrollbar {
@@ -101,7 +101,7 @@ export default function MainLayout({ children }) {
           display: flex;
           min-height: 100vh;
           background: linear-gradient(135deg, #fefcf8 0%, #f5f1ea 100%);
-          font-family: 'Inter', sans-serif;
+          font-family: 'Poppins', sans-serif;
           color: var(--text-1);
           position: relative;
         }
@@ -434,7 +434,7 @@ export default function MainLayout({ children }) {
           background: transparent;
           border: 1px solid var(--border);
           color: var(--text-2);
-          font-family: 'Inter', sans-serif;
+          font-family: 'Poppins', sans-serif;
           font-size: 0.8rem;
           font-weight: 500;
           cursor: pointer;
@@ -676,7 +676,7 @@ export default function MainLayout({ children }) {
           <div className="ml-sidebar-footer">
             <button className="ml-logout-btn" onClick={handleLogout}>
               <LogOut size={16} strokeWidth={1.6} />
-              Exit Terminal
+              Logout
             </button>
           </div>
         </aside>
