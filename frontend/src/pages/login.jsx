@@ -49,14 +49,12 @@ export default function Login() {
         {/* Logo Section */}
         <div className="flex flex-col items-center mb-6 sm:mb-8">
           
-          {/* Logo Box */}
-          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-tr from-indigo-600 to-cyan-600 rounded-2xl flex items-center justify-center shadow-lg mb-3">
-            <img
-              src={logo}
-              alt="Sieger Logo"
-              className="w-11 h-11 sm:w-14 sm:h-14 object-contain"
-            />
-          </div>
+          {/* Larger Logo without background rectangle */}
+          <img
+            src={logo}
+            alt="Sieger Logo"
+            className="w-24 h-24 sm:w-32 sm:h-32 object-contain mb-3"
+          />
 
           {/* Brand Name */}
           <div className="text-center">
