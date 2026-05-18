@@ -40,7 +40,7 @@ export default function Login() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@300;400;500;600&display=swap');
+       @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Poppins:wght@500;600;700&display=swap');
 
         * {
           margin: 0;
@@ -56,7 +56,7 @@ export default function Login() {
         .sg-root {
           min-height: 100vh;
           display: flex;
-          font-family: 'Inter', sans-serif;
+          font-family: 'Poppins', sans-serif;
           background: #ffffff;
         }
 
@@ -132,7 +132,7 @@ export default function Login() {
         }
 
         .sg-heading {
-          font-family: 'Rajdhani', sans-serif;
+          font-family: 'Poppins', sans-serif;
           font-size: 4.2rem;
           line-height: 0.95;
           font-weight: 700;
@@ -160,7 +160,7 @@ export default function Login() {
         }
 
         .sg-stat-number {
-          font-family: 'Rajdhani', sans-serif;
+          font-family: 'Poppins', sans-serif;
           font-size: 2.5rem;
           color: white;
           font-weight: 700;
@@ -216,7 +216,7 @@ export default function Login() {
         }
 
         .sg-title {
-          font-family: 'Rajdhani', sans-serif;
+          font-family: 'Poppins', sans-serif;
           font-size: 3rem;
           line-height: 1;
           font-weight: 700;
@@ -275,11 +275,11 @@ export default function Login() {
             #9f1027
           );
           color: white;
-          font-family: 'Rajdhani', sans-serif;
+          font-family: 'Poppins', sans-serif;
           font-size: 1.15rem;
           font-weight: 700;
           letter-spacing: 0.08em;
-          cursor: pointer;
+          cursor: popoppins;
           transition: 0.2s ease;
         }
 
@@ -384,15 +384,15 @@ export default function Login() {
           <div className="sg-form-card">
 
             <div className="sg-mini">
-              Ticketing System
+               MKT Ticketing System
             </div>
 
             <div className="sg-title">
-              Team Sign In
+              Sign In
             </div>
 
             <div className="sg-desc">
-              Secure access for Sieger internal teams
+              Secure access for Sieger Marketing team
             </div>
 
             {error && (
@@ -437,7 +437,7 @@ export default function Login() {
             </button>
 
             <div className="sg-footer">
-              Protected • Sieger Internal Access
+              Protected • Sieger Poppinsnal Access
             </div>
 
           </div>
