@@ -18,6 +18,12 @@ const timeEntryRoutes =
   require("./routes/timeEntries");
 const salesforceRoutes = require("./routes/salesforce");
 
+app.use(express.json());
+
+app.use(express.text());
+
+app.use(express.urlencoded({ extended: true }));
+
 // Allowed origins – add your Vercel frontend URL
 const allowedOrigins = [
   process.env.FRONTEND_URL,
