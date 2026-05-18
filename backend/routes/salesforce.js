@@ -8,7 +8,14 @@ router.post("/mkt-ticket", async (req, res) => {
 
   try {
 
-    console.log("Salesforce Data:", req.body);
+    console.log("BODY:", req.body);
+
+    console.log("QUERY:", req.query);
+
+    const payload =
+      req.body && Object.keys(req.body).length
+        ? req.body
+        : req.query;
 
     const {
       Title__c,
@@ -16,7 +23,7 @@ router.post("/mkt-ticket", async (req, res) => {
       Priority__c,
       Division__c,
       Due_Date__c
-    } = req.body;
+    } = payload;
 
     const { data, error } = await supabase
       .from("tickets")
@@ -31,13 +38,11 @@ router.post("/mkt-ticket", async (req, res) => {
       ])
       .select();
 
-    if (error) {
-      throw error;
-    }
+    if (error) throw error;
 
     res.status(200).json({
       success: true,
-      ticket: data
+      data
     });
 
   } catch (err) {
