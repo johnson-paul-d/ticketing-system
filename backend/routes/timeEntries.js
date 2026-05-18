@@ -1,19 +1,13 @@
 const express = require("express");
 const router = express.Router();
 
-const supabase =
-  require("../config/supabase");
-
-const auth =
-  require("../middleware/auth");
-
-const getISTTime =
-  require("../utils/time");
+const supabase = require("../config/supabase");
+const auth = require("../middleware/auth");
+const getISTTime = require("../utils/time");
 
 // =====================================================
 // CREATE TIME ENTRY
 // =====================================================
-
 router.post(
   "/ticket-time-entries",
   auth,
@@ -31,7 +25,6 @@ router.post(
       // =========================================
       // GET TICKET
       // =========================================
-
       const {
         data: ticket,
         error: ticketError,
@@ -48,56 +41,35 @@ router.post(
       }
 
       // =========================================
-      // TIME VALIDATION
+      // TIME VALIDATION (CORRECTED)
       // =========================================
+      const consumed = ticket.consumed_minutes || 0;
+      const allotted = ticket.allotted_minutes || 0;
 
-      const consumed =
-        ticket.consumed_minutes || 0;
+      // Remaining time available
+      const remaining = allotted - consumed;
 
-      const allotted =
-        ticket.allotted_minutes || 0;
-
-      if (
-        allotted > 0 &&
-        consumed + duration_minutes >
-          allotted
-      ) {
+      if (allotted > 0 && duration_minutes > remaining) {
         return res.status(400).json({
-          message:
-            "Allotted time exhausted. Please increase ticket allotted time.",
+          message: `Only ${remaining} minutes remaining in allotted time`,
         });
       }
 
       // =========================================
       // INSERT ENTRY
       // =========================================
-
-      const {
-        data,
-        error,
-      } = await supabase
-        .from(
-          "ticket_time_entries"
-        )
+      const { data, error } = await supabase
+        .from("ticket_time_entries")
         .insert([
           {
             ticket_id,
-
             work_date,
-
-           start_time: new Date(start_time).toISOString(),
-
-end_time: new Date(end_time).toISOString(),
-
+            start_time: new Date(start_time).toISOString(),
+            end_time: new Date(end_time).toISOString(),
             duration_minutes,
-
             notes,
-
-            user_name:
-              req.user.name,
-
-            created_at:
-              getISTTime(),
+            user_name: req.user.name,
+            created_at: getISTTime(),
           },
         ])
         .select()
@@ -105,8 +77,7 @@ end_time: new Date(end_time).toISOString(),
 
       if (error) {
         return res.status(500).json({
-          message:
-            "Failed to log time",
+          message: "Failed to log time",
           error,
         });
       }
@@ -114,36 +85,22 @@ end_time: new Date(end_time).toISOString(),
       // =========================================
       // UPDATE TICKET CONSUMED TIME
       // =========================================
+      const updatedMinutes = consumed + duration_minutes;
 
-      const updatedMinutes =
-        consumed +
-        duration_minutes;
-
-      let timeline =
-        ticket.timeline || [];
-
+      let timeline = ticket.timeline || [];
       timeline.push({
         type: "time_log",
-
         action: `${req.user.name} logged ${Math.floor(
           duration_minutes / 60
-        )}h ${
-          duration_minutes % 60
-        }m`,
-
-        created_at:
-          getISTTime(),
-
-        user:
-          req.user.name,
+        )}h ${duration_minutes % 60}m`,
+        created_at: getISTTime(),
+        user: req.user.name,
       });
 
       await supabase
         .from("tickets")
         .update({
-          consumed_minutes:
-            updatedMinutes,
-
+          consumed_minutes: updatedMinutes,
           timeline,
         })
         .eq("id", ticket_id);
@@ -151,96 +108,108 @@ end_time: new Date(end_time).toISOString(),
       res.json(data);
     } catch (err) {
       console.error(err);
-
       res.status(500).json({
         message: "Server error",
       });
     }
   }
 );
+
 // =====================================================
 // GET TIME ENTRIES BY TICKET
 // =====================================================
-
 router.get(
   "/ticket-time-entries/:ticketId",
   async (req, res) => {
     try {
-      const { ticketId } =
-        req.params;
+      const { ticketId } = req.params;
 
-      const { data, error } =
-        await supabase
-          .from(
-            "ticket_time_entries"
-          )
-          .select("*")
-          .eq(
-            "ticket_id",
-            ticketId
-          )
-          .order(
-            "created_at",
-            {
-              ascending:
-                false,
-            }
-          );
+      const { data, error } = await supabase
+        .from("ticket_time_entries")
+        .select("*")
+        .eq("ticket_id", ticketId)
+        .order("created_at", { ascending: false });
 
       if (error) {
-        return res
-          .status(400)
-          .json({
-            error:
-              error.message,
-          });
+        return res.status(400).json({
+          error: error.message,
+        });
       }
 
       res.json(data);
     } catch (err) {
       console.error(err);
-
       res.status(500).json({
-        error:
-          "Server error",
+        error: "Server error",
       });
     }
   }
 );
 
 // =====================================================
-// UPDATE TIME ENTRY
+// UPDATE TIME ENTRY (FULLY REPLACED)
 // =====================================================
-
 router.put(
   "/ticket-time-entries/:id",
   auth,
   async (req, res) => {
     try {
+      const { id } = req.params;
+      const { start_time, end_time, duration_minutes } = req.body;
 
-      const { id } =
-        req.params;
+      // =========================================
+      // GET EXISTING ENTRY
+      // =========================================
+      const { data: existingEntry, error: existingError } = await supabase
+        .from("ticket_time_entries")
+        .select("*")
+        .eq("id", id)
+        .single();
 
-      const {
-        start_time,
-        end_time,
-        duration_minutes,
-      } = req.body;
+      if (existingError || !existingEntry) {
+        return res.status(404).json({
+          message: "Time entry not found",
+        });
+      }
 
-      const {
-        data,
-        error,
-      } = await supabase
-        .from(
-          "ticket_time_entries"
-        )
-.update({
-  start_time:
-    new Date(start_time).toISOString(),
+      // =========================================
+      // GET TICKET
+      // =========================================
+      const { data: ticket, error: ticketError } = await supabase
+        .from("tickets")
+        .select("*")
+        .eq("id", existingEntry.ticket_id)
+        .single();
 
-  end_time:
-    new Date(end_time).toISOString(),
+      if (ticketError || !ticket) {
+        return res.status(404).json({
+          message: "Ticket not found",
+        });
+      }
 
+      // =========================================
+      // VALIDATE ALLOTTED TIME
+      // =========================================
+      const allotted = ticket.allotted_minutes || 0;
+      const consumed = ticket.consumed_minutes || 0;
+
+      // Remove old entry time
+      const adjustedConsumed = consumed - existingEntry.duration_minutes;
+
+      if (allotted > 0 && adjustedConsumed + duration_minutes > allotted) {
+        return res.status(400).json({
+          message: "Updated time exceeds allotted ticket time",
+        });
+      }
+
+      // =========================================
+      // UPDATE ENTRY
+      // =========================================
+      const { data, error } = await supabase
+        .from("ticket_time_entries")
+        .update({
+          start_time: new Date(start_time).toISOString(),
+          end_time: new Date(end_time).toISOString(),
           duration_minutes,
         })
         .eq("id", id)
@@ -249,19 +218,27 @@ router.put(
 
       if (error) {
         return res.status(400).json({
-          error:
-            error.message,
+          error: error.message,
         });
       }
 
-      res.json(data);
+      // =========================================
+      // UPDATE CONSUMED TIME
+      // =========================================
+      const newConsumed = adjustedConsumed + duration_minutes;
 
+      await supabase
+        .from("tickets")
+        .update({
+          consumed_minutes: newConsumed,
+        })
+        .eq("id", existingEntry.ticket_id);
+
+      res.json(data);
     } catch (err) {
       console.error(err);
-
       res.status(500).json({
-        error:
-          "Server error",
+        error: "Server error",
       });
     }
   }

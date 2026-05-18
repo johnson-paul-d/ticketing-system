@@ -36,6 +36,15 @@ export default function TicketDetails() {
   const [allottedMins, setAllottedMins] = useState(0);
 
   // =====================================================
+  // EDIT TIME ENTRY
+  // =====================================================
+  const [editingEntryId, setEditingEntryId] = useState(null);
+  const [editWorkDate, setEditWorkDate] = useState("");
+  const [editStartTime, setEditStartTime] = useState("");
+  const [editEndTime, setEditEndTime] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+
+  // =====================================================
   // FETCH
   // =====================================================
   useEffect(() => {
@@ -257,6 +266,54 @@ export default function TicketDetails() {
     } catch (err) {
       console.error(err);
       alert(err?.response?.data?.message || "Failed to log time");
+    }
+  };
+
+  // =====================================================
+  // START EDIT
+  // =====================================================
+  const startEditEntry = (entry) => {
+    setEditingEntryId(entry.id);
+    setEditWorkDate(new Date(entry.work_date).toISOString().split("T")[0]);
+    setEditStartTime(new Date(entry.start_time).toISOString().slice(11, 16));
+    setEditEndTime(new Date(entry.end_time).toISOString().slice(11, 16));
+    setEditNotes(entry.notes || "");
+  };
+
+  // =====================================================
+  // UPDATE TIME ENTRY
+  // =====================================================
+  const updateTimeEntry = async (entryId) => {
+    try {
+      const startDateTime = new Date(`${editWorkDate}T${editStartTime}`);
+      const endDateTime = new Date(`${editWorkDate}T${editEndTime}`);
+
+      // validation
+      if (endDateTime <= startDateTime) {
+        return alert("End time must be greater than start time");
+      }
+
+      const duration = Math.round((endDateTime - startDateTime) / 60000);
+
+      // max 8h
+      if (duration > 480) {
+        return alert("Maximum 8 hours can be logged");
+      }
+
+      await api.put(`/ticket-time-entries/${entryId}`, {
+        work_date: editWorkDate,
+        start_time: startDateTime,
+        end_time: endDateTime,
+        duration_minutes: duration,
+        notes: editNotes,
+      });
+
+      alert("Time updated successfully");
+      setEditingEntryId(null);
+      fetchTicket();
+    } catch (err) {
+      console.error(err);
+      alert(err?.response?.data?.message || "Failed to update time");
     }
   };
 
@@ -602,7 +659,7 @@ export default function TicketDetails() {
         </div>
 
         {/* ===================================================== */}
-        {/* TIME TRACKING LIST with formatted start/end times */}
+        {/* TIME TRACKING LIST with inline editing */}
         {/* ===================================================== */}
         <div className="mt-16 border-t pt-10">
           <div className="flex items-center justify-between mb-8">
@@ -625,54 +682,108 @@ export default function TicketDetails() {
               {timeEntries
                 .slice()
                 .reverse()
-                .map((entry, idx) => (
-                  <div key={idx} className="bg-gray-50 rounded-3xl border p-6">
+                .map((entry) => (
+                  <div key={entry.id} className="bg-gray-50 rounded-3xl border p-6">
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-3">
-                          <span className="bg-blue-100 text-blue-700 px-4 py-2 rounded-full text-sm font-medium">
-                            📅{" "}
-                            {new Date(entry.work_date).toLocaleDateString("en-IN", {
-                              weekday: "long",
-                              year: "numeric",
-                              month: "short",
-                              day: "numeric",
-                            })}
-                          </span>
-                          <span className="bg-purple-100 text-purple-700 px-4 py-2 rounded-full text-sm font-medium">
-                            👤 {entry.user_name || ticket.assigned_to_name || "Unknown"}
-                          </span>
-                        </div>
-                        {/* UPDATED DISPLAY SECTION */}
-                        {entry.start_time && entry.end_time && (
-                          <div className="text-sm text-gray-500 mt-2">
-                            🕒{" "}
-                            {new Date(entry.start_time).toLocaleTimeString("en-IN", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                            {" "} - {" "}
-                            {new Date(entry.end_time).toLocaleTimeString("en-IN", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
+                      {/* VIEW MODE */}
+                      {editingEntryId !== entry.id ? (
+                        <>
+                          <div>
+                            <div className="flex flex-wrap items-center gap-3">
+                              <span className="bg-blue-100 text-blue-700 px-4 py-2 rounded-full text-sm font-medium">
+                                📅{" "}
+                                {new Date(entry.work_date).toLocaleDateString("en-IN", {
+                                  weekday: "long",
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                })}
+                              </span>
+                              <span className="bg-purple-100 text-purple-700 px-4 py-2 rounded-full text-sm font-medium">
+                                👤 {entry.user_name || ticket.assigned_to_name || "Unknown"}
+                              </span>
+                            </div>
+                            {entry.start_time && entry.end_time && (
+                              <div className="text-sm text-gray-500 mt-2">
+                                🕒{" "}
+                                {new Date(entry.start_time).toLocaleTimeString("en-IN", {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                                {" - "}
+                                {new Date(entry.end_time).toLocaleTimeString("en-IN", {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </div>
+                            )}
+                            {entry.notes && (
+                              <p className="mt-4 text-gray-700 whitespace-pre-wrap">
+                                {entry.notes}
+                              </p>
+                            )}
                           </div>
-                        )}
-                        {entry.notes && (
-                          <p className="mt-4 text-gray-700 whitespace-pre-wrap">{entry.notes}</p>
-                        )}
-                      </div>
-                      <div className="flex flex-col items-start lg:items-end">
-                        <div className="text-3xl font-bold">
-                          {formatMinutes(entry.duration_minutes)}
-                        </div>
-                        <div className="text-sm text-gray-500 mt-1">Time Spent</div>
-                        {entry.created_at && (
-                          <div className="text-xs text-gray-400 mt-3">
-                            Logged on {new Date(entry.created_at).toLocaleString()}
+                          <div className="flex flex-col items-start lg:items-end gap-3">
+                            <div>
+                              <div className="text-3xl font-bold">
+                                {formatMinutes(entry.duration_minutes)}
+                              </div>
+                              <div className="text-sm text-gray-500 mt-1">Time Spent</div>
+                            </div>
+                            <button
+                              onClick={() => startEditEntry(entry)}
+                              className="bg-black text-white px-5 py-2 rounded-xl hover:bg-gray-800"
+                            >
+                              Edit
+                            </button>
                           </div>
-                        )}
-                      </div>
+                        </>
+                      ) : (
+                        /* EDIT MODE */
+                        <div className="w-full">
+                          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <input
+                              type="date"
+                              value={editWorkDate}
+                              onChange={(e) => setEditWorkDate(e.target.value)}
+                              className="border rounded-2xl px-4 py-3"
+                            />
+                            <input
+                              type="time"
+                              value={editStartTime}
+                              onChange={(e) => setEditStartTime(e.target.value)}
+                              className="border rounded-2xl px-4 py-3"
+                            />
+                            <input
+                              type="time"
+                              value={editEndTime}
+                              onChange={(e) => setEditEndTime(e.target.value)}
+                              className="border rounded-2xl px-4 py-3"
+                            />
+                            <input
+                              type="text"
+                              value={editNotes}
+                              placeholder="Notes"
+                              onChange={(e) => setEditNotes(e.target.value)}
+                              className="border rounded-2xl px-4 py-3"
+                            />
+                          </div>
+                          <div className="flex gap-3 mt-5">
+                            <button
+                              onClick={() => updateTimeEntry(entry.id)}
+                              className="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-xl"
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={() => setEditingEntryId(null)}
+                              className="bg-gray-300 hover:bg-gray-400 px-5 py-2 rounded-xl"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
