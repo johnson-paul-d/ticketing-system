@@ -8,7 +8,7 @@ router.post("/mkt-ticket", async (req, res) => {
 
   try {
 
-    console.log("Salesforce Data:", req.query);
+    console.log("Salesforce Data:", req.body);
 
     const {
       Title__c,
@@ -16,7 +16,7 @@ router.post("/mkt-ticket", async (req, res) => {
       Priority__c,
       Division__c,
       Due_Date__c
-    } = req.query;
+    } = req.body;
 
     const { data, error } = await supabase
       .from("tickets")
