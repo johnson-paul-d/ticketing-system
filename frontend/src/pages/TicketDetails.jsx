@@ -19,7 +19,7 @@ export default function TicketDetails() {
   const [timeline, setTimeline] = useState([]);
 
   // =====================================================
-  // TIME TRACKING
+  // TIME TRACKING (UPDATED)
   // =====================================================
   const [timeEntries, setTimeEntries] = useState([]);
   const [workDate, setWorkDate] = useState(new Date().toISOString().split("T")[0]);
@@ -212,27 +212,47 @@ export default function TicketDetails() {
   };
 
   // =====================================================
-  // LOG TIME (with start/end time & auto duration)
+  // LOG TIME (UPDATED with date + start/end time, 8h limit)
   // =====================================================
   const logTime = async () => {
     try {
-      if (!startTime || !endTime) {
-        return alert("Select start & end time");
+      if (!workDate || !startTime || !endTime) {
+        return alert("Please select date, start time and end time");
       }
-      const duration = Math.round((new Date(endTime) - new Date(startTime)) / 60000);
+
+      // Combine date + time
+      const startDateTime = new Date(`${workDate}T${startTime}`);
+      const endDateTime = new Date(`${workDate}T${endTime}`);
+
+      // End must be greater
+      if (endDateTime <= startDateTime) {
+        return alert("End time must be greater than start time");
+      }
+
+      // Duration in minutes
+      const duration = Math.round((endDateTime - startDateTime) / 60000);
+
+      // Max 8 hours
+      if (duration > 480) {
+        return alert("Maximum 8 hours can be logged");
+      }
+
       await api.post("/ticket-time-entries", {
         ticket_id: ticket.id,
         work_date: workDate,
-        start_time: startTime,
-        end_time: endTime,
+        start_time: startDateTime,
+        end_time: endDateTime,
         duration_minutes: duration,
         notes,
         user_name: user?.name,
       });
-      alert("Time logged");
-      setNotes("");
+
+      alert("Time logged successfully");
+
       setStartTime("");
       setEndTime("");
+      setNotes("");
+
       fetchTicket();
     } catch (err) {
       console.error(err);
@@ -512,49 +532,77 @@ export default function TicketDetails() {
         </div>
 
         {/* ===================================================== */}
-        {/* LOG TIME SECTION (with start/end) */}
+        {/* LOG TIME SECTION (UPDATED UI) */}
         {/* ===================================================== */}
         <div className="mt-16 border-t pt-10">
           <h2 className="text-3xl font-bold mb-6">Log Work Time</h2>
+
           <div className="bg-gray-50 border rounded-3xl p-6">
             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-              <input
-                type="date"
-                value={workDate}
-                onChange={(e) => setWorkDate(e.target.value)}
-                className="border rounded-2xl px-4 py-3"
-              />
-              <input
-                type="datetime-local"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                className="border rounded-2xl px-4 py-3"
-              />
-              <input
-                type="datetime-local"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                className="border rounded-2xl px-4 py-3"
-              />
-              <input
-                type="text"
-                placeholder="Work notes"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="border rounded-2xl px-4 py-3"
-              />
-              <button
-                onClick={logTime}
-                className="bg-black hover:bg-gray-800 text-white rounded-2xl px-6 py-3 font-semibold"
-              >
-                Log Time
-              </button>
+              {/* DATE */}
+              <div>
+                <label className="block text-sm font-medium mb-2">Date</label>
+                <input
+                  type="date"
+                  value={workDate}
+                  onChange={(e) => setWorkDate(e.target.value)}
+                  className="border rounded-2xl px-4 py-3 w-full"
+                />
+              </div>
+
+              {/* START TIME */}
+              <div>
+                <label className="block text-sm font-medium mb-2">Start Time</label>
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  className="border rounded-2xl px-4 py-3 w-full"
+                />
+              </div>
+
+              {/* END TIME */}
+              <div>
+                <label className="block text-sm font-medium mb-2">End Time</label>
+                <input
+                  type="time"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  className="border rounded-2xl px-4 py-3 w-full"
+                />
+              </div>
+
+              {/* NOTES */}
+              <div>
+                <label className="block text-sm font-medium mb-2">Notes</label>
+                <input
+                  type="text"
+                  placeholder="Work notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="border rounded-2xl px-4 py-3 w-full"
+                />
+              </div>
+
+              {/* BUTTON */}
+              <div className="flex items-end">
+                <button
+                  onClick={logTime}
+                  className="bg-black hover:bg-gray-800 text-white rounded-2xl px-6 py-3 font-semibold w-full"
+                >
+                  Log Time
+                </button>
+              </div>
             </div>
+
+            <p className="text-sm text-gray-500 mt-4">
+              Maximum allowed work log is 8 hours per entry.
+            </p>
           </div>
         </div>
 
         {/* ===================================================== */}
-        {/* TIME TRACKING LIST with start/end times */}
+        {/* TIME TRACKING LIST with formatted start/end times */}
         {/* ===================================================== */}
         <div className="mt-16 border-t pt-10">
           <div className="flex items-center justify-between mb-8">
@@ -595,17 +643,16 @@ export default function TicketDetails() {
                             👤 {entry.user_name || ticket.assigned_to_name || "Unknown"}
                           </span>
                         </div>
+                        {/* UPDATED DISPLAY SECTION */}
                         {entry.start_time && entry.end_time && (
                           <div className="text-sm text-gray-500 mt-2">
                             🕒{" "}
                             {new Date(entry.start_time).toLocaleTimeString("en-IN", {
-                              timeZone: "Asia/Kolkata",
                               hour: "2-digit",
                               minute: "2-digit",
-                            })}{" "}
-                            -{" "}
+                            })}
+                            {" "} - {" "}
                             {new Date(entry.end_time).toLocaleTimeString("en-IN", {
-                              timeZone: "Asia/Kolkata",
                               hour: "2-digit",
                               minute: "2-digit",
                             })}
