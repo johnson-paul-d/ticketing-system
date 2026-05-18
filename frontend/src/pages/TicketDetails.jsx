@@ -26,7 +26,14 @@ export default function TicketDetails() {
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [notes, setNotes] = useState("");
+
+  // TOTAL MINUTES STORED IN DB
   const [allottedMinutes, setAllottedMinutes] = useState(0);
+
+  // UI STATES FOR EDITING ALLOTTED TIME
+  const [allottedDays, setAllottedDays] = useState(0);
+  const [allottedHours, setAllottedHours] = useState(0);
+  const [allottedMins, setAllottedMins] = useState(0);
 
   // =====================================================
   // FETCH
@@ -46,12 +53,19 @@ export default function TicketDetails() {
   const fetchTicket = async () => {
     try {
       const res = await api.get(`/tickets/${id}`);
+
       setTicket(res.data);
       setDueDate(res.data.due_date || "");
       setStatus(res.data.status || "Open");
       setTimeline(res.data.timeline || []);
       setTimeEntries(res.data.time_entries || []);
-      setAllottedMinutes(res.data.allotted_minutes || 0);
+
+      // Allotted time
+      const mins = Math.max(0, res.data.allotted_minutes || 0);
+      setAllottedMinutes(mins);
+      setAllottedDays(Math.floor(mins / (60 * 24)));
+      setAllottedHours(Math.floor((mins % (60 * 24)) / 60));
+      setAllottedMins(mins % 60);
     } catch (err) {
       console.error(err);
     }
@@ -66,6 +80,38 @@ export default function TicketDetails() {
       setUsers(res.data);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  // =====================================================
+  // HELPER: FORMAT MINUTES
+  // =====================================================
+  const formatMinutes = (minutes) => {
+    const safeMinutes = Math.max(0, minutes);
+    const days = Math.floor(safeMinutes / (60 * 24));
+    const hours = Math.floor((safeMinutes % (60 * 24)) / 60);
+    const mins = safeMinutes % 60;
+    return `${days}d ${hours}h ${mins}m`;
+  };
+
+  // =====================================================
+  // UPDATE ALLOTTED TIME (using days/hours/mins)
+  // =====================================================
+  const updateAllottedTime = async () => {
+    try {
+      const total =
+        Math.max(0, allottedDays) * 24 * 60 +
+        Math.max(0, allottedHours) * 60 +
+        Math.max(0, allottedMins);
+
+      await api.put(`/tickets/${ticket.id}`, {
+        allotted_minutes: total,
+      });
+      alert("Allotted time updated");
+      fetchTicket();
+    } catch (err) {
+      console.error(err);
+      alert("Failed to update allotted time");
     }
   };
 
@@ -117,22 +163,6 @@ export default function TicketDetails() {
       alert("Due date updated");
     } catch (err) {
       alert("Failed to update due date");
-    }
-  };
-
-  // =====================================================
-  // UPDATE ALLOTTED TIME
-  // =====================================================
-  const updateAllottedTime = async () => {
-    try {
-      await api.put(`/tickets/${ticket.id}`, {
-        allotted_minutes: allottedMinutes,
-      });
-      alert("Allotted time updated");
-      fetchTicket();
-    } catch (err) {
-      console.error(err);
-      alert("Failed to update allotted time");
     }
   };
 
@@ -214,9 +244,11 @@ export default function TicketDetails() {
   // TOTAL TIME (consumed)
   // =====================================================
   const totalMinutes = timeEntries.reduce(
-    (sum, entry) => sum + (entry.duration_minutes || 0),
+    (sum, entry) => sum + Math.max(0, entry.duration_minutes || 0),
     0
   );
+
+  const remainingMinutes = Math.max(0, allottedMinutes - totalMinutes);
 
   // =====================================================
   // TIMELINE FILTERS
@@ -230,11 +262,8 @@ export default function TicketDetails() {
   );
 
   const commentTimeline = timeline.filter((t) => t.type === "comment_add");
-
   const dueDateTimeline = timeline.filter((t) => t.type === "due_date");
-
   const timeTimeline = timeline.filter((t) => t.type === "time_log");
-
   const allottedTimeline = timeline.filter((t) => t.type === "allotted_time");
 
   // =====================================================
@@ -410,35 +439,68 @@ export default function TicketDetails() {
             <div className="bg-white/10 rounded-2xl p-5">
               <div className="text-sm opacity-80">Allotted</div>
               <div className="text-3xl font-bold mt-2">
-                {Math.floor(allottedMinutes / 60)}h {allottedMinutes % 60}m
+                {formatMinutes(allottedMinutes)}
               </div>
             </div>
             {/* CONSUMED */}
             <div className="bg-white/10 rounded-2xl p-5">
               <div className="text-sm opacity-80">Consumed</div>
               <div className="text-3xl font-bold mt-2">
-                {Math.floor(totalMinutes / 60)}h {totalMinutes % 60}m
+                {formatMinutes(totalMinutes)}
               </div>
             </div>
             {/* REMAINING */}
             <div className="bg-white/10 rounded-2xl p-5">
               <div className="text-sm opacity-80">Remaining</div>
               <div className="text-3xl font-bold mt-2">
-                {Math.floor((allottedMinutes - totalMinutes) / 60)}h{" "}
-                {(allottedMinutes - totalMinutes) % 60}m
+                {formatMinutes(remainingMinutes)}
               </div>
             </div>
           </div>
 
-          {/* EDIT ALLOTTED TIME (ADMIN ONLY) */}
-            <div className="mt-8 flex flex-col sm:flex-row gap-4">
-              <input
-                type="number"
-                value={allottedMinutes}
-                onChange={(e) => setAllottedMinutes(Number(e.target.value))}
-                className="border rounded-2xl px-5 py-3 text-black w-60"
-                placeholder="Minutes"
-              />
+          {/* EDIT ALLOTTED TIME (Admin only) */}
+          {user?.role === "Admin" && (
+            <div className="mt-8 flex flex-wrap items-end gap-4">
+              {/* Days */}
+              <div>
+                <label className="block text-sm mb-2">Days</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={allottedDays}
+                  onChange={(e) => setAllottedDays(Math.max(0, Number(e.target.value)))}
+                  className="border rounded-2xl px-5 py-3 text-black w-28"
+                />
+              </div>
+              {/* Hours */}
+              <div>
+                <label className="block text-sm mb-2">Hours</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="23"
+                  value={allottedHours}
+                  onChange={(e) =>
+                    setAllottedHours(Math.min(23, Math.max(0, Number(e.target.value))))
+                  }
+                  className="border rounded-2xl px-5 py-3 text-black w-28"
+                />
+              </div>
+              {/* Minutes */}
+              <div>
+                <label className="block text-sm mb-2">Minutes</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="59"
+                  value={allottedMins}
+                  onChange={(e) =>
+                    setAllottedMins(Math.min(59, Math.max(0, Number(e.target.value))))
+                  }
+                  className="border rounded-2xl px-5 py-3 text-black w-28"
+                />
+              </div>
+              {/* Button */}
               <button
                 onClick={updateAllottedTime}
                 className="bg-white text-black px-6 py-3 rounded-2xl font-semibold hover:bg-gray-200"
@@ -446,6 +508,7 @@ export default function TicketDetails() {
                 Update Allotted Time
               </button>
             </div>
+          )}
         </div>
 
         {/* ===================================================== */}
@@ -501,9 +564,7 @@ export default function TicketDetails() {
             </div>
             <div className="bg-black text-white rounded-2xl px-6 py-4">
               <div className="text-sm opacity-80">Total Time</div>
-              <div className="text-2xl font-bold">
-                {Math.floor(totalMinutes / 60)}h {totalMinutes % 60}m
-              </div>
+              <div className="text-2xl font-bold">{formatMinutes(totalMinutes)}</div>
             </div>
           </div>
 
@@ -556,7 +617,7 @@ export default function TicketDetails() {
                       </div>
                       <div className="flex flex-col items-start lg:items-end">
                         <div className="text-3xl font-bold">
-                          {Math.floor(entry.duration_minutes / 60)}h {entry.duration_minutes % 60}m
+                          {formatMinutes(entry.duration_minutes)}
                         </div>
                         <div className="text-sm text-gray-500 mt-1">Time Spent</div>
                         {entry.created_at && (
