@@ -215,7 +215,7 @@ export default function Tickets() {
       */
       if (
         key === "due_date" ||
-        key === "createdAt"
+        key === "created_at"
       ) {
 
         aValue = aValue
@@ -679,7 +679,7 @@ export default function Tickets() {
                 "
                 onClick={() =>
                   handleSort(
-                    "createdAt"
+                    "created_at"
                   )
                 }
               >
@@ -842,10 +842,10 @@ export default function Tickets() {
                     {/* CREATED DATE */}
                     <td className="p-5">
 
-                      {ticket.createdAt ? (
+                      {ticket.created_at ? (
 
                         new Date(
-                          ticket.createdAt
+                          ticket.created_at
                         ).toLocaleDateString()
 
                       ) : (
