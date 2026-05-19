@@ -32,6 +32,9 @@ export default function TicketDetails() {
   const [editStartTime, setEditStartTime] = useState("");
   const [editEndTime, setEditEndTime] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  // For editable title
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleInput, setTitleInput] = useState("");
 
   useEffect(() => {
     fetchTicket();
@@ -53,6 +56,8 @@ export default function TicketDetails() {
       setAllottedDays(Math.floor(mins / (60 * 24)));
       setAllottedHours(Math.floor((mins % (60 * 24)) / 60));
       setAllottedMins(mins % 60);
+      // Initialize title input when ticket loads
+      setTitleInput(res.data.title || "");
     } catch (err) {
       console.error(err);
     }
@@ -217,6 +222,19 @@ export default function TicketDetails() {
     }
   };
 
+  const updateTicketTitle = async () => {
+    if (!titleInput.trim()) return alert("Title cannot be empty");
+    try {
+      await api.put(`/tickets/${ticket.id}`, { title: titleInput });
+      alert("Ticket title updated");
+      setEditingTitle(false);
+      fetchTicket();
+    } catch (err) {
+      console.error(err);
+      alert("Failed to update title");
+    }
+  };
+
   const totalMinutes = timeEntries.reduce((sum, entry) => sum + Math.max(0, entry.duration_minutes || 0), 0);
   const remainingMinutes = Math.max(0, allottedMinutes - totalMinutes);
 
@@ -233,7 +251,49 @@ export default function TicketDetails() {
         {/* HEADER */}
         <div className="flex flex-col lg:flex-row justify-between lg:items-start gap-6">
           <div>
-            <h1 className="text-4xl lg:text-5xl font-bold">{ticket.title}</h1>
+            {/* Editable Ticket Title */}
+            {user?.role === "Admin" && editingTitle ? (
+              <div className="flex flex-col sm:flex-row gap-4 items-start">
+                <input
+                  type="text"
+                  value={titleInput}
+                  onChange={(e) => setTitleInput(e.target.value)}
+                  className="border rounded-2xl px-4 py-3 text-4xl lg:text-5xl font-bold w-full"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={updateTicketTitle}
+                    className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl whitespace-nowrap"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditingTitle(false);
+                      setTitleInput(ticket.title);
+                    }}
+                    className="bg-gray-300 hover:bg-gray-400 text-black px-5 py-3 rounded-2xl whitespace-nowrap"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <h1 className="text-4xl lg:text-5xl font-bold">{ticket.title}</h1>
+                {user?.role === "Admin" && (
+                  <button
+                    onClick={() => {
+                      setEditingTitle(true);
+                      setTitleInput(ticket.title);
+                    }}
+                    className="text-gray-400 hover:text-gray-600 text-sm underline"
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
+            )}
             <p className="text-gray-500 mt-2">Ticket ID: {ticket.id}</p>
             <div className="flex flex-wrap gap-3 mt-5">
               <span className="bg-gray-100 px-4 py-2 rounded-full text-sm font-medium">{ticket.status}</span>
@@ -257,7 +317,7 @@ export default function TicketDetails() {
           </div>
         )}
 
-        {/* DETAILS */}
+        {/* DETAILS - LEFT AND RIGHT COLUMNS */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mt-12">
           {/* LEFT COLUMN */}
           <div className="space-y-8">
@@ -265,48 +325,40 @@ export default function TicketDetails() {
             <div><p className="font-semibold text-gray-500">Priority</p><p className="text-lg font-medium mt-2">{ticket.priority}</p></div>
             <div><p className="font-semibold text-gray-500">Category</p><p className="text-lg font-medium mt-2">{ticket.category}</p></div>
             <div><p className="font-semibold text-gray-500">Due Date</p><p className="text-lg font-medium mt-2">{ticket.due_date || "Not set"}</p></div>
-            {/* NEW GIVEN BY FIELD */}
-{/* GIVEN BY FIELD */}
-<div>
-  <p className="font-semibold text-gray-500">Given By</p>
 
-  {user?.role === "Admin" ? (
-    <div className="flex flex-col sm:flex-row gap-4 mt-3">
-      <input
-        type="text"
-        value={ticket.given_by || ""}
-        onChange={(e) =>
-          setTicket({ ...ticket, given_by: e.target.value })
-        }
-        placeholder="Enter Given By"
-        className="border rounded-2xl px-4 py-3 w-full"
-      />
-
-      <button
-        onClick={async () => {
-          try {
-            await api.put(`/tickets/${ticket.id}`, {
-              given_by: ticket.given_by,
-            });
-
-            alert("Given By updated");
-            fetchTicket();
-          } catch (err) {
-            console.error(err);
-            alert("Failed to update Given By");
-          }
-        }}
-        className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl whitespace-nowrap"
-      >
-        Update
-      </button>
-    </div>
-  ) : (
-    <p className="text-lg font-medium mt-2">
-      {ticket.given_by || "Not specified"}
-    </p>
-  )}
-</div>
+            {/* GIVEN BY FIELD */}
+            <div>
+              <p className="font-semibold text-gray-500">Given By</p>
+              {user?.role === "Admin" ? (
+                <div className="flex flex-col sm:flex-row gap-4 mt-3">
+                  <input
+                    type="text"
+                    value={ticket.given_by || ""}
+                    onChange={(e) => setTicket({ ...ticket, given_by: e.target.value })}
+                    placeholder="Enter Given By"
+                    className="border rounded-2xl px-4 py-3 w-full"
+                  />
+                  <button
+                    onClick={async () => {
+                      try {
+                        await api.put(`/tickets/${ticket.id}`, { given_by: ticket.given_by });
+                        alert("Given By updated");
+                        fetchTicket();
+                      } catch (err) {
+                        console.error(err);
+                        alert("Failed to update Given By");
+                      }
+                    }}
+                    className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl whitespace-nowrap"
+                  >
+                    Update
+                  </button>
+                </div>
+              ) : (
+                <p className="text-lg font-medium mt-2">{ticket.given_by || "Not specified"}</p>
+              )}
+            </div>
+          </div> {/* end LEFT COLUMN */}
 
           {/* RIGHT COLUMN */}
           <div className="space-y-8">
@@ -332,8 +384,8 @@ export default function TicketDetails() {
               <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Add comment..." className="border rounded-2xl px-4 py-3 w-full h-32 mt-3" />
               <button onClick={() => { if (comment) updateStatus(); else alert("Write a comment first"); }} className="mt-3 bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded-xl text-sm">Attach comment</button>
             </div>
-          </div>
-        </div>
+          </div> {/* end RIGHT COLUMN */}
+        </div> {/* end grid */}
 
         {/* ALLOTTED / CONSUMED / REMAINING */}
         <div className="mt-12 bg-black text-white rounded-3xl p-8">
