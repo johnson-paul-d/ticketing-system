@@ -94,13 +94,7 @@ router.get(
 
       let query = supabase
         .from('tickets')
-        .select(`
-    *,
-    users:assigned_to (
-      id,
-      name
-    )
-  `);
+        .select('*');
 
       // =====================================================
       // ACCESS CONTROL
@@ -165,29 +159,57 @@ router.get(
       }
 
       // =====================================================
-      // MAP TIME ENTRIES
+      // GET USERS (for assigned_to names)
       // =====================================================
 
-      const mappedTickets =
-        tickets.map((ticket) => {
+      const assignedIds = [
+        ...new Set(
+          tickets
+            .map(t => t.assigned_to)
+            .filter(Boolean)
+        )
+      ];
 
-          const entries =
-            (timeEntries || []).filter(
-              (entry) =>
-                entry.ticket_id ===
-                ticket.id
-            );
+      let users = [];
+      if (assignedIds.length > 0) {
+        const { data: fetchedUsers, error: userError } = await supabase
+          .from('users')
+          .select('id, name')
+          .in('id', assignedIds);
 
-          return {
-            ...ticket,
+        if (!userError && fetchedUsers) {
+          users = fetchedUsers;
+        } else {
+          console.error('User fetch error:', userError);
+        }
+      }
 
-            assigned_to_name:
-              ticket.users?.name || null,
+      // =====================================================
+      // MAP TIME ENTRIES AND USER NAMES
+      // =====================================================
 
-            time_entries:
-              entries || [],
-          };
-        });
+      const mappedTickets = tickets.map((ticket) => {
+
+        const entries =
+          (timeEntries || []).filter(
+            (entry) =>
+              entry.ticket_id === ticket.id
+          );
+
+        const assignedUser = users?.find(
+          (u) => u.id === ticket.assigned_to
+        );
+
+        return {
+          ...ticket,
+
+          assigned_to_name:
+            assignedUser?.name || null,
+
+          time_entries:
+            entries || [],
+        };
+      });
 
       res.json(mappedTickets);
     } catch (err) {
