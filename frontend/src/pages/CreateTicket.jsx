@@ -11,6 +11,7 @@ export default function CreateTicket() {
   const [category, setCategory] = useState("Exhibition");
   const [division, setDivision] = useState("CPS");
   const [dueDate, setDueDate] = useState("");
+  const [givenBy, setGivenBy] = useState("");   // ✅ New state
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -29,6 +30,7 @@ export default function CreateTicket() {
         category,
         division,
         due_date: dueDate || null,
+        given_by: givenBy,          // ✅ Send given_by
       });
       navigate("/tickets");
     } catch (err) {
@@ -61,7 +63,7 @@ export default function CreateTicket() {
             </div>
           )}
 
-          {/* Title – full width, always stacked */}
+          {/* Title */}
           <div className="mb-6">
             <label className="block text-sm font-semibold text-gray-700 mb-1.5">
               Ticket Title <span className="text-red-500">*</span>
@@ -76,7 +78,7 @@ export default function CreateTicket() {
             />
           </div>
 
-          {/* Description – full width */}
+          {/* Description */}
           <div className="mb-6">
             <label className="block text-sm font-semibold text-gray-700 mb-1.5">
               Description <span className="text-red-500">*</span>
@@ -91,7 +93,7 @@ export default function CreateTicket() {
             />
           </div>
 
-          {/* Row 1: Category + Priority – stacks on mobile, side by side on tablet+ */}
+          {/* Row 1: Category + Priority */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1.5">
@@ -139,8 +141,8 @@ export default function CreateTicket() {
             </div>
           </div>
 
-          {/* Row 2: Division + Due Date – stacks on mobile, side by side on tablet+ */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
+          {/* Row 2: Division + Due Date */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                 Division
@@ -171,7 +173,22 @@ export default function CreateTicket() {
             </div>
           </div>
 
-          {/* Buttons – stack on mobile, row on tablet+ */}
+          {/* ✅ NEW: Given By field */}
+          <div className="mb-8">
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+              Given By
+            </label>
+            <input
+              type="text"
+              placeholder="Enter name of person who gave the ticket"
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm sm:text-base focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all outline-none bg-gray-50"
+              value={givenBy}
+              onChange={(e) => setGivenBy(e.target.value)}
+              disabled={loading}
+            />
+          </div>
+
+          {/* Buttons */}
           <div className="flex flex-col sm:flex-row gap-4">
             <button
               onClick={handleSubmit}
