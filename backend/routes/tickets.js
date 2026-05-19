@@ -94,7 +94,13 @@ router.get(
 
       let query = supabase
         .from('tickets')
-        .select('*');
+        .select(`
+    *,
+    users:assigned_to (
+      id,
+      name
+    )
+  `);
 
       // =====================================================
       // ACCESS CONTROL
@@ -163,26 +169,25 @@ router.get(
       // =====================================================
 
       const mappedTickets =
-        tickets.map(
-          (ticket) => {
-            const entries =
-              (
-                timeEntries ||
-                []
-              ).filter(
-                (entry) =>
-                  entry.ticket_id ===
-                  ticket.id
-              );
+        tickets.map((ticket) => {
 
-            return {
-              ...ticket,
+          const entries =
+            (timeEntries || []).filter(
+              (entry) =>
+                entry.ticket_id ===
+                ticket.id
+            );
 
-              time_entries:
-                entries || [],
-            };
-          }
-        );
+          return {
+            ...ticket,
+
+            assigned_to_name:
+              ticket.users?.name || null,
+
+            time_entries:
+              entries || [],
+          };
+        });
 
       res.json(mappedTickets);
     } catch (err) {
