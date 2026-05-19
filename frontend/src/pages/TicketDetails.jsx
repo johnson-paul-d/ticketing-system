@@ -266,11 +266,47 @@ export default function TicketDetails() {
             <div><p className="font-semibold text-gray-500">Category</p><p className="text-lg font-medium mt-2">{ticket.category}</p></div>
             <div><p className="font-semibold text-gray-500">Due Date</p><p className="text-lg font-medium mt-2">{ticket.due_date || "Not set"}</p></div>
             {/* NEW GIVEN BY FIELD */}
-            <div>
-              <p className="font-semibold text-gray-500">Given By</p>
-              <p className="text-lg font-medium mt-2">{ticket.given_by || "Not specified"}</p>
-            </div>
-          </div>
+{/* GIVEN BY FIELD */}
+<div>
+  <p className="font-semibold text-gray-500">Given By</p>
+
+  {user?.role === "Admin" ? (
+    <div className="flex flex-col sm:flex-row gap-4 mt-3">
+      <input
+        type="text"
+        value={ticket.given_by || ""}
+        onChange={(e) =>
+          setTicket({ ...ticket, given_by: e.target.value })
+        }
+        placeholder="Enter Given By"
+        className="border rounded-2xl px-4 py-3 w-full"
+      />
+
+      <button
+        onClick={async () => {
+          try {
+            await api.put(`/tickets/${ticket.id}`, {
+              given_by: ticket.given_by,
+            });
+
+            alert("Given By updated");
+            fetchTicket();
+          } catch (err) {
+            console.error(err);
+            alert("Failed to update Given By");
+          }
+        }}
+        className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl whitespace-nowrap"
+      >
+        Update
+      </button>
+    </div>
+  ) : (
+    <p className="text-lg font-medium mt-2">
+      {ticket.given_by || "Not specified"}
+    </p>
+  )}
+</div>
 
           {/* RIGHT COLUMN */}
           <div className="space-y-8">
