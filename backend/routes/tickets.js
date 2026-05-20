@@ -136,6 +136,7 @@ router.post('/', auth, async (req, res) => {
       description,
       priority,
       category,
+      division,
       assigned_to,
       due_date,
       allotted_minutes,
@@ -151,6 +152,7 @@ router.post('/', auth, async (req, res) => {
       description,
       priority: priority || 'Medium',
       category: category || null,
+      division: division || null,          // ✅ FIXED: added division field
       assigned_to: assigned_to || null,
       due_date: due_date || null,
       allotted_minutes: allotted_minutes || 0,
@@ -224,6 +226,7 @@ router.put('/:id', auth, async (req, res) => {
       status,
       category,
       due_date,
+      division,
       comment,
       allotted_minutes,
       given_by
@@ -258,6 +261,7 @@ router.put('/:id', auth, async (req, res) => {
     if (description !== undefined) updateData.description = description;
     if (priority !== undefined) updateData.priority = priority;
     if (category !== undefined) updateData.category = category;
+    if (division !== undefined) updateData.division = division;
 
     // Handle given_by update
     if (given_by !== undefined) {

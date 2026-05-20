@@ -447,6 +447,57 @@ export default function TicketDetails() {
 
             <div><p className="font-semibold text-gray-500">Due Date</p><p className="text-lg font-medium mt-2">{ticket.due_date || "Not set"}</p></div>
 
+            {/* DIVISION */}
+<div>
+  <p className="font-semibold text-gray-500">Division</p>
+
+  {user?.role === "Admin" ? (
+    <div className="flex gap-4 mt-3">
+      <select
+        value={ticket.division || ""}
+        onChange={(e) =>
+          setTicket({
+            ...ticket,
+            division: e.target.value,
+          })
+        }
+        className="border rounded-2xl px-4 py-3 w-full"
+      >
+        <option value="">Select Division</option>
+
+        <option value="ASTOR">ASTOR</option>
+        <option value="CPS">CPS</option>
+        <option value="TMD">TMD</option>
+        <option value="All User">All User</option>
+        <option value="Salesforce">Salesforce</option>
+      </select>
+
+      <button
+        onClick={async () => {
+          try {
+            await api.put(`/tickets/${ticket.id}`, {
+              division: ticket.division,
+            });
+
+            alert("Division updated");
+            fetchTicket();
+          } catch (err) {
+            console.error(err);
+            alert("Failed to update division");
+          }
+        }}
+        className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl"
+      >
+        Update
+      </button>
+    </div>
+  ) : (
+    <p className="text-lg font-medium mt-2">
+      {ticket.division}
+    </p>
+  )}
+</div>
+
             {/* GIVEN BY */}
             <div>
               <p className="font-semibold text-gray-500">Given By</p>
