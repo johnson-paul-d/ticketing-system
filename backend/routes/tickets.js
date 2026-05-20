@@ -126,7 +126,7 @@ router.get('/:id', auth, async (req, res) => {
 });
 
 // =====================================================
-// CREATE TICKET (FIX 1 applied)
+// CREATE TICKET
 // =====================================================
 
 router.post('/', auth, async (req, res) => {
@@ -178,7 +178,6 @@ router.post('/', auth, async (req, res) => {
       return res.status(500).json({ message: 'Ticket creation failed', error: error.message });
     }
 
-    // FIX 1: Fetch assigned user before notification
     let assignedUser = null;
     if (assigned_to) {
       const { data: fetchedUser } = await supabase
@@ -212,13 +211,23 @@ router.post('/', auth, async (req, res) => {
 });
 
 // =====================================================
-// UPDATE TICKET (unchanged)
+// UPDATE TICKET (with given_by support)
 // =====================================================
 
 router.put('/:id', auth, async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, priority, status, category, due_date, comment, allotted_minutes } = req.body;
+    const {
+      title,
+      description,
+      priority,
+      status,
+      category,
+      due_date,
+      comment,
+      allotted_minutes,
+      given_by
+    } = req.body;
 
     const { data: existing, error: fetchError } = await supabase.from('tickets').select('*').eq('id', req.params.id).single();
     if (fetchError || !existing) {
@@ -249,6 +258,17 @@ router.put('/:id', auth, async (req, res) => {
     if (description !== undefined) updateData.description = description;
     if (priority !== undefined) updateData.priority = priority;
     if (category !== undefined) updateData.category = category;
+
+    // Handle given_by update
+    if (given_by !== undefined) {
+      updateData.given_by = given_by;
+      timeline.push({
+        type: 'given_by',
+        action: `Given By updated to ${given_by}`,
+        user: req.user.name,
+        created_at: getISTTime(),
+      });
+    }
 
     if (due_date !== undefined && due_date !== '') {
       const oldDate = existing.due_date;
@@ -319,7 +339,7 @@ router.put('/:id', auth, async (req, res) => {
 });
 
 // =====================================================
-// APPROVE, REJECT, ASSIGN (FIX 2 applied), DELETE
+// APPROVE, REJECT, ASSIGN, DELETE
 // =====================================================
 
 router.put('/:id/approve', auth, async (req, res) => {
@@ -397,7 +417,6 @@ router.put('/:id/reject', auth, async (req, res) => {
   }
 });
 
-// FIX 2: ASSIGN ROUTE – uses assigned_to_name from request body
 router.put('/:id/assign', auth, async (req, res) => {
   try {
     const { assigned_to, assigned_to_name } = req.body;
