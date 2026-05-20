@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
 import { TICKET_CATEGORIES } from "../constants/categories";
+import { TICKET_DIVISIONS } from "../constants/divisions";
 
 export default function CreateTicket() {
   const navigate = useNavigate();
@@ -143,10 +144,11 @@ export default function CreateTicket() {
                 onChange={(e) => setDivision(e.target.value)}
                 disabled={loading}
               >
-                <option>CPS</option>
-                <option>TMD</option>
-                <option>ASTOR</option>
-                <option>All User</option>
+{TICKET_DIVISIONS.map((division) => (
+  <option key={division} value={division}>
+    {division}
+  </option>
+))}
               </select>
             </div>
             <div>

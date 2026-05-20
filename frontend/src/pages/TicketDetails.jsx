@@ -6,6 +6,7 @@ import useAuthStore from "../store/authStore";
 import socket from "../services/socket";
 import moment from "moment";
 import { TICKET_CATEGORIES } from "../constants/categories";
+import { TICKET_DIVISIONS } from "../constants/divisions";
 
 export default function TicketDetails() {
   const { id } = useParams();
@@ -448,55 +449,49 @@ export default function TicketDetails() {
             <div><p className="font-semibold text-gray-500">Due Date</p><p className="text-lg font-medium mt-2">{ticket.due_date || "Not set"}</p></div>
 
             {/* DIVISION */}
-<div>
-  <p className="font-semibold text-gray-500">Division</p>
-
-  {user?.role === "Admin" ? (
-    <div className="flex gap-4 mt-3">
-      <select
-        value={ticket.division || ""}
-        onChange={(e) =>
-          setTicket({
-            ...ticket,
-            division: e.target.value,
-          })
-        }
-        className="border rounded-2xl px-4 py-3 w-full"
-      >
-        <option value="">Select Division</option>
-
-        <option value="ASTOR">ASTOR</option>
-        <option value="CPS">CPS</option>
-        <option value="TMD">TMD</option>
-        <option value="All User">All User</option>
-        <option value="Salesforce">Salesforce</option>
-      </select>
-
-      <button
-        onClick={async () => {
-          try {
-            await api.put(`/tickets/${ticket.id}`, {
-              division: ticket.division,
-            });
-
-            alert("Division updated");
-            fetchTicket();
-          } catch (err) {
-            console.error(err);
-            alert("Failed to update division");
-          }
-        }}
-        className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl"
-      >
-        Update
-      </button>
-    </div>
-  ) : (
-    <p className="text-lg font-medium mt-2">
-      {ticket.division}
-    </p>
-  )}
-</div>
+            <div>
+              <p className="font-semibold text-gray-500">Division</p>
+              {user?.role === "Admin" ? (
+                <div className="flex gap-4 mt-3">
+                  <select
+                    value={ticket.division || ""}
+                    onChange={(e) =>
+                      setTicket({
+                        ...ticket,
+                        division: e.target.value,
+                      })
+                    }
+                    className="border rounded-2xl px-4 py-3 w-full"
+                  >
+                    <option value="">Select Division</option>
+                    {TICKET_DIVISIONS.map((division) => (
+                      <option key={division} value={division}>
+                        {division}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await api.put(`/tickets/${ticket.id}`, {
+                          division: ticket.division,
+                        });
+                        alert("Division updated");
+                        fetchTicket();
+                      } catch (err) {
+                        console.error(err);
+                        alert("Failed to update division");
+                      }
+                    }}
+                    className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl"
+                  >
+                    Update
+                  </button>
+                </div>
+              ) : (
+                <p className="text-lg font-medium mt-2">{ticket.division}</p>
+              )}
+            </div>
 
             {/* GIVEN BY */}
             <div>
@@ -534,16 +529,21 @@ export default function TicketDetails() {
 
           {/* RIGHT COLUMN */}
           <div className="space-y-8">
-            <div><p className="font-semibold text-gray-500">Assigned To</p><p className="text-lg font-medium mt-2">{ticket.assigned_to_name || "Unassigned"}</p></div>
+            {/* Update Status */}
             <div>
               <p className="font-semibold text-gray-500">Update Status</p>
               <div className="flex flex-col sm:flex-row gap-4 mt-3">
                 <select value={status} onChange={(e) => setStatus(e.target.value)} className="border rounded-2xl px-4 py-3 w-full">
-                  <option>Open</option><option>In Progress</option><option>Waiting For Sources</option><option>Completed</option>
+                  <option>Open</option>
+                  <option>In Progress</option>
+                  <option>Waiting For Sources</option>
+                  <option>Completed</option>
                 </select>
                 <button onClick={updateStatus} className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl whitespace-nowrap">Update</button>
               </div>
             </div>
+
+            {/* Due Date */}
             <div>
               <p className="font-semibold text-gray-500">Due Date</p>
               <div className="flex flex-col sm:flex-row gap-4 mt-3">
@@ -551,10 +551,32 @@ export default function TicketDetails() {
                 <button onClick={updateDueDate} className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl whitespace-nowrap">Update</button>
               </div>
             </div>
+
+            {/* Comment */}
             <div>
               <p className="font-semibold text-gray-500">Comment</p>
               <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Add comment..." className="border rounded-2xl px-4 py-3 w-full h-32 mt-3" />
               <button onClick={() => { if (comment) updateStatus(); else alert("Write a comment first"); }} className="mt-3 bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded-xl text-sm">Attach comment</button>
+            </div>
+
+            {/* Assigned To (moved below comment and redesigned) */}
+            <div>
+              <p className="font-semibold text-gray-500 mb-3">
+                Assigned To
+              </p>
+              <div className="bg-gray-100 border rounded-2xl px-5 py-4 inline-flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center font-bold">
+                  {(ticket.assigned_to_name || "U")[0]}
+                </div>
+                <div>
+                  <p className="font-semibold">
+                    {ticket.assigned_to_name || "Unassigned"}
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    Ticket Owner
+                  </p>
+                </div>
+              </div>
             </div>
           </div> {/* end RIGHT COLUMN */}
         </div> {/* end grid */}
@@ -641,7 +663,7 @@ export default function TicketDetails() {
           )}
         </div>
 
-        {/* ASSIGN TICKET */}
+        {/* ASSIGN TICKET (Admin only) */}
         {user?.role === "Admin" && (
           <div className="mt-16 border-t pt-10">
             <h2 className="text-3xl font-bold mb-6">Assign Ticket</h2>
