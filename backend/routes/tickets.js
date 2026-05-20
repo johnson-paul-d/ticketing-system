@@ -126,7 +126,7 @@ router.get('/:id', auth, async (req, res) => {
 });
 
 // =====================================================
-// CREATE TICKET (UPDATED with given_by)
+// CREATE TICKET (FIX 1 applied)
 // =====================================================
 
 router.post('/', auth, async (req, res) => {
@@ -139,7 +139,7 @@ router.post('/', auth, async (req, res) => {
       assigned_to,
       due_date,
       allotted_minutes,
-      given_by,           // <-- ADDED
+      given_by,
     } = req.body;
 
     if (!title || !description) {
@@ -155,8 +155,9 @@ router.post('/', auth, async (req, res) => {
       due_date: due_date || null,
       allotted_minutes: allotted_minutes || 0,
       status: 'Open',
-      created_by: req.user.name,
-      given_by: given_by || null,     // <-- ADDED
+      created_by: req.user.id,
+      created_by_name: req.user.name,
+      given_by: given_by || null,
       created_at: getISTTime(),
       updated_at: getISTTime(),
       tagged_users: [],
@@ -177,9 +178,20 @@ router.post('/', auth, async (req, res) => {
       return res.status(500).json({ message: 'Ticket creation failed', error: error.message });
     }
 
+    // FIX 1: Fetch assigned user before notification
+    let assignedUser = null;
     if (assigned_to) {
+      const { data: fetchedUser } = await supabase
+        .from('users')
+        .select('id, name')
+        .eq('id', assigned_to)
+        .single();
+      assignedUser = fetchedUser;
+    }
+
+    if (assigned_to && assignedUser) {
       await supabase.from('notifications').insert({
-        user_name: assigned_to,
+        user_name: assignedUser.name,
         title: 'New Ticket Assigned',
         message: `${req.user.name} assigned a ticket to you`,
         ticket_id: data.id,
@@ -307,7 +319,7 @@ router.put('/:id', auth, async (req, res) => {
 });
 
 // =====================================================
-// APPROVE, REJECT, ASSIGN, DELETE (unchanged)
+// APPROVE, REJECT, ASSIGN (FIX 2 applied), DELETE
 // =====================================================
 
 router.put('/:id/approve', auth, async (req, res) => {
@@ -385,29 +397,50 @@ router.put('/:id/reject', auth, async (req, res) => {
   }
 });
 
+// FIX 2: ASSIGN ROUTE – uses assigned_to_name from request body
 router.put('/:id/assign', auth, async (req, res) => {
   try {
-    const { assigned_to } = req.body;
-    const { data: existing } = await supabase.from('tickets').select('*').eq('id', req.params.id).single();
+    const { assigned_to, assigned_to_name } = req.body;
+
+    const { data: existing } = await supabase
+      .from('tickets')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+
     const { data, error } = await supabase
       .from('tickets')
-      .update({ assigned_to, updated_at: getISTTime() })
+      .update({
+        assigned_to,
+        assigned_to_name,
+        updated_at: getISTTime()
+      })
       .eq('id', req.params.id)
       .select()
       .single();
-    if (error) return res.status(500).json({ message: 'Assignment failed' });
-    await supabase.from('notifications').insert({
-      user_name: assigned_to,
-      title: 'Ticket Assigned',
-      message: `${req.user.name} assigned "${existing.title}" to you`,
-      ticket_id: existing.id,
-    });
+
+    if (error) {
+      return res.status(500).json({ message: 'Assignment failed' });
+    }
+
+    await supabase
+      .from('notifications')
+      .insert({
+        user_name: assigned_to_name,
+        title: 'Ticket Assigned',
+        message: `${req.user.name} assigned "${existing.title}" to you`,
+        ticket_id: existing.id,
+      });
+
     const io = req.app.get('io');
+
     if (io) {
       io.emit('ticketUpdated', data);
       io.emit('notificationReceived');
     }
+
     res.json(data);
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
