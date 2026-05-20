@@ -41,19 +41,10 @@ router.post(
       }
 
       // =========================================
-      // TIME VALIDATION (CORRECTED)
+      // TIME VALIDATION (REMOVED)
       // =========================================
+      // Consumed minutes kept for reporting
       const consumed = ticket.consumed_minutes || 0;
-      const allotted = ticket.allotted_minutes || 0;
-
-      // Remaining time available
-      const remaining = allotted - consumed;
-
-      if (allotted > 0 && duration_minutes > remaining) {
-        return res.status(400).json({
-          message: `Only ${remaining} minutes remaining in allotted time`,
-        });
-      }
 
       // =========================================
       // INSERT ENTRY
@@ -188,19 +179,11 @@ router.put(
       }
 
       // =========================================
-      // VALIDATE ALLOTTED TIME
+      // VALIDATE ALLOTTED TIME (REMOVED)
       // =========================================
-      const allotted = ticket.allotted_minutes || 0;
+      // Keep consumed minutes calculation for reporting
       const consumed = ticket.consumed_minutes || 0;
-
-      // Remove old entry time
       const adjustedConsumed = consumed - existingEntry.duration_minutes;
-
-      if (allotted > 0 && adjustedConsumed + duration_minutes > allotted) {
-        return res.status(400).json({
-          message: "Updated time exceeds allotted ticket time",
-        });
-      }
 
       // =========================================
       // UPDATE ENTRY
