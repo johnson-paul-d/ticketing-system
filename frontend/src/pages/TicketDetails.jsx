@@ -99,6 +99,7 @@ export default function TicketDetails() {
       await api.put(`/tickets/${ticket.id}/assign`, { assigned_to: selected.id, assigned_to_name: selected.name });
       alert("Ticket assigned");
       fetchTicket();
+      setSelectedUser(""); // reset selection after assignment
     } catch (err) {
       alert("Assignment failed");
     }
@@ -401,7 +402,7 @@ export default function TicketDetails() {
               )}
             </div>
 
-            {/* CATEGORY - REPLACED WITH SELECT USING TICKET_CATEGORIES */}
+            {/* CATEGORY */}
             <div>
               <p className="font-semibold text-gray-500">Category</p>
               {user?.role === "Admin" ? (
@@ -559,25 +560,54 @@ export default function TicketDetails() {
               <button onClick={() => { if (comment) updateStatus(); else alert("Write a comment first"); }} className="mt-3 bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded-xl text-sm">Attach comment</button>
             </div>
 
-            {/* Assigned To (moved below comment and redesigned) */}
+            {/* Assigned To (moved below Comment and redesigned) */}
             <div>
-              <p className="font-semibold text-gray-500 mb-3">
-                Assigned To
-              </p>
+              <p className="font-semibold text-gray-500 mb-3">Assigned To</p>
               <div className="bg-gray-100 border rounded-2xl px-5 py-4 inline-flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center font-bold">
                   {(ticket.assigned_to_name || "U")[0]}
                 </div>
                 <div>
-                  <p className="font-semibold">
-                    {ticket.assigned_to_name || "Unassigned"}
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    Ticket Owner
-                  </p>
+                  <p className="font-semibold">{ticket.assigned_to_name || "Unassigned"}</p>
+                  <p className="text-sm text-gray-500">Ticket Owner</p>
                 </div>
               </div>
             </div>
+
+            {/* ASSIGN TICKET (moved from bottom to below Comment, right column) */}
+            {user?.role === "Admin" && (
+              <div className="mt-8">
+                <p className="font-semibold text-gray-500 mb-3">Assign Team Member</p>
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <select
+                    value={selectedUser}
+                    onChange={(e) => setSelectedUser(e.target.value)}
+                    className="border px-5 py-3 rounded-2xl w-full"
+                  >
+                    <option value="">Select Team Member</option>
+                    {users.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={assignTicket}
+                    className="bg-black hover:bg-gray-800 text-white px-8 py-3 rounded-2xl whitespace-nowrap"
+                  >
+                    Assign
+                  </button>
+                </div>
+                {ticket.assigned_to_name && (
+                  <p className="text-sm text-gray-500 mt-3">
+                    Currently assigned to{" "}
+                    <span className="font-semibold text-black">
+                      {ticket.assigned_to_name}
+                    </span>
+                  </p>
+                )}
+              </div>
+            )}
           </div> {/* end RIGHT COLUMN */}
         </div> {/* end grid */}
 
@@ -662,20 +692,6 @@ export default function TicketDetails() {
             </div>
           )}
         </div>
-
-        {/* ASSIGN TICKET (Admin only) */}
-        {user?.role === "Admin" && (
-          <div className="mt-16 border-t pt-10">
-            <h2 className="text-3xl font-bold mb-6">Assign Ticket</h2>
-            <div className="flex flex-col sm:flex-row gap-4">
-              <select value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)} className="border px-5 py-3 rounded-2xl w-full sm:w-96">
-                <option value="">Select Team Member</option>
-                {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-              </select>
-              <button onClick={assignTicket} className="bg-black hover:bg-gray-800 text-white px-8 py-3 rounded-2xl">Assign</button>
-            </div>
-          </div>
-        )}
 
         {/* TIMELINES */}
         <div className="mt-16 border-t pt-10"><h2 className="text-3xl font-bold mb-8">Ticket Timeline</h2><div className="space-y-5">{generalTimeline.length === 0 ? <div className="text-gray-400">No timeline events available</div> : generalTimeline.slice().reverse().map((item, idx) => (<div key={idx} className="bg-gray-50 rounded-3xl p-5 border"><div className="flex flex-wrap items-center gap-3"><p className="font-semibold text-lg">{item.action}</p>{item.type && <span className="bg-gray-200 text-gray-700 text-xs px-3 py-1 rounded-full">{item.type}</span>}</div>{item.comment && <p className="mt-3 text-gray-700 whitespace-pre-wrap">{item.comment}</p>}<div className="flex gap-4 text-sm text-gray-500 mt-4"><span>{item.user}</span><span>{item.created_at}</span></div></div>))}</div></div>
