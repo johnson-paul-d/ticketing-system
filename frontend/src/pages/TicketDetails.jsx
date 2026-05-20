@@ -321,9 +321,141 @@ export default function TicketDetails() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mt-12">
           {/* LEFT COLUMN */}
           <div className="space-y-8">
-            <div><p className="font-semibold text-gray-500">Description</p><p className="text-lg font-medium mt-2">{ticket.description}</p></div>
-            <div><p className="font-semibold text-gray-500">Priority</p><p className="text-lg font-medium mt-2">{ticket.priority}</p></div>
-            <div><p className="font-semibold text-gray-500">Category</p><p className="text-lg font-medium mt-2">{ticket.category}</p></div>
+            {/* DESCRIPTION */}
+            <div>
+              <p className="font-semibold text-gray-500">Description</p>
+
+              {user?.role === "Admin" ? (
+                <div className="flex flex-col gap-3 mt-3">
+                  <textarea
+                    value={ticket.description || ""}
+                    onChange={(e) =>
+                      setTicket({
+                        ...ticket,
+                        description: e.target.value,
+                      })
+                    }
+                    className="border rounded-2xl px-4 py-3 w-full h-32"
+                  />
+
+                  <button
+                    onClick={async () => {
+                      try {
+                        await api.put(`/tickets/${ticket.id}`, {
+                          description: ticket.description,
+                        });
+
+                        alert("Description updated");
+                        fetchTicket();
+                      } catch (err) {
+                        console.error(err);
+                        alert("Failed to update description");
+                      }
+                    }}
+                    className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl w-fit"
+                  >
+                    Update
+                  </button>
+                </div>
+              ) : (
+                <p className="text-lg font-medium mt-2">
+                  {ticket.description}
+                </p>
+              )}
+            </div>
+
+            {/* PRIORITY */}
+            <div>
+              <p className="font-semibold text-gray-500">Priority</p>
+
+              {user?.role === "Admin" ? (
+                <div className="flex gap-4 mt-3">
+                  <select
+                    value={ticket.priority || ""}
+                    onChange={(e) =>
+                      setTicket({
+                        ...ticket,
+                        priority: e.target.value,
+                      })
+                    }
+                    className="border rounded-2xl px-4 py-3 w-full"
+                  >
+                    <option>Low</option>
+                    <option>Medium</option>
+                    <option>High</option>
+                    <option>Critical</option>
+                  </select>
+
+                  <button
+                    onClick={async () => {
+                      try {
+                        await api.put(`/tickets/${ticket.id}`, {
+                          priority: ticket.priority,
+                        });
+
+                        alert("Priority updated");
+                        fetchTicket();
+                      } catch (err) {
+                        console.error(err);
+                        alert("Failed to update priority");
+                      }
+                    }}
+                    className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl"
+                  >
+                    Update
+                  </button>
+                </div>
+              ) : (
+                <p className="text-lg font-medium mt-2">
+                  {ticket.priority}
+                </p>
+              )}
+            </div>
+
+            {/* CATEGORY */}
+            <div>
+              <p className="font-semibold text-gray-500">Category</p>
+
+              {user?.role === "Admin" ? (
+                <div className="flex gap-4 mt-3">
+                  <input
+                    type="text"
+                    value={ticket.category || ""}
+                    onChange={(e) =>
+                      setTicket({
+                        ...ticket,
+                        category: e.target.value,
+                      })
+                    }
+                    className="border rounded-2xl px-4 py-3 w-full"
+                  />
+
+                  <button
+                    onClick={async () => {
+                      try {
+                        await api.put(`/tickets/${ticket.id}`, {
+                          category: ticket.category,
+                        });
+
+                        alert("Category updated");
+                        fetchTicket();
+                      } catch (err) {
+                        console.error(err);
+                        alert("Failed to update category");
+                      }
+                    }}
+                    className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl"
+                  >
+                    Update
+                  </button>
+                </div>
+              ) : (
+                <p className="text-lg font-medium mt-2">
+                  {ticket.category}
+                </p>
+              )}
+            </div>
+
             <div><p className="font-semibold text-gray-500">Due Date</p><p className="text-lg font-medium mt-2">{ticket.due_date || "Not set"}</p></div>
 
             {/* GIVEN BY FIELD */}
