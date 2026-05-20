@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
+import { TICKET_CATEGORIES } from "../constants/categories";
 
 export default function CreateTicket() {
   const navigate = useNavigate();
@@ -11,7 +12,7 @@ export default function CreateTicket() {
   const [category, setCategory] = useState("Exhibition");
   const [division, setDivision] = useState("CPS");
   const [dueDate, setDueDate] = useState("");
-  const [givenBy, setGivenBy] = useState("");   // ✅ New state
+  const [givenBy, setGivenBy] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -30,7 +31,7 @@ export default function CreateTicket() {
         category,
         division,
         due_date: dueDate || null,
-        given_by: givenBy,          // ✅ Send given_by
+        given_by: givenBy,
       });
       navigate("/tickets");
     } catch (err) {
@@ -105,22 +106,11 @@ export default function CreateTicket() {
                 onChange={(e) => setCategory(e.target.value)}
                 disabled={loading}
               >
-                <option>Exhibition</option>
-                <option>Salesforce</option>
-                <option>BPV</option>
-                <option>Linkedin Content</option>
-                <option>Collateral</option>
-                <option>Lead Generation</option>
-                <option>Strategy</option>
-                <option>Others</option>
-                <option>Advertisement</option>
-                <option>Video</option>
-                <option>Email Campaign</option>
-                <option>Graphic Design</option>
-                <option>Linkedin Post</option>
-                <option>Website</option>
-                <option>Reports</option>
-                <option>Branding</option>
+                {TICKET_CATEGORIES.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
               </select>
             </div>
             <div>
@@ -173,7 +163,7 @@ export default function CreateTicket() {
             </div>
           </div>
 
-          {/* ✅ NEW: Given By field */}
+          {/* Given By field */}
           <div className="mb-8">
             <label className="block text-sm font-semibold text-gray-700 mb-1.5">
               Given By

@@ -1,0 +1,58 @@
+/* =====================================================
+   CALENDAR COMPACT & RESPONSIVE OVERRIDES
+   ===================================================== */
+
+.rbc-month-view {
+  overflow: hidden;
+}
+
+.rbc-row-content {
+  z-index: 4;
+}
+
+/* Compact event cards */
+.rbc-event {
+  min-height: 18px !important;
+  padding: 1px 4px !important;
+  font-size: 10px !important;
+  border-radius: 8px !important;
+}
+
+/* "+ more" link styling */
+.rbc-show-more {
+  font-size: 10px;
+  font-weight: 600;
+  color: #2563eb;
+}
+
+/* Toolbar flexibility */
+.rbc-toolbar {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.rbc-toolbar-label {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+  .rbc-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .rbc-btn-group {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .rbc-toolbar-label {
+    font-size: 16px;
+  }
+
+  .rbc-event {
+    font-size: 9px !important;
+  }
+}

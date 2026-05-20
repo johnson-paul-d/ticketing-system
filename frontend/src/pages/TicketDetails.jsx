@@ -5,6 +5,7 @@ import api from "../services/api";
 import useAuthStore from "../store/authStore";
 import socket from "../services/socket";
 import moment from "moment";
+import { TICKET_CATEGORIES } from "../constants/categories";
 
 export default function TicketDetails() {
   const { id } = useParams();
@@ -32,7 +33,6 @@ export default function TicketDetails() {
   const [editStartTime, setEditStartTime] = useState("");
   const [editEndTime, setEditEndTime] = useState("");
   const [editNotes, setEditNotes] = useState("");
-  // For editable title
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState("");
 
@@ -56,7 +56,6 @@ export default function TicketDetails() {
       setAllottedDays(Math.floor(mins / (60 * 24)));
       setAllottedHours(Math.floor((mins % (60 * 24)) / 60));
       setAllottedMins(mins % 60);
-      // Initialize title input when ticket loads
       setTitleInput(res.data.title || "");
     } catch (err) {
       console.error(err);
@@ -251,7 +250,6 @@ export default function TicketDetails() {
         {/* HEADER */}
         <div className="flex flex-col lg:flex-row justify-between lg:items-start gap-6">
           <div>
-            {/* Editable Ticket Title */}
             {user?.role === "Admin" && editingTitle ? (
               <div className="flex flex-col sm:flex-row gap-4 items-start">
                 <input
@@ -324,7 +322,6 @@ export default function TicketDetails() {
             {/* DESCRIPTION */}
             <div>
               <p className="font-semibold text-gray-500">Description</p>
-
               {user?.role === "Admin" ? (
                 <div className="flex flex-col gap-3 mt-3">
                   <textarea
@@ -337,14 +334,12 @@ export default function TicketDetails() {
                     }
                     className="border rounded-2xl px-4 py-3 w-full h-32"
                   />
-
                   <button
                     onClick={async () => {
                       try {
                         await api.put(`/tickets/${ticket.id}`, {
                           description: ticket.description,
                         });
-
                         alert("Description updated");
                         fetchTicket();
                       } catch (err) {
@@ -358,16 +353,13 @@ export default function TicketDetails() {
                   </button>
                 </div>
               ) : (
-                <p className="text-lg font-medium mt-2">
-                  {ticket.description}
-                </p>
+                <p className="text-lg font-medium mt-2">{ticket.description}</p>
               )}
             </div>
 
             {/* PRIORITY */}
             <div>
               <p className="font-semibold text-gray-500">Priority</p>
-
               {user?.role === "Admin" ? (
                 <div className="flex gap-4 mt-3">
                   <select
@@ -385,14 +377,12 @@ export default function TicketDetails() {
                     <option>High</option>
                     <option>Critical</option>
                   </select>
-
                   <button
                     onClick={async () => {
                       try {
                         await api.put(`/tickets/${ticket.id}`, {
                           priority: ticket.priority,
                         });
-
                         alert("Priority updated");
                         fetchTicket();
                       } catch (err) {
@@ -406,20 +396,16 @@ export default function TicketDetails() {
                   </button>
                 </div>
               ) : (
-                <p className="text-lg font-medium mt-2">
-                  {ticket.priority}
-                </p>
+                <p className="text-lg font-medium mt-2">{ticket.priority}</p>
               )}
             </div>
 
-            {/* CATEGORY */}
+            {/* CATEGORY - REPLACED WITH SELECT USING TICKET_CATEGORIES */}
             <div>
               <p className="font-semibold text-gray-500">Category</p>
-
               {user?.role === "Admin" ? (
                 <div className="flex gap-4 mt-3">
-                  <input
-                    type="text"
+                  <select
                     value={ticket.category || ""}
                     onChange={(e) =>
                       setTicket({
@@ -428,15 +414,20 @@ export default function TicketDetails() {
                       })
                     }
                     className="border rounded-2xl px-4 py-3 w-full"
-                  />
-
+                  >
+                    <option value="">Select Category</option>
+                    {TICKET_CATEGORIES.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </select>
                   <button
                     onClick={async () => {
                       try {
                         await api.put(`/tickets/${ticket.id}`, {
                           category: ticket.category,
                         });
-
                         alert("Category updated");
                         fetchTicket();
                       } catch (err) {
@@ -450,15 +441,13 @@ export default function TicketDetails() {
                   </button>
                 </div>
               ) : (
-                <p className="text-lg font-medium mt-2">
-                  {ticket.category}
-                </p>
+                <p className="text-lg font-medium mt-2">{ticket.category}</p>
               )}
             </div>
 
             <div><p className="font-semibold text-gray-500">Due Date</p><p className="text-lg font-medium mt-2">{ticket.due_date || "Not set"}</p></div>
 
-            {/* GIVEN BY FIELD */}
+            {/* GIVEN BY */}
             <div>
               <p className="font-semibold text-gray-500">Given By</p>
               {user?.role === "Admin" ? (

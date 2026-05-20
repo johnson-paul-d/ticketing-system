@@ -18,6 +18,7 @@ import moment from "moment";
 
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "react-big-calendar/lib/addons/dragAndDrop/styles.css";
+import "./calendar.css";  // custom compact & responsive overrides
 
 // =====================================================
 // LOCALIZER
@@ -268,7 +269,7 @@ export default function TicketCalendar() {
   };
 
   // =====================================================
-  // EVENT STYLE
+  // EVENT STYLE (compact)
   // =====================================================
 
   const eventStyleGetter = (event) => {
@@ -277,8 +278,10 @@ export default function TicketCalendar() {
       borderRadius: "14px",
       color: "#fff",
       border: `3px solid ${event.borderColor}`,
-      padding: "5px 8px",
-      fontSize: "12px",
+      padding: "2px 6px",
+      fontSize: "10px",
+      minHeight: "18px",
+      lineHeight: "1.1",
       fontWeight: "600",
       boxShadow: "0 4px 12px rgba(0,0,0,0.18)",
     };
@@ -303,21 +306,26 @@ export default function TicketCalendar() {
     return { style };
   };
 
+  // =====================================================
+  // CUSTOM EVENT – ULTRA CLEAN & COMPACT
+  // =====================================================
+
   const CustomEvent = ({ event }) => (
-    <div className="overflow-hidden">
-      <div className="font-bold truncate text-[11px]">{event.title}</div>
+    <div className="overflow-hidden leading-tight">
+      <div className="font-semibold truncate text-[10px]">
+        {event.title}
+      </div>
+
       {event.resource?.assignedPerson && (
-        <div className="text-[10px] opacity-90 truncate">
-          👤 {event.resource?.assignedPerson}
+        <div className="text-[9px] opacity-90 truncate">
+          {event.resource.assignedPerson}
         </div>
       )}
+
       {event.type === "work_log" && (
-        <>
-          <div className="text-[10px] opacity-90">⏱ {event.resource?.duration} mins</div>
-          <div className="text-[10px] opacity-90">
-            🕒 {moment(event.start).format("hh:mm A")} - {moment(event.end).format("hh:mm A")}
-          </div>
-        </>
+        <div className="text-[9px] opacity-80 truncate">
+          {moment(event.start).format("HH:mm")} - {moment(event.end).format("HH:mm")}
+        </div>
       )}
     </div>
   );
@@ -334,7 +342,9 @@ export default function TicketCalendar() {
     <MainLayout>
       <div className="p-4 lg:p-6">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold">Team Calendar</h1>
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold">
+            Team Calendar
+          </h1>
           <p className="text-gray-500 mt-2">Tickets, workload, leaves & permissions</p>
         </div>
 
@@ -343,7 +353,7 @@ export default function TicketCalendar() {
             <button
               key={user}
               onClick={() => setSelectedUser(user)}
-              className={`px-4 py-2 rounded-2xl border font-medium transition ${
+              className={`px-3 py-2 text-sm rounded-2xl border font-medium transition ${
                 selectedUser === user
                   ? "bg-black text-white shadow-lg"
                   : "bg-white hover:bg-gray-100"
@@ -361,8 +371,8 @@ export default function TicketCalendar() {
           <Legend color="#7c3aed" label="Permission" />
         </div>
 
-        <div className="bg-white p-4 rounded-3xl border shadow-sm">
-          <div style={{ height: "82vh" }}>
+        <div className="bg-white p-2 sm:p-4 rounded-3xl border shadow-sm overflow-x-auto">
+          <div className="h-[75vh] sm:h-[78vh] lg:h-[82vh]">
             <DnDCalendar
               localizer={localizer}
               events={filteredEvents}
@@ -374,6 +384,8 @@ export default function TicketCalendar() {
               views={["month", "week", "day", "agenda"]}
               selectable
               popup
+              showMultiDayTimes
+              dayLayoutAlgorithm="no-overlap"
               draggableAccessor={() => currentView !== "month"}
               resizable={currentView !== "month"}
               onEventDrop={moveEvent}
