@@ -1,6 +1,4 @@
-// =====================================================
 // FILE: src/pages/AdminAnalytics.jsx
-// =====================================================
 
 import React, {
   useEffect,
@@ -87,6 +85,10 @@ export default function AdminAnalytics() {
   const [categoryFilter, setCategoryFilter] =
     useState("All");
 
+  // ADDED: Overdue filter state
+  const [overdueFilter, setOverdueFilter] =
+    useState("All");
+
   // =====================================================
   // SECURITY
   // =====================================================
@@ -164,7 +166,19 @@ export default function AdminAnalytics() {
         categoryFilter === "All" ||
         ticket.category === categoryFilter;
 
-      return divisionMatch && categoryMatch;
+      // ADDED: Overdue filter logic
+      const overdueMatch =
+        overdueFilter === "All"
+          ? true
+          : overdueFilter === "Overdue"
+          ? isOverdue(ticket)
+          : !isOverdue(ticket);
+
+      return (
+        divisionMatch &&
+        categoryMatch &&
+        overdueMatch
+      );
     });
 
     filtered.forEach((ticket) => {
@@ -192,18 +206,28 @@ export default function AdminAnalytics() {
 
           open: 0,
           progress: 0,
-          waiting: 0,
           completed: 0,
           overdue: 0,
           total: 0,
+
+          // ADDED: Time tracking fields
+          loggedMinutes: 0,
+          allottedMinutes: 0,
 
           tickets: [],
         };
       }
 
       grouped[key].tickets.push(ticket);
-
       grouped[key].total++;
+
+      // ADDED: Aggregate logged and allotted minutes
+      const totalMinutes = (ticket.time_entries || []).reduce(
+        (sum, entry) => sum + (entry.duration_minutes || 0),
+        0
+      );
+      grouped[key].loggedMinutes += totalMinutes;
+      grouped[key].allottedMinutes += ticket.allotted_minutes || 0;
 
       switch (ticket.status) {
         case "Open":
@@ -212,10 +236,6 @@ export default function AdminAnalytics() {
 
         case "In Progress":
           grouped[key].progress++;
-          break;
-
-        case "Waiting For Approval":
-          grouped[key].waiting++;
           break;
 
         case "Completed":
@@ -240,6 +260,7 @@ export default function AdminAnalytics() {
     periodType,
     divisionFilter,
     categoryFilter,
+    overdueFilter, // ADDED: dependency
   ]);
 
   // =====================================================
@@ -391,7 +412,8 @@ export default function AdminAnalytics() {
         {/* ================================================= */}
 
         <div className="bg-white rounded-3xl p-6 border mb-8">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+          {/* CHANGED: grid columns from md:grid-cols-4 to md:grid-cols-5 */}
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-5">
             <Filter
               label="Group By"
               value={groupBy}
@@ -432,6 +454,18 @@ export default function AdminAnalytics() {
                 value: c,
               }))}
             />
+
+            {/* ADDED: Overdue Status filter */}
+            <Filter
+              label="Overdue Status"
+              value={overdueFilter}
+              onChange={setOverdueFilter}
+              options={[
+                { label: "All Tasks", value: "All" },
+                { label: "Only Overdue", value: "Overdue" },
+                { label: "Non Overdue", value: "NonOverdue" },
+              ]}
+            />
           </div>
         </div>
 
@@ -452,14 +486,19 @@ export default function AdminAnalytics() {
                   <th className="p-5 font-semibold">
                     In Progress
                   </th>
-                  <th className="p-5 font-semibold">
-                    Waiting Approval
-                  </th>
+                  {/* REMOVED: Waiting Approval column header */}
                   <th className="p-5 font-semibold">
                     Completed
                   </th>
                   <th className="p-5 font-semibold">
                     Overdue
+                  </th>
+                  {/* ADDED: Logged Time and Allotted Time headers */}
+                  <th className="p-5 font-semibold">
+                    Logged Time
+                  </th>
+                  <th className="p-5 font-semibold">
+                    Allotted Time
                   </th>
                   <th className="p-5 font-semibold">Total</th>
                 </tr>
@@ -489,14 +528,19 @@ export default function AdminAnalytics() {
                         <td className="p-5">
                           <Badge color="blue" value={group.progress} />
                         </td>
-                        <td className="p-5">
-                          <Badge color="orange" value={group.waiting} />
-                        </td>
+                        {/* REMOVED: Waiting Approval badge */}
                         <td className="p-5">
                           <Badge color="green" value={group.completed} />
                         </td>
                         <td className="p-5">
                           <Badge color="red" value={group.overdue} />
+                        </td>
+                        {/* ADDED: Logged Time and Allotted Time cells */}
+                        <td className="p-5 font-semibold">
+                          {formatHours(group.loggedMinutes)}
+                        </td>
+                        <td className="p-5 font-semibold">
+                          {formatHours(group.allottedMinutes)}
                         </td>
                         <td className="p-5 font-bold">
                           {group.total}
@@ -506,7 +550,7 @@ export default function AdminAnalytics() {
                       {/* Expanded details */}
                       {expanded && (
                         <tr>
-                          <td colSpan="8" className="bg-gray-50 p-6">
+                          <td colSpan="9" className="bg-gray-50 p-6">
                             <div className="overflow-x-auto">
                               <table className="w-full bg-white rounded-2xl overflow-hidden">
                                 <thead className="bg-black text-white">
