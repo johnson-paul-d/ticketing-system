@@ -2,7 +2,11 @@
 // FILE: src/pages/AdminAnalytics.jsx
 // =====================================================
 
-import { useEffect, useMemo, useState } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
 import useAuthStore from "../store/authStore";
@@ -164,12 +168,15 @@ export default function AdminAnalytics() {
     });
 
     filtered.forEach((ticket) => {
-      const group =
-        groupBy === "user"
-          ? ticket.assigned_to_name ||
-            "Unassigned"
-          : ticket.category ||
-            "Uncategorized";
+      let group = "Unknown";
+
+      if (groupBy === "user") {
+        group = ticket.assigned_to_name || "Unassigned";
+      } else if (groupBy === "category") {
+        group = ticket.category || "Uncategorized";
+      } else if (groupBy === "given_by") {
+        group = ticket.given_by || "Unknown";
+      }
 
       const period =
         periodType === "week"
@@ -265,14 +272,11 @@ export default function AdminAnalytics() {
           Category: ticket.category,
           Division: ticket.division,
           DueDate: ticket.due_date,
-          AssignedTo:
-            ticket.assigned_to_name,
+          AssignedTo: ticket.assigned_to_name,
           TimeLogged: formatHours(
             (ticket.time_entries || []).reduce(
               (sum, entry) =>
-                sum +
-                (entry.duration_minutes ||
-                  0),
+                sum + (entry.duration_minutes || 0),
               0
             )
           ),
@@ -280,11 +284,9 @@ export default function AdminAnalytics() {
       });
     });
 
-    const worksheet =
-      XLSX.utils.json_to_sheet(rows);
+    const worksheet = XLSX.utils.json_to_sheet(rows);
 
-    const workbook =
-      XLSX.utils.book_new();
+    const workbook = XLSX.utils.book_new();
 
     XLSX.utils.book_append_sheet(
       workbook,
@@ -292,25 +294,16 @@ export default function AdminAnalytics() {
       "Operations Review"
     );
 
-    const excelBuffer = XLSX.write(
-      workbook,
-      {
-        bookType: "xlsx",
-        type: "array",
-      }
-    );
+    const excelBuffer = XLSX.write(workbook, {
+      bookType: "xlsx",
+      type: "array",
+    });
 
-    const fileData = new Blob(
-      [excelBuffer],
-      {
-        type: "application/octet-stream",
-      }
-    );
+    const fileData = new Blob([excelBuffer], {
+      type: "application/octet-stream",
+    });
 
-    saveAs(
-      fileData,
-      "operations-review.xlsx"
-    );
+    saveAs(fileData, "operations-review.xlsx");
   };
 
   // =====================================================
@@ -325,9 +318,7 @@ export default function AdminAnalytics() {
     (t) => t.status === "Completed"
   ).length;
 
-  const totalOverdue = tickets.filter(
-    isOverdue
-  ).length;
+  const totalOverdue = tickets.filter(isOverdue).length;
 
   // =====================================================
   // LOADING
@@ -336,9 +327,7 @@ export default function AdminAnalytics() {
   if (loading) {
     return (
       <MainLayout>
-        <div className="p-10">
-          Loading...
-        </div>
+        <div className="p-10">Loading...</div>
       </MainLayout>
     );
   }
@@ -350,7 +339,6 @@ export default function AdminAnalytics() {
   return (
     <MainLayout>
       <div className="p-4 lg:p-8">
-
         {/* ================================================= */}
         {/* HEADER */}
         {/* ================================================= */}
@@ -379,7 +367,6 @@ export default function AdminAnalytics() {
         {/* ================================================= */}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-
           <KPI
             title="Open Tickets"
             value={totalOpen}
@@ -397,7 +384,6 @@ export default function AdminAnalytics() {
             value={totalOverdue}
             color="bg-red-100 text-red-700"
           />
-
         </div>
 
         {/* ================================================= */}
@@ -405,22 +391,15 @@ export default function AdminAnalytics() {
         {/* ================================================= */}
 
         <div className="bg-white rounded-3xl p-6 border mb-8">
-
           <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-
             <Filter
               label="Group By"
               value={groupBy}
               onChange={setGroupBy}
               options={[
-                {
-                  label: "User",
-                  value: "user",
-                },
-                {
-                  label: "Category",
-                  value: "category",
-                },
+                { label: "User", value: "user" },
+                { label: "Category", value: "category" },
+                { label: "Given By", value: "given_by" },
               ]}
             />
 
@@ -429,14 +408,8 @@ export default function AdminAnalytics() {
               value={periodType}
               onChange={setPeriodType}
               options={[
-                {
-                  label: "Week",
-                  value: "week",
-                },
-                {
-                  label: "Month",
-                  value: "month",
-                },
+                { label: "Week", value: "week" },
+                { label: "Month", value: "month" },
               ]}
             />
 
@@ -459,9 +432,7 @@ export default function AdminAnalytics() {
                 value: c,
               }))}
             />
-
           </div>
-
         </div>
 
         {/* ================================================= */}
@@ -469,302 +440,168 @@ export default function AdminAnalytics() {
         {/* ================================================= */}
 
         <div className="bg-white rounded-3xl border overflow-hidden">
-
           <div className="overflow-x-auto">
-
             <table className="w-full">
-
               <thead className="bg-gray-100">
-
                 <tr className="text-left">
-
-                  <th className="p-5 font-semibold">
-                    Group
-                  </th>
-
+                  <th className="p-5 font-semibold">Group</th>
                   <th className="p-5 font-semibold">
                     Week / Month
                   </th>
-
-                  <th className="p-5 font-semibold">
-                    Open
-                  </th>
-
+                  <th className="p-5 font-semibold">Open</th>
                   <th className="p-5 font-semibold">
                     In Progress
                   </th>
-
                   <th className="p-5 font-semibold">
                     Waiting Approval
                   </th>
-
                   <th className="p-5 font-semibold">
                     Completed
                   </th>
-
                   <th className="p-5 font-semibold">
                     Overdue
                   </th>
-
-                  <th className="p-5 font-semibold">
-                    Total
-                  </th>
-
+                  <th className="p-5 font-semibold">Total</th>
                 </tr>
-
               </thead>
 
               <tbody>
+                {groupedData.map((group, index) => {
+                  const rowKey = `${group.group}-${group.period}`;
+                  const expanded = expandedRows.includes(rowKey);
 
-                {groupedData.map(
-                  (group, index) => {
-                    const rowKey = `${group.group}-${group.period}`;
+                  return (
+                    <React.Fragment key={rowKey}>
+                      {/* Summary row */}
+                      <tr
+                        onClick={() => toggleRow(rowKey)}
+                        className={`cursor-pointer border-t hover:bg-gray-50 transition ${
+                          index % 2 === 0 ? "bg-white" : "bg-gray-50"
+                        }`}
+                      >
+                        <td className="p-5 font-semibold">
+                          {expanded ? "▼" : "▶"} {group.group}
+                        </td>
+                        <td className="p-5">{group.period}</td>
+                        <td className="p-5">
+                          <Badge color="yellow" value={group.open} />
+                        </td>
+                        <td className="p-5">
+                          <Badge color="blue" value={group.progress} />
+                        </td>
+                        <td className="p-5">
+                          <Badge color="orange" value={group.waiting} />
+                        </td>
+                        <td className="p-5">
+                          <Badge color="green" value={group.completed} />
+                        </td>
+                        <td className="p-5">
+                          <Badge color="red" value={group.overdue} />
+                        </td>
+                        <td className="p-5 font-bold">
+                          {group.total}
+                        </td>
+                      </tr>
 
-                    const expanded =
-                      expandedRows.includes(
-                        rowKey
-                      );
+                      {/* Expanded details */}
+                      {expanded && (
+                        <tr>
+                          <td colSpan="8" className="bg-gray-50 p-6">
+                            <div className="overflow-x-auto">
+                              <table className="w-full bg-white rounded-2xl overflow-hidden">
+                                <thead className="bg-black text-white">
+                                  <tr>
+                                    <th className="p-4 text-left">
+                                      Ticket
+                                    </th>
+                                    <th className="p-4 text-left">
+                                      Status
+                                    </th>
+                                    <th className="p-4 text-left">
+                                      Priority
+                                    </th>
+                                    <th className="p-4 text-left">
+                                      Due Date
+                                    </th>
+                                    <th className="p-4 text-left">
+                                      Category
+                                    </th>
+                                    <th className="p-4 text-left">
+                                      Division
+                                    </th>
+                                    <th className="p-4 text-left">
+                                      Time Logged
+                                    </th>
+                                    <th className="p-4 text-left">
+                                      Allotted Time
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {group.tickets.map((ticket, idx) => {
+                                    const totalMinutes = (
+                                      ticket.time_entries || []
+                                    ).reduce(
+                                      (sum, entry) =>
+                                        sum + (entry.duration_minutes || 0),
+                                      0
+                                    );
 
-                    return (
-                      <>
-                        {/* ===================================== */}
-                        {/* SUMMARY ROW */}
-                        {/* ===================================== */}
-
-                        <tr
-                          key={rowKey}
-                          onClick={() =>
-                            toggleRow(rowKey)
-                          }
-                          className={`cursor-pointer border-t hover:bg-gray-50 transition ${
-                            index % 2 === 0
-                              ? "bg-white"
-                              : "bg-gray-50"
-                          }`}
-                        >
-
-                          <td className="p-5 font-semibold">
-                            {expanded
-                              ? "▼"
-                              : "▶"}{" "}
-                            {group.group}
+                                    return (
+                                      <tr
+                                        key={ticket.id}
+                                        className={`border-t ${
+                                          idx % 2 === 0
+                                            ? "bg-white"
+                                            : "bg-gray-50"
+                                        }`}
+                                      >
+                                        <td className="p-4 font-medium">
+                                          {ticket.title}
+                                        </td>
+                                        <td className="p-4">
+                                          <StatusBadge status={ticket.status} />
+                                        </td>
+                                        <td className="p-4">
+                                          {ticket.priority}
+                                        </td>
+                                        <td className="p-4">
+                                          {ticket.due_date
+                                            ? new Date(
+                                                ticket.due_date
+                                              ).toLocaleDateString()
+                                            : "-"}
+                                        </td>
+                                        <td className="p-4">
+                                          {ticket.category}
+                                        </td>
+                                        <td className="p-4">
+                                          {ticket.division}
+                                        </td>
+                                        <td className="p-4">
+                                          {formatHours(totalMinutes)}
+                                        </td>
+                                        <td className="p-4">
+                                          {formatHours(
+                                            ticket.allotted_minutes || 0
+                                          )}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
                           </td>
-
-                          <td className="p-5">
-                            {group.period}
-                          </td>
-
-                          <td className="p-5">
-                            <Badge
-                              color="yellow"
-                              value={group.open}
-                            />
-                          </td>
-
-                          <td className="p-5">
-                            <Badge
-                              color="blue"
-                              value={
-                                group.progress
-                              }
-                            />
-                          </td>
-
-                          <td className="p-5">
-                            <Badge
-                              color="orange"
-                              value={
-                                group.waiting
-                              }
-                            />
-                          </td>
-
-                          <td className="p-5">
-                            <Badge
-                              color="green"
-                              value={
-                                group.completed
-                              }
-                            />
-                          </td>
-
-                          <td className="p-5">
-                            <Badge
-                              color="red"
-                              value={
-                                group.overdue
-                              }
-                            />
-                          </td>
-
-                          <td className="p-5 font-bold">
-                            {group.total}
-                          </td>
-
                         </tr>
-
-                        {/* ===================================== */}
-                        {/* EXPANDED DETAILS */}
-                        {/* ===================================== */}
-
-                        {expanded && (
-                          <tr>
-                            <td
-                              colSpan="8"
-                              className="bg-gray-50 p-6"
-                            >
-
-                              <div className="overflow-x-auto">
-
-                                <table className="w-full bg-white rounded-2xl overflow-hidden">
-
-                                  <thead className="bg-black text-white">
-
-                                    <tr>
-
-                                      <th className="p-4 text-left">
-                                        Ticket
-                                      </th>
-
-                                      <th className="p-4 text-left">
-                                        Status
-                                      </th>
-
-                                      <th className="p-4 text-left">
-                                        Priority
-                                      </th>
-
-                                      <th className="p-4 text-left">
-                                        Due Date
-                                      </th>
-
-                                      <th className="p-4 text-left">
-                                        Category
-                                      </th>
-
-                                      <th className="p-4 text-left">
-                                        Division
-                                      </th>
-
-                                      <th className="p-4 text-left">
-                                        Time Logged
-                                      </th>
-
-                                    </tr>
-
-                                  </thead>
-
-                                  <tbody>
-
-                                    {group.tickets.map(
-                                      (
-                                        ticket,
-                                        idx
-                                      ) => {
-                                        const totalMinutes =
-                                          (
-                                            ticket.time_entries ||
-                                            []
-                                          ).reduce(
-                                            (
-                                              sum,
-                                              entry
-                                            ) =>
-                                              sum +
-                                              (
-                                                entry.duration_minutes ||
-                                                0
-                                              ),
-                                            0
-                                          );
-
-                                        return (
-                                          <tr
-                                            key={
-                                              ticket.id
-                                            }
-                                            className={`border-t ${
-                                              idx %
-                                                2 ===
-                                              0
-                                                ? "bg-white"
-                                                : "bg-gray-50"
-                                            }`}
-                                          >
-
-                                            <td className="p-4 font-medium">
-                                              {
-                                                ticket.title
-                                              }
-                                            </td>
-
-                                            <td className="p-4">
-                                              <StatusBadge
-                                                status={
-                                                  ticket.status
-                                                }
-                                              />
-                                            </td>
-
-                                            <td className="p-4">
-                                              {
-                                                ticket.priority
-                                              }
-                                            </td>
-
-                                            <td className="p-4">
-                                              {ticket.due_date
-                                                ? new Date(
-                                                    ticket.due_date
-                                                  ).toLocaleDateString()
-                                                : "-"}
-                                            </td>
-
-                                            <td className="p-4">
-                                              {
-                                                ticket.category
-                                              }
-                                            </td>
-
-                                            <td className="p-4">
-                                              {
-                                                ticket.division
-                                              }
-                                            </td>
-
-                                            <td className="p-4">
-                                              {formatHours(
-                                                totalMinutes
-                                              )}
-                                            </td>
-
-                                          </tr>
-                                        );
-                                      }
-                                    )}
-
-                                  </tbody>
-
-                                </table>
-
-                              </div>
-
-                            </td>
-                          </tr>
-                        )}
-                      </>
-                    );
-                  }
-                )}
-
+                      )}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
-
             </table>
-
           </div>
-
         </div>
-
       </div>
     </MainLayout>
   );
@@ -774,16 +611,10 @@ export default function AdminAnalytics() {
 // COMPONENTS
 // =====================================================
 
-function KPI({
-  title,
-  value,
-  color,
-}) {
+function KPI({ title, value, color }) {
   return (
     <div className="bg-white rounded-3xl border p-6">
-      <p className="text-gray-500">
-        {title}
-      </p>
+      <p className="text-gray-500">{title}</p>
 
       <div
         className={`inline-block mt-4 px-4 py-2 rounded-2xl text-3xl font-bold ${color}`}
@@ -794,30 +625,18 @@ function KPI({
   );
 }
 
-function Filter({
-  label,
-  value,
-  onChange,
-  options,
-}) {
+function Filter({ label, value, onChange, options }) {
   return (
     <div>
-      <p className="text-sm text-gray-500 mb-2">
-        {label}
-      </p>
+      <p className="text-sm text-gray-500 mb-2">{label}</p>
 
       <select
         value={value}
-        onChange={(e) =>
-          onChange(e.target.value)
-        }
+        onChange={(e) => onChange(e.target.value)}
         className="w-full border rounded-2xl px-4 py-3 bg-white"
       >
         {options.map((o) => (
-          <option
-            key={o.value}
-            value={o.value}
-          >
+          <option key={o.value} value={o.value}>
             {o.label}
           </option>
         ))}
@@ -826,18 +645,12 @@ function Filter({
   );
 }
 
-function Badge({
-  value,
-  color,
-}) {
+function Badge({ value, color }) {
   const colors = {
-    yellow:
-      "bg-yellow-100 text-yellow-700",
+    yellow: "bg-yellow-100 text-yellow-700",
     blue: "bg-blue-100 text-blue-700",
-    orange:
-      "bg-orange-100 text-orange-700",
-    green:
-      "bg-green-100 text-green-700",
+    orange: "bg-orange-100 text-orange-700",
+    green: "bg-green-100 text-green-700",
     red: "bg-red-100 text-red-700",
   };
 
@@ -850,28 +663,18 @@ function Badge({
   );
 }
 
-function StatusBadge({
-  status,
-}) {
+function StatusBadge({ status }) {
   const map = {
-    Open:
-      "bg-yellow-100 text-yellow-700",
-
-    "In Progress":
-      "bg-blue-100 text-blue-700",
-
-    "Waiting For Approval":
-      "bg-orange-100 text-orange-700",
-
-    Completed:
-      "bg-green-100 text-green-700",
+    Open: "bg-yellow-100 text-yellow-700",
+    "In Progress": "bg-blue-100 text-blue-700",
+    "Waiting For Approval": "bg-orange-100 text-orange-700",
+    Completed: "bg-green-100 text-green-700",
   };
 
   return (
     <span
       className={`px-3 py-1 rounded-full text-sm font-semibold ${
-        map[status] ||
-        "bg-gray-100 text-gray-700"
+        map[status] || "bg-gray-100 text-gray-700"
       }`}
     >
       {status}
