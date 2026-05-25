@@ -11,6 +11,7 @@ import AdminPanel from "./pages/AdminPanel";
 import Reports from "./pages/Reports";
 import ProtectedRoute from "./components/ProtectedRoute";
 import TicketTimeline from "./pages/TicketTimeTracker";
+import AdminAnalytics from "./pages/AdminAnalytics";
 
 function App() {
   return (
@@ -98,6 +99,11 @@ function App() {
             </ProtectedRoute>
           }
         />
+
+        <Route
+  path="/admin-analytics"
+  element={<AdminAnalytics />}
+/>
 
         <Route
           path="/timeline"
