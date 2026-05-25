@@ -13,6 +13,7 @@ export default function Tickets() {
   const [statusFilter, setStatusFilter] = useState("All");
   const [priorityFilter, setPriorityFilter] = useState("All");
   const [divisionFilter, setDivisionFilter] = useState("All");
+  const [overdueFilter, setOverdueFilter] = useState("All");
   const [loading, setLoading] = useState(true);
 
   const [sortConfig, setSortConfig] = useState({
@@ -60,7 +61,26 @@ export default function Tickets() {
       const matchesStatus = statusFilter === "All" || ticket.status === statusFilter;
       const matchesPriority = priorityFilter === "All" || ticket.priority === priorityFilter;
       const matchesDivision = divisionFilter === "All" || ticket.division === divisionFilter;
-      return matchesSearch && matchesStatus && matchesPriority && matchesDivision;
+
+      const overdue =
+        ticket.due_date &&
+        new Date(ticket.due_date) < new Date() &&
+        ticket.status !== "Completed";
+
+      const matchesOverdue =
+        overdueFilter === "All"
+          ? true
+          : overdueFilter === "Overdue"
+          ? overdue
+          : !overdue;
+
+      return (
+        matchesSearch &&
+        matchesStatus &&
+        matchesPriority &&
+        matchesDivision &&
+        matchesOverdue
+      );
     })
     .sort((a, b) => {
       const key = sortConfig.key;
@@ -133,13 +153,18 @@ export default function Tickets() {
 
       {/* FILTERS */}
       <div className="bg-white rounded-2xl shadow-sm p-5 mb-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="mb-3">
+          <h2 className="text-xl font-bold">Filters</h2>
+          <p className="text-gray-500 text-sm mt-1">
+            Filter tickets by status, priority, division and overdue state
+          </p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           <input type="text" placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} className="border p-3 rounded-xl" />
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="border p-3 rounded-xl">
             <option>All</option>
             <option>Open</option>
             <option>In Progress</option>
-            <option>Pending Approval</option>
             <option>Waiting For Sources</option>
             <option>Waiting For Approval</option>
             <option>Completed</option>
@@ -158,6 +183,11 @@ export default function Tickets() {
             <option value="ASTOR">ASTOR</option>
             <option value="All User">All User</option>
           </select>
+          <select value={overdueFilter} onChange={(e) => setOverdueFilter(e.target.value)} className="border p-3 rounded-xl">
+            <option value="All">All Tasks</option>
+            <option value="Overdue">Overdue Tasks</option>
+            <option value="NonOverdue">Non Overdue</option>
+          </select>
         </div>
       </div>
 
@@ -174,14 +204,28 @@ export default function Tickets() {
               <th className="p-5 cursor-pointer" onClick={() => handleSort("created_at")}>Created Date</th>
               <th className="p-5 cursor-pointer" onClick={() => handleSort("status")}>Status</th>
               <th className="p-5 cursor-pointer" onClick={() => handleSort("assigned_to_name")}>Assigned</th>
-              {/* NEW HEADER */}
               <th className="p-5 cursor-pointer" onClick={() => handleSort("given_by")}>Given By</th>
+              <th className="p-5">Logged Time</th>
+              <th className="p-5">Allotted Time</th>
               <th className="p-5">Action</th>
             </tr>
           </thead>
           <tbody>
             {filteredTickets.map((ticket) => {
               const isOverdue = ticket.due_date && new Date(ticket.due_date) < new Date() && ticket.status !== "Completed";
+              
+              const totalMinutes = (ticket.time_entries || []).reduce(
+                (sum, entry) => sum + (entry.duration_minutes || 0),
+                0
+              );
+              
+              const formatHours = (minutes) => {
+                const hrs = Math.floor(minutes / 60);
+                const mins = minutes % 60;
+                if (hrs === 0) return `${mins}m`;
+                return `${hrs}h ${mins}m`;
+              };
+              
               return (
                 <tr key={ticket.id} className={`border-t hover:bg-gray-50 ${isOverdue ? "bg-red-50" : ""}`}>
                   <td className="p-5">
@@ -189,7 +233,7 @@ export default function Tickets() {
                       <p className="font-semibold">{ticket.title}</p>
                       <p className="text-sm text-gray-500">{ticket.description}</p>
                     </div>
-                  </td>
+                   </td>
                   <td className="p-5">{ticket.division}</td>
                   <td className="p-5">{ticket.category}</td>
                   <td className="p-5"><span className={`px-3 py-1 rounded-full text-sm ${getPriorityClass(ticket.priority)}`}>{ticket.priority}</span></td>
@@ -197,16 +241,17 @@ export default function Tickets() {
                     {ticket.due_date ? (
                       <span className={isOverdue ? "text-red-600 font-semibold" : ""}>{new Date(ticket.due_date).toLocaleDateString()}</span>
                     ) : <span className="text-gray-400">No Due Date</span>}
-                  </td>
+                   </td>
                   <td className="p-5">{ticket.created_at ? new Date(ticket.created_at).toLocaleDateString() : <span className="text-gray-400">—</span>}</td>
                   <td className="p-5"><span className={`px-3 py-1 rounded-full text-sm ${getStatusClass(ticket.status)}`}>{ticket.status}</span></td>
                   <td className="p-5">{ticket.assigned_to_name || ticket.assigned_to || "Unassigned"}</td>
-                  {/* NEW CELL */}
                   <td className="p-5">{ticket.given_by || "—"}</td>
+                  <td className="p-5">{formatHours(totalMinutes)}</td>
+                  <td className="p-5">{formatHours(ticket.allotted_minutes || 0)}</td>
                   <td className="p-5">
                     <button onClick={() => navigate(`/tickets/${ticket.id}`)} className="bg-black text-white px-4 py-2 rounded-lg hover:bg-gray-800">View</button>
-                  </td>
-                </tr>
+                   </td>
+                 </tr>
               );
             })}
           </tbody>
