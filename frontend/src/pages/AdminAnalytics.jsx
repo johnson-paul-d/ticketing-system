@@ -85,7 +85,6 @@ export default function AdminAnalytics() {
   const [categoryFilter, setCategoryFilter] =
     useState("All");
 
-  // ADDED: Overdue filter state
   const [overdueFilter, setOverdueFilter] =
     useState("All");
 
@@ -166,7 +165,6 @@ export default function AdminAnalytics() {
         categoryFilter === "All" ||
         ticket.category === categoryFilter;
 
-      // ADDED: Overdue filter logic
       const overdueMatch =
         overdueFilter === "All"
           ? true
@@ -214,7 +212,6 @@ export default function AdminAnalytics() {
           overdue: 0,
           total: 0,
 
-          // ADDED: Time tracking fields
           loggedMinutes: 0,
           allottedMinutes: 0,
 
@@ -225,7 +222,6 @@ export default function AdminAnalytics() {
       grouped[key].tickets.push(ticket);
       grouped[key].total++;
 
-      // ADDED: Aggregate logged and allotted minutes
       const totalMinutes = (ticket.time_entries || []).reduce(
         (sum, entry) => sum + (entry.duration_minutes || 0),
         0
@@ -237,15 +233,12 @@ export default function AdminAnalytics() {
         case "Open":
           grouped[key].open++;
           break;
-
         case "In Progress":
           grouped[key].progress++;
           break;
-
         case "Completed":
           grouped[key].completed++;
           break;
-
         default:
           break;
       }
@@ -264,7 +257,7 @@ export default function AdminAnalytics() {
     // STEP 9: Removed periodType dependency
     divisionFilter,
     categoryFilter,
-    overdueFilter, // ADDED: dependency
+    overdueFilter,
   ]);
 
   // =====================================================
@@ -310,24 +303,19 @@ export default function AdminAnalytics() {
     });
 
     const worksheet = XLSX.utils.json_to_sheet(rows);
-
     const workbook = XLSX.utils.book_new();
-
     XLSX.utils.book_append_sheet(
       workbook,
       worksheet,
       "Operations Review"
     );
-
     const excelBuffer = XLSX.write(workbook, {
       bookType: "xlsx",
       type: "array",
     });
-
     const fileData = new Blob([excelBuffer], {
       type: "application/octet-stream",
     });
-
     saveAs(fileData, "operations-review.xlsx");
   };
 
@@ -364,21 +352,16 @@ export default function AdminAnalytics() {
   return (
     <MainLayout>
       <div className="p-4 lg:p-8">
-        {/* ================================================= */}
         {/* HEADER */}
-        {/* ================================================= */}
-
         <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-4 mb-8">
           <div>
             <h1 className="text-4xl font-bold">
               Operations Review
             </h1>
-
             <p className="text-gray-500 mt-2">
               Ticket delivery performance matrix
             </p>
           </div>
-
           <button
             onClick={exportExcel}
             className="bg-black text-white px-6 py-3 rounded-2xl hover:bg-gray-800 transition"
@@ -387,23 +370,18 @@ export default function AdminAnalytics() {
           </button>
         </div>
 
-        {/* ================================================= */}
         {/* KPI CARDS */}
-        {/* ================================================= */}
-
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <KPI
             title="Open Tickets"
             value={totalOpen}
             color="bg-yellow-100 text-yellow-700"
           />
-
           <KPI
             title="Completed"
             value={totalCompleted}
             color="bg-green-100 text-green-700"
           />
-
           <KPI
             title="Overdue"
             value={totalOverdue}
@@ -411,12 +389,9 @@ export default function AdminAnalytics() {
           />
         </div>
 
-        {/* ================================================= */}
         {/* FILTERS */}
-        {/* ================================================= */}
-
         <div className="bg-white rounded-3xl p-6 border mb-8">
-          {/* STEP 3: Changed grid columns from md:grid-cols-5 to md:grid-cols-4 */}
+          {/* STEP 3: Changed from md:grid-cols-5 to md:grid-cols-4 */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
             <Filter
               label="Group By"
@@ -429,7 +404,7 @@ export default function AdminAnalytics() {
               ]}
             />
 
-            {/* STEP 2: Removed Period filter block */}
+            {/* STEP 2: Removed Period filter */}
 
             <Filter
               label="Division"
@@ -451,7 +426,6 @@ export default function AdminAnalytics() {
               }))}
             />
 
-            {/* ADDED: Overdue Status filter */}
             <Filter
               label="Overdue Status"
               value={overdueFilter}
@@ -465,42 +439,26 @@ export default function AdminAnalytics() {
           </div>
         </div>
 
-        {/* ================================================= */}
         {/* TABLE */}
-        {/* ================================================= */}
-
         <div className="bg-white rounded-3xl border overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-100">
                 <tr className="text-left">
                   <th className="p-5 font-semibold">Group</th>
-                  {/* STEP 10: Removed Week / Month column header */}
+                  {/* STEP 10: Removed Week/Month header */}
                   <th className="p-5 font-semibold">Open</th>
-                  <th className="p-5 font-semibold">
-                    In Progress
-                  </th>
-                  {/* REMOVED: Waiting Approval column header */}
-                  <th className="p-5 font-semibold">
-                    Completed
-                  </th>
-                  <th className="p-5 font-semibold">
-                    Overdue
-                  </th>
-                  {/* ADDED: Logged Time and Allotted Time headers */}
-                  <th className="p-5 font-semibold">
-                    Logged Time
-                  </th>
-                  <th className="p-5 font-semibold">
-                    Allotted Time
-                  </th>
+                  <th className="p-5 font-semibold">In Progress</th>
+                  <th className="p-5 font-semibold">Completed</th>
+                  <th className="p-5 font-semibold">Overdue</th>
+                  <th className="p-5 font-semibold">Logged Time</th>
+                  <th className="p-5 font-semibold">Allotted Time</th>
                   <th className="p-5 font-semibold">Total</th>
-                </table>
+                </tr>
               </thead>
-
               <tbody>
                 {groupedData.map((group, index) => {
-                  // STEP 12: Changed rowKey to group.group
+                  // STEP 12: rowKey = group.group
                   const rowKey = group.group;
                   const expanded = expandedRows.includes(rowKey);
 
@@ -523,14 +481,12 @@ export default function AdminAnalytics() {
                         <td className="p-5">
                           <Badge color="blue" value={group.progress} />
                         </td>
-                        {/* REMOVED: Waiting Approval badge */}
                         <td className="p-5">
                           <Badge color="green" value={group.completed} />
                         </td>
                         <td className="p-5">
                           <Badge color="red" value={group.overdue} />
                         </td>
-                        {/* ADDED: Logged Time and Allotted Time cells */}
                         <td className="p-5 font-semibold">
                           {formatHours(group.loggedMinutes)}
                         </td>
@@ -545,9 +501,9 @@ export default function AdminAnalytics() {
                       {/* Expanded details */}
                       {expanded && (
                         <tr>
-                          {/* STEP 14: Changed colSpan from 9 to 8 */}
+                          {/* STEP 14: colSpan changed from 9 to 8 */}
                           <td colSpan="8" className="bg-gray-50 p-6">
-                            {/* STEP 13: Added drilldown header */}
+                            {/* STEP 13: Drilldown header */}
                             <div className="mb-5">
                               <h3 className="text-xl font-bold">
                                 {group.group}
@@ -560,30 +516,14 @@ export default function AdminAnalytics() {
                               <table className="w-full bg-white rounded-2xl overflow-hidden">
                                 <thead className="bg-black text-white">
                                   <tr>
-                                    <th className="p-4 text-left">
-                                      Ticket
-                                    </th>
-                                    <th className="p-4 text-left">
-                                      Status
-                                    </th>
-                                    <th className="p-4 text-left">
-                                      Priority
-                                    </th>
-                                    <th className="p-4 text-left">
-                                      Due Date
-                                    </th>
-                                    <th className="p-4 text-left">
-                                      Category
-                                    </th>
-                                    <th className="p-4 text-left">
-                                      Division
-                                    </th>
-                                    <th className="p-4 text-left">
-                                      Time Logged
-                                    </th>
-                                    <th className="p-4 text-left">
-                                      Allotted Time
-                                    </th>
+                                    <th className="p-4 text-left">Ticket</th>
+                                    <th className="p-4 text-left">Status</th>
+                                    <th className="p-4 text-left">Priority</th>
+                                    <th className="p-4 text-left">Due Date</th>
+                                    <th className="p-4 text-left">Category</th>
+                                    <th className="p-4 text-left">Division</th>
+                                    <th className="p-4 text-left">Time Logged</th>
+                                    <th className="p-4 text-left">Allotted Time</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -600,9 +540,7 @@ export default function AdminAnalytics() {
                                       <tr
                                         key={ticket.id}
                                         className={`border-t ${
-                                          idx % 2 === 0
-                                            ? "bg-white"
-                                            : "bg-gray-50"
+                                          idx % 2 === 0 ? "bg-white" : "bg-gray-50"
                                         }`}
                                       >
                                         <td className="p-4 font-medium">
@@ -664,7 +602,6 @@ function KPI({ title, value, color }) {
   return (
     <div className="bg-white rounded-3xl border p-6">
       <p className="text-gray-500">{title}</p>
-
       <div
         className={`inline-block mt-4 px-4 py-2 rounded-2xl text-3xl font-bold ${color}`}
       >
@@ -678,7 +615,6 @@ function Filter({ label, value, onChange, options }) {
   return (
     <div>
       <p className="text-sm text-gray-500 mb-2">{label}</p>
-
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
