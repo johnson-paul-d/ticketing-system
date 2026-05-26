@@ -104,10 +104,10 @@ export default function AdminAnalytics() {
   }, [tickets]);
 
   // =====================================================
-  // HIERARCHICAL GROUPED DATA (Group → Month → Week)
+  // HIERARCHICAL GROUPED DATA (Group → Month → Week → Tickets)
   // =====================================================
   const groupedHierarchy = useMemo(() => {
-    const groups = {}; // { groupName: { groupName, months: { monthLabel: { monthLabel, weeks: { weekLabel: { weekLabel, tickets: [], ...aggregates } } } } }
+    const groups = {};
 
     const filtered = tickets.filter((ticket) => {
       const divisionMatch =
@@ -140,7 +140,6 @@ export default function AdminAnalytics() {
         groupName = ticket.given_by || "Unknown";
       }
 
-      // Ensure group exists
       if (!groups[groupName]) {
         groups[groupName] = {
           groupName,
@@ -149,7 +148,6 @@ export default function AdminAnalytics() {
       }
       const group = groups[groupName];
 
-      // Ensure month exists
       if (!group.months[monthLabel]) {
         group.months[monthLabel] = {
           monthLabel,
@@ -158,55 +156,19 @@ export default function AdminAnalytics() {
       }
       const monthObj = group.months[monthLabel];
 
-      // Ensure week exists
       if (!monthObj.weeks[weekLabel]) {
         monthObj.weeks[weekLabel] = {
           weekLabel,
           tickets: [],
-          open: 0,
-          progress: 0,
-          completed: 0,
-          overdue: 0,
-          total: 0,
-          loggedMinutes: 0,
-          allottedMinutes: 0,
         };
       }
       const weekObj = monthObj.weeks[weekLabel];
 
-      // Push ticket and update aggregates
       weekObj.tickets.push(ticket);
-      weekObj.total++;
-
-      const totalMinutes = (ticket.time_entries || []).reduce(
-        (sum, entry) => sum + (entry.duration_minutes || 0),
-        0
-      );
-      weekObj.loggedMinutes += totalMinutes;
-      weekObj.allottedMinutes += ticket.allotted_minutes || 0;
-
-      switch (ticket.status) {
-        case "Open":
-          weekObj.open++;
-          break;
-        case "In Progress":
-          weekObj.progress++;
-          break;
-        case "Completed":
-          weekObj.completed++;
-          break;
-        default:
-          break;
-      }
-
-      if (isOverdue(ticket)) {
-        weekObj.overdue++;
-      }
     });
 
-    // Optional: sort months and weeks (by date order)
+    // Optional: sort months and weeks
     for (const group of Object.values(groups)) {
-      // Sort months chronologically (oldest first)
       const sortedMonths = Object.values(group.months).sort((a, b) => {
         return new Date(a.monthLabel) - new Date(b.monthLabel);
       });
@@ -215,7 +177,6 @@ export default function AdminAnalytics() {
       );
 
       for (const month of Object.values(group.months)) {
-        // Sort weeks by week number
         const sortedWeeks = Object.values(month.weeks).sort((a, b) => {
           const weekA = parseInt(a.weekLabel.split(" ")[1]) || 0;
           const weekB = parseInt(b.weekLabel.split(" ")[1]) || 0;
@@ -231,7 +192,7 @@ export default function AdminAnalytics() {
   }, [tickets, groupBy, divisionFilter, categoryFilter, overdueFilter, monthFilter]);
 
   // =====================================================
-  // EXPORT EXCEL (traverse hierarchy)
+  // EXPORT EXCEL
   // =====================================================
   const exportExcel = () => {
     const rows = [];
@@ -275,7 +236,7 @@ export default function AdminAnalytics() {
   };
 
   // =====================================================
-  // KPI (based on all tickets, not filtered)
+  // KPI
   // =====================================================
   const totalOpen = tickets.filter((t) => t.status === "Open").length;
   const totalCompleted = tickets.filter((t) => t.status === "Completed").length;
@@ -377,33 +338,81 @@ export default function AdminAnalytics() {
           </div>
         </div>
 
-        {/* NEW HIERARCHICAL UI: Group → Month → Week */}
-        <div className="space-y-5 mb-6">
+        {/* NEW NESTED MONTH/WEEK/TICKET TABLES */}
+        <div className="space-y-6">
           {Object.values(groupedHierarchy).map((group) => (
-            <div key={group.groupName} className="bg-white rounded-3xl border p-5">
+            <div key={group.groupName} className="bg-white rounded-2xl border p-5">
               {/* Group Title */}
-              <h2 className="text-2xl font-bold mb-4 border-b pb-2">
-                {group.groupName}
-              </h2>
+              <h2 className="text-2xl font-bold mb-5">{group.groupName}</h2>
 
-              {/* Months container */}
-              <div className="space-y-4">
+              {/* Months */}
+              <div className="space-y-6">
                 {Object.values(group.months).map((month) => (
-                  <div
-                    key={month.monthLabel}
-                    className="bg-gray-100 rounded-2xl p-4"
-                  >
-                    {/* Month Label */}
-                    <h3 className="text-xl font-bold">{month.monthLabel}</h3>
+                  <div key={month.monthLabel} className="bg-white rounded-2xl border p-5">
+                    {/* Month */}
+                    <h3 className="text-2xl font-bold mb-5">{month.monthLabel}</h3>
 
-                    {/* Weeks List */}
-                    <div className="mt-3 ml-4 space-y-2">
+                    {/* Weeks */}
+                    <div className="space-y-6">
                       {Object.values(month.weeks).map((week) => (
-                        <div
-                          key={week.weekLabel}
-                          className="text-gray-600 font-medium"
-                        >
-                          • {week.weekLabel}
+                        <div key={week.weekLabel} className="ml-4">
+                          {/* Week */}
+                          <div className="mb-3">
+                            <h4 className="text-lg font-semibold text-gray-700">
+                              {week.weekLabel}
+                            </h4>
+                          </div>
+
+                          {/* Tickets Table */}
+                          <div className="overflow-x-auto rounded-2xl border">
+                            <table className="w-full">
+                              <thead className="bg-black text-white">
+                                <tr>
+                                  <th className="p-4 text-left">Ticket</th>
+                                  <th className="p-4 text-left">Status</th>
+                                  <th className="p-4 text-left">Priority</th>
+                                  <th className="p-4 text-left">Due Date</th>
+                                  <th className="p-4 text-left">Category</th>
+                                  <th className="p-4 text-left">Division</th>
+                                  <th className="p-4 text-left">Logged Time</th>
+                                  <th className="p-4 text-left">Allotted Time</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {week.tickets.map((ticket, idx) => {
+                                  const totalMinutes = (ticket.time_entries || []).reduce(
+                                    (sum, entry) => sum + (entry.duration_minutes || 0),
+                                    0
+                                  );
+                                  return (
+                                    <tr
+                                      key={ticket.id}
+                                      className={`border-t ${
+                                        idx % 2 === 0 ? "bg-white" : "bg-gray-50"
+                                      }`}
+                                    >
+                                      <td className="p-4 font-medium">{ticket.title}</td>
+                                      <td className="p-4">
+                                        <StatusBadge status={ticket.status} />
+                                      </td>
+                                      <td className="p-4">{ticket.priority}</td>
+                                      <td className="p-4">
+                                        {ticket.due_date
+                                          ? new Date(ticket.due_date).toLocaleDateString()
+                                          : "-"}
+                                      </td>
+                                      <td className="p-4">{ticket.category}</td>
+                                      <td className="p-4">{ticket.division}</td>
+                                      <td className="p-4">{formatHours(totalMinutes)}</td>
+                                      <td className="p-4">
+                                        {formatHours(ticket.allotted_minutes || 0)}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -450,5 +459,23 @@ function Filter({ label, value, onChange, options }) {
         ))}
       </select>
     </div>
+  );
+}
+
+function StatusBadge({ status }) {
+  const map = {
+    Open: "bg-yellow-100 text-yellow-700",
+    "In Progress": "bg-blue-100 text-blue-700",
+    "Waiting For Approval": "bg-orange-100 text-orange-700",
+    Completed: "bg-green-100 text-green-700",
+  };
+  return (
+    <span
+      className={`px-3 py-1 rounded-full text-sm font-semibold ${
+        map[status] || "bg-gray-100 text-gray-700"
+      }`}
+    >
+      {status}
+    </span>
   );
 }
