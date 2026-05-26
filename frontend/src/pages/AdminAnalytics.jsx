@@ -7,7 +7,7 @@ import useAuthStore from "../store/authStore";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const getWeekLabel = (dateString) => {
   if (!dateString) return "No due date";
@@ -19,13 +19,11 @@ const getWeekLabel = (dateString) => {
 
 const getMonthLabel = (dateString) => {
   if (!dateString) return "No due date";
-  return new Date(dateString).toLocaleDateString("en-US", {
-    month: "long",
-    year: "numeric",
-  });
+  return new Date(dateString).toLocaleDateString("en-US", { month: "long", year: "numeric" });
 };
 
 const formatHours = (minutes) => {
+  if (!minutes) return "—";
   const hrs = Math.floor(minutes / 60);
   const mins = minutes % 60;
   if (hrs === 0) return `${mins}m`;
@@ -34,10 +32,7 @@ const formatHours = (minutes) => {
 
 const formatDate = (dateString) => {
   if (!dateString) return "—";
-  return new Date(dateString).toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-  });
+  return new Date(dateString).toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
 };
 
 const isOverdue = (ticket) => {
@@ -57,38 +52,28 @@ const AVATAR_COLORS = [
   { bg: "#FEFCE8", text: "#A16207" },
 ];
 
-// ─── Status helpers ──────────────────────────────────────────────────────────
-
-const STATUS_DOT = {
-  Open: "bg-amber-400",
-  "In Progress": "bg-blue-500",
-  "Waiting For Approval": "bg-purple-400",
-  Completed: "bg-green-500",
+const STATUS_CONFIG = {
+  Open:                    { dot: "bg-amber-400",  badge: "bg-amber-50 text-amber-700" },
+  "In Progress":           { dot: "bg-blue-500",   badge: "bg-blue-50 text-blue-700" },
+  "Waiting For Approval":  { dot: "bg-purple-400", badge: "bg-purple-50 text-purple-700" },
+  Completed:               { dot: "bg-green-500",  badge: "bg-green-50 text-green-700" },
 };
 
 const PRIORITY_STYLES = {
-  High: "bg-red-50 text-red-700 border border-red-200",
+  High:   "bg-red-50 text-red-700 border border-red-200",
   Medium: "bg-amber-50 text-amber-700 border border-amber-200",
-  Low: "bg-gray-100 text-gray-500",
+  Low:    "bg-gray-100 text-gray-500",
 };
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
+// ─── Small reusable pieces ────────────────────────────────────────────────────
 
-function KpiCard({ label, value, variant }) {
-  const variants = {
-    warn: "text-amber-600",
-    danger: "text-red-600",
-    success: "text-green-600",
-    neutral: "text-gray-800",
-  };
+function KpiCard({ label, value, sub, variant = "neutral" }) {
+  const color = { warn: "text-amber-600", danger: "text-red-600", success: "text-green-600", neutral: "text-gray-800" }[variant];
   return (
-    <div className="bg-gray-50 rounded-2xl p-5 border border-gray-100">
-      <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">
-        {label}
-      </p>
-      <p className={`text-3xl font-semibold ${variants[variant] || variants.neutral}`}>
-        {value}
-      </p>
+    <div className="bg-white rounded-2xl p-5 border border-gray-100">
+      <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">{label}</p>
+      <p className={`text-3xl font-semibold tabular-nums ${color}`}>{value}</p>
+      {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
     </div>
   );
 }
@@ -103,171 +88,171 @@ function FilterSelect({ label, value, onChange, options }) {
         className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-black/10"
       >
         {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
+          <option key={o.value} value={o.value}>{o.label}</option>
         ))}
       </select>
     </div>
   );
 }
 
-function StatusBadge({ status }) {
-  const styles = {
-    Open: "bg-amber-50 text-amber-700",
-    "In Progress": "bg-blue-50 text-blue-700",
-    "Waiting For Approval": "bg-purple-50 text-purple-700",
-    Completed: "bg-green-50 text-green-700",
-  };
-  return (
-    <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${styles[status] || "bg-gray-100 text-gray-600"}`}>
-      {status}
-    </span>
-  );
-}
-
-// Progress bar showing ticket status split
-function StatusProgressBar({ open, inProgress, waiting, completed, total }) {
+// Thin coloured strip showing completion split
+function StatusBar({ open, inProgress, waiting, completed, total }) {
   if (!total) return null;
-  const pct = (n) => `${Math.round((n / total) * 100)}%`;
+  const w = (n) => `${Math.round((n / total) * 100)}%`;
   return (
-    <div className="flex h-1.5 rounded-full overflow-hidden gap-px bg-gray-100 mt-1">
-      <div className="bg-green-500 rounded-l-full" style={{ width: pct(completed) }} title={`Completed: ${completed}`} />
-      <div className="bg-blue-500" style={{ width: pct(inProgress) }} title={`In Progress: ${inProgress}`} />
-      <div className="bg-purple-400" style={{ width: pct(waiting) }} title={`Waiting: ${waiting}`} />
-      <div className="bg-amber-400" style={{ width: pct(open) }} title={`Open: ${open}`} />
+    <div className="flex h-1 rounded-full overflow-hidden bg-gray-100">
+      <div className="bg-green-500" style={{ width: w(completed) }} />
+      <div className="bg-blue-500"  style={{ width: w(inProgress) }} />
+      <div className="bg-purple-400" style={{ width: w(waiting) }} />
+      <div className="bg-amber-400" style={{ width: w(open) }} />
     </div>
   );
 }
 
-// Individual ticket row inside the drill-down
-function TicketRow({ ticket, idx }) {
+// ─── Ticket row ───────────────────────────────────────────────────────────────
+// Columns (fixed widths so every row aligns with the header):
+//   status dot | title (flex) | priority | status | due | logged | allotted
+
+const COL = {
+  dot:      "w-3 flex-shrink-0",
+  title:    "flex-1 min-w-0",
+  priority: "w-16 flex-shrink-0 text-right",
+  status:   "w-36 flex-shrink-0 text-right",
+  due:      "w-16 flex-shrink-0 text-right",
+  logged:   "w-16 flex-shrink-0 text-right",
+  allotted: "w-20 flex-shrink-0 text-right",
+};
+
+function TicketRow({ ticket }) {
   const overdue = isOverdue(ticket);
-  const totalLogged = (ticket.time_entries || []).reduce(
-    (sum, e) => sum + (e.duration_minutes || 0),
-    0
-  );
+  const logged   = (ticket.time_entries || []).reduce((s, e) => s + (e.duration_minutes || 0), 0);
+  const allotted = ticket.allotted_minutes || 0;
+  const overBudget = allotted > 0 && logged > allotted;
+
+  const cfg = STATUS_CONFIG[ticket.status] || { dot: "bg-gray-300", badge: "bg-gray-100 text-gray-600" };
 
   return (
-    <div
-      className={`flex items-center gap-3 py-3 px-4 text-sm border-b border-gray-50 last:border-0 ${
-        overdue ? "bg-red-50/40" : idx % 2 === 0 ? "bg-white" : "bg-gray-50/50"
-      }`}
-    >
+    <div className={`flex items-center gap-3 px-5 py-2.5 text-sm border-b border-gray-50 last:border-0 ${overdue ? "bg-red-50/50" : ""}`}>
+
       {/* Status dot */}
-      <span
-        className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_DOT[ticket.status] || "bg-gray-300"}`}
-        title={ticket.status}
-      />
+      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${cfg.dot}`} title={ticket.status} />
 
-      {/* Overdue flag */}
-      {overdue && (
-        <span className="text-red-500 text-xs font-bold flex-shrink-0">LATE</span>
-      )}
-
-      {/* Title */}
-      <span
-        className={`flex-1 min-w-0 truncate font-medium ${overdue ? "text-red-700" : "text-gray-800"}`}
-        title={ticket.title}
-      >
+      {/* Title + overdue tag */}
+      <span className={`${COL.title} truncate font-medium ${overdue ? "text-red-700" : "text-gray-800"}`} title={ticket.title}>
+        {overdue && <span className="mr-1.5 text-xs font-bold text-red-500">LATE</span>}
         {ticket.title}
       </span>
 
-      {/* Meta chips */}
-      <div className="flex items-center gap-2 flex-shrink-0">
-        {ticket.priority && (
-          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRIORITY_STYLES[ticket.priority] || "bg-gray-100 text-gray-500"}`}>
-            {ticket.priority}
-          </span>
-        )}
-        <StatusBadge status={ticket.status} />
-        <span className={`text-xs tabular-nums ${overdue ? "text-red-600 font-semibold" : "text-gray-400"}`}>
-          {formatDate(ticket.due_date)}
-        </span>
-        <span className="text-xs text-gray-400 tabular-nums w-14 text-right">
-          {formatHours(totalLogged)}
-        </span>
-      </div>
+      {/* Priority */}
+      <span className={`${COL.priority}`}>
+        {ticket.priority
+          ? <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRIORITY_STYLES[ticket.priority] || "bg-gray-100 text-gray-500"}`}>{ticket.priority}</span>
+          : <span className="text-gray-300">—</span>
+        }
+      </span>
+
+      {/* Status badge */}
+      <span className={`${COL.status} flex justify-end`}>
+        <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${cfg.badge}`}>{ticket.status}</span>
+      </span>
+
+      {/* Due date */}
+      <span className={`${COL.due} text-xs tabular-nums ${overdue ? "text-red-600 font-semibold" : "text-gray-400"}`}>
+        {formatDate(ticket.due_date)}
+      </span>
+
+      {/* Logged time */}
+      <span className={`${COL.logged} text-xs tabular-nums ${overBudget ? "text-red-600 font-semibold" : "text-gray-500"}`}>
+        {formatHours(logged)}
+      </span>
+
+      {/* Allocated time */}
+      <span className="w-20 flex-shrink-0 text-right text-xs tabular-nums text-gray-400">
+        {formatHours(allotted)}
+      </span>
     </div>
   );
 }
 
-// Person card with summary + collapsible drill-down
+// Column header row — must mirror COL widths exactly
+function TableHeader() {
+  return (
+    <div className="flex items-center gap-3 px-5 py-2 text-xs font-medium text-gray-400 border-b border-gray-100 bg-gray-50/60">
+      <span className="w-2 flex-shrink-0" />
+      <span className="flex-1">Ticket</span>
+      <span className="w-16 flex-shrink-0 text-right">Priority</span>
+      <span className="w-36 flex-shrink-0 text-right">Status</span>
+      <span className="w-16 flex-shrink-0 text-right">Due</span>
+      <span className="w-16 flex-shrink-0 text-right">Logged</span>
+      <span className="w-20 flex-shrink-0 text-right">Allocated</span>
+    </div>
+  );
+}
+
+// ─── Person card ──────────────────────────────────────────────────────────────
+
 function PersonCard({ group, colorIndex }) {
   const [open, setOpen] = useState(false);
-  const { groupName, months, tickets: allTickets } = group;
+  const { groupName, months, tickets: all } = group;
 
-  const overdueCount = allTickets.filter(isOverdue).length;
-  const openCount = allTickets.filter((t) => t.status === "Open").length;
-  const inProgressCount = allTickets.filter((t) => t.status === "In Progress").length;
-  const waitingCount = allTickets.filter((t) => t.status === "Waiting For Approval").length;
-  const completedCount = allTickets.filter((t) => t.status === "Completed").length;
-  const totalLogged = allTickets.reduce(
-    (s, t) => s + (t.time_entries || []).reduce((ss, e) => ss + (e.duration_minutes || 0), 0),
-    0
-  );
-  const totalAllotted = allTickets.reduce((s, t) => s + (t.allotted_minutes || 0), 0);
+  const overdueCount   = all.filter(isOverdue).length;
+  const openCount      = all.filter((t) => t.status === "Open").length;
+  const inProgCount    = all.filter((t) => t.status === "In Progress").length;
+  const waitingCount   = all.filter((t) => t.status === "Waiting For Approval").length;
+  const completedCount = all.filter((t) => t.status === "Completed").length;
 
-  const { bg, text } = AVATAR_COLORS[colorIndex % AVATAR_COLORS.length];
+  const totalLogged   = all.reduce((s, t) => s + (t.time_entries || []).reduce((ss, e) => ss + (e.duration_minutes || 0), 0), 0);
+  const totalAllotted = all.reduce((s, t) => s + (t.allotted_minutes || 0), 0);
+
+  const { bg, text: textColor } = AVATAR_COLORS[colorIndex % AVATAR_COLORS.length];
   const hasOverdue = overdueCount > 0;
 
   return (
-    <div
-      className={`rounded-2xl border bg-white overflow-hidden transition-shadow ${
-        hasOverdue ? "border-red-200 shadow-sm shadow-red-50" : "border-gray-100"
-      }`}
-    >
-      {/* Header — always visible */}
+    <div className={`rounded-2xl border bg-white overflow-hidden ${hasOverdue ? "border-red-200" : "border-gray-100"}`}>
+
+      {/* ── Clickable header ── */}
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-full text-left px-5 py-4 flex items-center gap-4 hover:bg-gray-50/70 transition-colors"
+        className="w-full text-left px-5 py-4 flex items-center gap-4 hover:bg-gray-50/60 transition-colors"
       >
         {/* Avatar */}
         <div
-          className="w-10 h-10 rounded-full flex items-center justify-center font-semibold text-sm flex-shrink-0"
-          style={{ background: bg, color: text }}
+          className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0"
+          style={{ background: bg, color: textColor }}
         >
           {getInitials(groupName)}
         </div>
 
         {/* Name + progress bar */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1.5">
             <span className="font-semibold text-gray-900 text-sm">{groupName}</span>
             {hasOverdue && (
-              <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
+              <span className="text-xs font-semibold text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
                 ⚠ {overdueCount} overdue
               </span>
             )}
           </div>
-          <StatusProgressBar
-            open={openCount}
-            inProgress={inProgressCount}
-            waiting={waitingCount}
-            completed={completedCount}
-            total={allTickets.length}
+          <StatusBar
+            open={openCount} inProgress={inProgCount}
+            waiting={waitingCount} completed={completedCount}
+            total={all.length}
           />
         </div>
 
-        {/* Stat pills */}
-        <div className="flex items-center gap-2 flex-shrink-0 text-xs font-medium">
-          <span className="text-gray-400">{allTickets.length} tickets</span>
-          {openCount > 0 && (
-            <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full border border-amber-100">
-              {openCount} open
-            </span>
-          )}
-          {inProgressCount > 0 && (
-            <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full border border-blue-100">
-              {inProgressCount} in progress
-            </span>
-          )}
-          {completedCount > 0 && (
-            <span className="bg-green-50 text-green-700 px-2 py-0.5 rounded-full border border-green-100">
-              {completedCount} done
-            </span>
-          )}
-          <span className="text-gray-400 pl-1">{formatHours(totalLogged)} logged</span>
+        {/* Right-side summary — 4 clean numbers, always aligned */}
+        <div className="hidden sm:grid grid-cols-4 gap-6 flex-shrink-0 text-center">
+          {[
+            { val: all.length,      label: "total" },
+            { val: openCount,       label: "open" },
+            { val: completedCount,  label: "done" },
+            { val: `${formatHours(totalLogged)} / ${formatHours(totalAllotted)}`, label: "time" },
+          ].map(({ val, label }) => (
+            <div key={label}>
+              <div className="text-sm font-semibold text-gray-800 tabular-nums">{val}</div>
+              <div className="text-xs text-gray-400">{label}</div>
+            </div>
+          ))}
         </div>
 
         {/* Chevron */}
@@ -279,13 +264,14 @@ function PersonCard({ group, colorIndex }) {
         </svg>
       </button>
 
-      {/* Drill-down — month → week → tickets */}
+      {/* ── Drill-down: month → week → tickets ── */}
       {open && (
         <div className="border-t border-gray-100">
           {Object.values(months).map((month) => (
-            <div key={month.monthLabel} className="border-b border-gray-50 last:border-0">
-              {/* Month header */}
-              <div className="px-5 py-2 bg-gray-50/80 flex items-center justify-between">
+            <div key={month.monthLabel}>
+
+              {/* Month strip */}
+              <div className="px-5 py-2 bg-gray-50 flex items-center justify-between border-b border-gray-100">
                 <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                   {month.monthLabel}
                 </span>
@@ -294,29 +280,24 @@ function PersonCard({ group, colorIndex }) {
                 </span>
               </div>
 
-              {Object.values(month.weeks).map((week) => (
+              {Object.values(month.weeks).map((week, wi) => (
                 <div key={week.weekLabel}>
-                  {/* Week sub-header */}
-                  <div className="px-5 py-1.5 flex items-center gap-2">
-                    <span className="text-xs text-gray-400 font-medium">{week.weekLabel}</span>
+
+                  {/* Week divider */}
+                  <div className="px-5 py-1.5 flex items-center gap-3">
+                    <span className="text-xs text-gray-400 font-medium whitespace-nowrap">{week.weekLabel}</span>
                     <div className="flex-1 h-px bg-gray-100" />
-                    <span className="text-xs text-gray-300">{week.tickets.length} tickets</span>
+                    <span className="text-xs text-gray-300 whitespace-nowrap">{week.tickets.length} tickets</span>
                   </div>
 
-                  {/* Ticket table header */}
-                  <div className="flex items-center gap-3 px-4 py-1.5 text-xs text-gray-400 font-medium border-b border-gray-100">
-                    <span className="w-2 flex-shrink-0" />
-                    <span className="flex-1">Ticket</span>
-                    <span className="flex-shrink-0 w-36 text-right">Priority / Status</span>
-                    <span className="flex-shrink-0 w-14 text-right">Due</span>
-                    <span className="flex-shrink-0 w-14 text-right">Logged</span>
-                  </div>
+                  {/* Column header — rendered once per week group */}
+                  <TableHeader />
 
-                  {/* Sort: overdue first */}
+                  {/* Tickets — overdue floated to top */}
                   {[...week.tickets]
                     .sort((a, b) => (isOverdue(b) ? 1 : 0) - (isOverdue(a) ? 1 : 0))
-                    .map((ticket, idx) => (
-                      <TicketRow key={ticket.id} ticket={ticket} idx={idx} />
+                    .map((ticket) => (
+                      <TicketRow key={ticket.id} ticket={ticket} />
                     ))}
                 </div>
               ))}
@@ -328,19 +309,39 @@ function PersonCard({ group, colorIndex }) {
   );
 }
 
+// ─── Legend ───────────────────────────────────────────────────────────────────
+
+function Legend() {
+  return (
+    <div className="flex items-center gap-4 text-xs text-gray-400 mb-3 px-1">
+      <span className="text-gray-500 font-medium">Progress bar</span>
+      {[
+        { color: "bg-green-500",  label: "Completed" },
+        { color: "bg-blue-500",   label: "In progress" },
+        { color: "bg-purple-400", label: "Waiting" },
+        { color: "bg-amber-400",  label: "Open" },
+      ].map(({ color, label }) => (
+        <span key={label} className="flex items-center gap-1.5">
+          <span className={`w-2.5 h-2.5 rounded-full ${color}`} />
+          {label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function AdminAnalytics() {
   const user = useAuthStore((state) => state.user);
-  const [tickets, setTickets] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [groupBy, setGroupBy] = useState("user");
+  const [tickets, setTickets]         = useState([]);
+  const [loading, setLoading]         = useState(true);
+  const [groupBy, setGroupBy]         = useState("user");
   const [divisionFilter, setDivisionFilter] = useState("All");
   const [categoryFilter, setCategoryFilter] = useState("All");
-  const [overdueFilter, setOverdueFilter] = useState("All");
-  const [monthFilter, setMonthFilter] = useState("All");
+  const [overdueFilter, setOverdueFilter]   = useState("All");
+  const [monthFilter, setMonthFilter]       = useState("All");
 
-  // ── Access guard ──────────────────────────────────────────────────────────
   if (user?.role !== "Admin" && user?.role !== "Super Admin") {
     return (
       <MainLayout>
@@ -349,9 +350,8 @@ export default function AdminAnalytics() {
     );
   }
 
-  // ── Fetch ─────────────────────────────────────────────────────────────────
   useEffect(() => {
-    const fetchTickets = async () => {
+    const fetch_ = async () => {
       try {
         setLoading(true);
         const res = await api.get("/tickets");
@@ -362,31 +362,19 @@ export default function AdminAnalytics() {
         setLoading(false);
       }
     };
-    fetchTickets();
+    fetch_();
   }, []);
 
-  // ── Filter options ────────────────────────────────────────────────────────
-  const divisions = useMemo(
-    () => ["All", ...new Set(tickets.map((t) => t.division).filter(Boolean))],
-    [tickets]
-  );
-  const categories = useMemo(
-    () => ["All", ...new Set(tickets.map((t) => t.category).filter(Boolean))],
-    [tickets]
-  );
-  const months = useMemo(
-    () => ["All", ...new Set(tickets.map((t) => getMonthLabel(t.due_date)))],
-    [tickets]
-  );
+  const divisions = useMemo(() => ["All", ...new Set(tickets.map((t) => t.division).filter(Boolean))], [tickets]);
+  const categories = useMemo(() => ["All", ...new Set(tickets.map((t) => t.category).filter(Boolean))], [tickets]);
+  const months = useMemo(() => ["All", ...new Set(tickets.map((t) => getMonthLabel(t.due_date)))], [tickets]);
 
-  // ── Grouped + filtered data ───────────────────────────────────────────────
-  // Structure: { groupName → { groupName, tickets[], months: { monthLabel → { monthLabel, weeks: { weekLabel → { weekLabel, tickets[] } } } } } }
   const groupedHierarchy = useMemo(() => {
     const filtered = tickets.filter((t) => {
       if (divisionFilter !== "All" && t.division !== divisionFilter) return false;
       if (categoryFilter !== "All" && t.category !== categoryFilter) return false;
-      if (overdueFilter === "Overdue" && !isOverdue(t)) return false;
-      if (overdueFilter === "NonOverdue" && isOverdue(t)) return false;
+      if (overdueFilter === "Overdue"    && !isOverdue(t)) return false;
+      if (overdueFilter === "NonOverdue" &&  isOverdue(t)) return false;
       if (monthFilter !== "All" && getMonthLabel(t.due_date) !== monthFilter) return false;
       return true;
     });
@@ -395,18 +383,14 @@ export default function AdminAnalytics() {
 
     filtered.forEach((ticket) => {
       const groupName =
-        groupBy === "user"
-          ? ticket.assigned_to_name || "Unassigned"
-          : groupBy === "category"
-          ? ticket.category || "Uncategorized"
-          : ticket.given_by || "Unknown";
+        groupBy === "user"     ? (ticket.assigned_to_name || "Unassigned") :
+        groupBy === "category" ? (ticket.category         || "Uncategorized") :
+                                  (ticket.given_by         || "Unknown");
 
       const monthLabel = getMonthLabel(ticket.due_date);
-      const weekLabel = getWeekLabel(ticket.due_date);
+      const weekLabel  = getWeekLabel(ticket.due_date);
 
-      if (!groups[groupName]) {
-        groups[groupName] = { groupName, tickets: [], months: {} };
-      }
+      if (!groups[groupName]) groups[groupName] = { groupName, tickets: [], months: {} };
       groups[groupName].tickets.push(ticket);
 
       const g = groups[groupName];
@@ -432,7 +416,7 @@ export default function AdminAnalytics() {
       );
     }
 
-    // Sort groups: most overdue tickets first
+    // Most overdue person floats to top
     return Object.fromEntries(
       Object.values(groups)
         .sort((a, b) => b.tickets.filter(isOverdue).length - a.tickets.filter(isOverdue).length)
@@ -440,43 +424,32 @@ export default function AdminAnalytics() {
     );
   }, [tickets, groupBy, divisionFilter, categoryFilter, overdueFilter, monthFilter]);
 
-  // ── KPIs ──────────────────────────────────────────────────────────────────
   const kpis = useMemo(() => {
     const all = Object.values(groupedHierarchy).flatMap((g) => g.tickets);
     return {
-      total: all.length,
-      open: all.filter((t) => t.status === "Open").length,
-      inProgress: all.filter((t) => t.status === "In Progress").length,
-      overdue: all.filter(isOverdue).length,
+      total:     all.length,
+      open:      all.filter((t) => t.status === "Open").length,
+      inProgress:all.filter((t) => t.status === "In Progress").length,
+      overdue:   all.filter(isOverdue).length,
       completed: all.filter((t) => t.status === "Completed").length,
     };
   }, [groupedHierarchy]);
 
-  // ── Export ────────────────────────────────────────────────────────────────
   const exportExcel = () => {
     const rows = [];
     for (const group of Object.values(groupedHierarchy)) {
       for (const month of Object.values(group.months)) {
         for (const week of Object.values(month.weeks)) {
-          week.tickets.forEach((ticket) => {
-            const logged = (ticket.time_entries || []).reduce(
-              (s, e) => s + (e.duration_minutes || 0),
-              0
-            );
+          week.tickets.forEach((t) => {
+            const logged = (t.time_entries || []).reduce((s, e) => s + (e.duration_minutes || 0), 0);
             rows.push({
-              Group: group.groupName,
-              Month: month.monthLabel,
-              Week: week.weekLabel,
-              Ticket: ticket.title,
-              Status: ticket.status,
-              Priority: ticket.priority,
-              Category: ticket.category,
-              Division: ticket.division,
-              DueDate: ticket.due_date,
-              AssignedTo: ticket.assigned_to_name,
-              Overdue: isOverdue(ticket) ? "Yes" : "No",
+              Group: group.groupName, Month: month.monthLabel, Week: week.weekLabel,
+              Ticket: t.title, Status: t.status, Priority: t.priority,
+              Category: t.category, Division: t.division, DueDate: t.due_date,
+              AssignedTo: t.assigned_to_name,
+              Overdue: isOverdue(t) ? "Yes" : "No",
               TimeLogged: formatHours(logged),
-              AllottedTime: formatHours(ticket.allotted_minutes || 0),
+              AllocatedTime: formatHours(t.allotted_minutes || 0),
             });
           });
         }
@@ -489,7 +462,6 @@ export default function AdminAnalytics() {
     saveAs(new Blob([buf], { type: "application/octet-stream" }), "operations-review.xlsx");
   };
 
-  // ── Loading ───────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <MainLayout>
@@ -500,20 +472,15 @@ export default function AdminAnalytics() {
 
   const groupedList = Object.values(groupedHierarchy);
 
-  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <MainLayout>
       <div className="p-4 lg:p-8 max-w-6xl mx-auto">
 
-        {/* ── Page header ── */}
+        {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">
-              Operations Review
-            </h1>
-            <p className="text-sm text-gray-400 mt-1">
-              Ticket delivery by person — sorted by risk
-            </p>
+            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Operations Review</h1>
+            <p className="text-sm text-gray-400 mt-1">Ticket delivery by person · sorted by risk</p>
           </div>
           <button
             onClick={exportExcel}
@@ -526,15 +493,15 @@ export default function AdminAnalytics() {
           </button>
         </div>
 
-        {/* ── KPI row ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
-          <KpiCard label="Total tickets" value={kpis.total} variant="neutral" />
-          <KpiCard label="Open" value={kpis.open} variant="warn" />
+        {/* KPIs */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+          <KpiCard label="Total"       value={kpis.total}      variant="neutral" />
+          <KpiCard label="Open"        value={kpis.open}       variant="warn" />
           <KpiCard label="In progress" value={kpis.inProgress} variant="neutral" />
-          <KpiCard label="Overdue" value={kpis.overdue} variant="danger" />
+          <KpiCard label="Overdue"     value={kpis.overdue}    variant="danger" />
         </div>
 
-        {/* ── Overdue alert banner ── */}
+        {/* Overdue alert */}
         {kpis.overdue > 0 && (
           <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-2xl px-5 py-3 mb-6 text-sm text-red-700">
             <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -547,71 +514,28 @@ export default function AdminAnalytics() {
           </div>
         )}
 
-        {/* ── Filters ── */}
+        {/* Filters */}
         <div className="bg-white border border-gray-100 rounded-2xl p-5 mb-6">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-            <FilterSelect
-              label="Group by"
-              value={groupBy}
-              onChange={setGroupBy}
-              options={[
-                { label: "Person", value: "user" },
-                { label: "Category", value: "category" },
-                { label: "Given by", value: "given_by" },
-              ]}
-            />
-            <FilterSelect
-              label="Division"
-              value={divisionFilter}
-              onChange={setDivisionFilter}
-              options={divisions.map((d) => ({ label: d, value: d }))}
-            />
-            <FilterSelect
-              label="Category"
-              value={categoryFilter}
-              onChange={setCategoryFilter}
-              options={categories.map((c) => ({ label: c, value: c }))}
-            />
-            <FilterSelect
-              label="Overdue status"
-              value={overdueFilter}
-              onChange={setOverdueFilter}
-              options={[
-                { label: "All tasks", value: "All" },
-                { label: "Overdue only", value: "Overdue" },
-                { label: "Non-overdue", value: "NonOverdue" },
-              ]}
-            />
-            <FilterSelect
-              label="Month"
-              value={monthFilter}
-              onChange={setMonthFilter}
-              options={months.map((m) => ({ label: m, value: m }))}
-            />
+            <FilterSelect label="Group by" value={groupBy} onChange={setGroupBy}
+              options={[{ label: "Person", value: "user" }, { label: "Category", value: "category" }, { label: "Given by", value: "given_by" }]} />
+            <FilterSelect label="Division" value={divisionFilter} onChange={setDivisionFilter}
+              options={divisions.map((d) => ({ label: d, value: d }))} />
+            <FilterSelect label="Category" value={categoryFilter} onChange={setCategoryFilter}
+              options={categories.map((c) => ({ label: c, value: c }))} />
+            <FilterSelect label="Overdue status" value={overdueFilter} onChange={setOverdueFilter}
+              options={[{ label: "All tasks", value: "All" }, { label: "Overdue only", value: "Overdue" }, { label: "Non-overdue", value: "NonOverdue" }]} />
+            <FilterSelect label="Month" value={monthFilter} onChange={setMonthFilter}
+              options={months.map((m) => ({ label: m, value: m }))} />
           </div>
         </div>
 
-        {/* ── Legend ── */}
-        <div className="flex items-center gap-4 text-xs text-gray-400 mb-4 px-1">
-          <span className="font-medium text-gray-500">Progress bar:</span>
-          {[
-            { color: "bg-green-500", label: "Completed" },
-            { color: "bg-blue-500", label: "In progress" },
-            { color: "bg-purple-400", label: "Waiting" },
-            { color: "bg-amber-400", label: "Open" },
-          ].map(({ color, label }) => (
-            <span key={label} className="flex items-center gap-1.5">
-              <span className={`w-2.5 h-2.5 rounded-full ${color}`} />
-              {label}
-            </span>
-          ))}
-        </div>
+        {/* Legend */}
+        <Legend />
 
-        {/* ── Person cards ── */}
+        {/* Person cards */}
         {groupedList.length === 0 ? (
-          <div className="text-center py-20 text-gray-400 text-sm">
-            No tickets match the current filters.
-          </div>
+          <div className="text-center py-20 text-gray-400 text-sm">No tickets match the current filters.</div>
         ) : (
           <div className="space-y-3">
             {groupedList.map((group, idx) => (
