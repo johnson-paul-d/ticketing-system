@@ -75,7 +75,7 @@ export default function AdminAnalytics() {
 
   const [groupBy, setGroupBy] = useState("user");
 
-  const [periodType, setPeriodType] = useState("week");
+  // STEP 1: Removed periodType state
 
   const [expandedRows, setExpandedRows] = useState([]);
 
@@ -182,6 +182,10 @@ export default function AdminAnalytics() {
     });
 
     filtered.forEach((ticket) => {
+      // STEP 4: Add weekLabel and monthLabel
+      const weekLabel = getWeekLabel(ticket.due_date);
+      const monthLabel = getMonthLabel(ticket.due_date);
+
       let group = "Unknown";
 
       if (groupBy === "user") {
@@ -192,17 +196,17 @@ export default function AdminAnalytics() {
         group = ticket.given_by || "Unknown";
       }
 
-      const period =
-        periodType === "week"
-          ? getWeekLabel(ticket.due_date)
-          : getMonthLabel(ticket.due_date);
-
-      const key = `${group}-${period}`;
+      // STEP 6: Removed period variable
+      // STEP 5: Changed key to group only
+      const key = group;
 
       if (!grouped[key]) {
         grouped[key] = {
           group,
-          period,
+          // STEP 7: Added monthLabel and weekLabel
+          monthLabel,
+          weekLabel,
+          // STEP 8: Removed period field
 
           open: 0,
           progress: 0,
@@ -257,7 +261,7 @@ export default function AdminAnalytics() {
   }, [
     tickets,
     groupBy,
-    periodType,
+    // STEP 9: Removed periodType dependency
     divisionFilter,
     categoryFilter,
     overdueFilter, // ADDED: dependency
@@ -286,7 +290,7 @@ export default function AdminAnalytics() {
       group.tickets.forEach((ticket) => {
         rows.push({
           Group: group.group,
-          Period: group.period,
+          // STEP 15: Removed Period field
           Ticket: ticket.title,
           Status: ticket.status,
           Priority: ticket.priority,
@@ -412,8 +416,8 @@ export default function AdminAnalytics() {
         {/* ================================================= */}
 
         <div className="bg-white rounded-3xl p-6 border mb-8">
-          {/* CHANGED: grid columns from md:grid-cols-4 to md:grid-cols-5 */}
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-5">
+          {/* STEP 3: Changed grid columns from md:grid-cols-5 to md:grid-cols-4 */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
             <Filter
               label="Group By"
               value={groupBy}
@@ -425,15 +429,7 @@ export default function AdminAnalytics() {
               ]}
             />
 
-            <Filter
-              label="Period"
-              value={periodType}
-              onChange={setPeriodType}
-              options={[
-                { label: "Week", value: "week" },
-                { label: "Month", value: "month" },
-              ]}
-            />
+            {/* STEP 2: Removed Period filter block */}
 
             <Filter
               label="Division"
@@ -479,9 +475,7 @@ export default function AdminAnalytics() {
               <thead className="bg-gray-100">
                 <tr className="text-left">
                   <th className="p-5 font-semibold">Group</th>
-                  <th className="p-5 font-semibold">
-                    Week / Month
-                  </th>
+                  {/* STEP 10: Removed Week / Month column header */}
                   <th className="p-5 font-semibold">Open</th>
                   <th className="p-5 font-semibold">
                     In Progress
@@ -501,12 +495,13 @@ export default function AdminAnalytics() {
                     Allotted Time
                   </th>
                   <th className="p-5 font-semibold">Total</th>
-                </tr>
+                </table>
               </thead>
 
               <tbody>
                 {groupedData.map((group, index) => {
-                  const rowKey = `${group.group}-${group.period}`;
+                  // STEP 12: Changed rowKey to group.group
+                  const rowKey = group.group;
                   const expanded = expandedRows.includes(rowKey);
 
                   return (
@@ -521,7 +516,7 @@ export default function AdminAnalytics() {
                         <td className="p-5 font-semibold">
                           {expanded ? "▼" : "▶"} {group.group}
                         </td>
-                        <td className="p-5">{group.period}</td>
+                        {/* STEP 11: Removed period cell */}
                         <td className="p-5">
                           <Badge color="yellow" value={group.open} />
                         </td>
@@ -550,7 +545,17 @@ export default function AdminAnalytics() {
                       {/* Expanded details */}
                       {expanded && (
                         <tr>
-                          <td colSpan="9" className="bg-gray-50 p-6">
+                          {/* STEP 14: Changed colSpan from 9 to 8 */}
+                          <td colSpan="8" className="bg-gray-50 p-6">
+                            {/* STEP 13: Added drilldown header */}
+                            <div className="mb-5">
+                              <h3 className="text-xl font-bold">
+                                {group.group}
+                              </h3>
+                              <p className="text-gray-500 mt-1">
+                                {group.monthLabel} | {group.weekLabel}
+                              </p>
+                            </div>
                             <div className="overflow-x-auto">
                               <table className="w-full bg-white rounded-2xl overflow-hidden">
                                 <thead className="bg-black text-white">
