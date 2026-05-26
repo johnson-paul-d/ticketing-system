@@ -19,25 +19,15 @@ const getWeekLabel = (dateString) => {
   if (!dateString) return "No Due Date";
 
   const date = new Date(dateString);
-
   const firstDay = new Date(date.getFullYear(), 0, 1);
-
-  const pastDays = Math.floor(
-    (date - firstDay) / 86400000
-  );
-
-  const week = Math.ceil(
-    (pastDays + firstDay.getDay() + 1) / 7
-  );
-
+  const pastDays = Math.floor((date - firstDay) / 86400000);
+  const week = Math.ceil((pastDays + firstDay.getDay() + 1) / 7);
   return `Week ${week}`;
 };
 
 const getMonthLabel = (dateString) => {
   if (!dateString) return "No Due Date";
-
   const date = new Date(dateString);
-
   return date.toLocaleDateString("en-US", {
     month: "long",
     year: "numeric",
@@ -47,19 +37,13 @@ const getMonthLabel = (dateString) => {
 const formatHours = (minutes) => {
   const hrs = Math.floor(minutes / 60);
   const mins = minutes % 60;
-
   if (hrs === 0) return `${mins}m`;
-
   return `${hrs}h ${mins}m`;
 };
 
 const isOverdue = (ticket) => {
   if (!ticket.due_date) return false;
-
-  return (
-    new Date(ticket.due_date) < new Date() &&
-    ticket.status !== "Completed"
-  );
+  return new Date(ticket.due_date) < new Date() && ticket.status !== "Completed";
 };
 
 // =====================================================
@@ -68,39 +52,24 @@ const isOverdue = (ticket) => {
 
 export default function AdminAnalytics() {
   const user = useAuthStore((state) => state.user);
-
   const [tickets, setTickets] = useState([]);
-
   const [loading, setLoading] = useState(true);
-
   const [groupBy, setGroupBy] = useState("user");
-
-  // STEP 1: Removed periodType state
-
   const [expandedRows, setExpandedRows] = useState([]);
+  const [divisionFilter, setDivisionFilter] = useState("All");
+  const [categoryFilter, setCategoryFilter] = useState("All");
+  const [overdueFilter, setOverdueFilter] = useState("All");
 
-  const [divisionFilter, setDivisionFilter] =
-    useState("All");
-
-  const [categoryFilter, setCategoryFilter] =
-    useState("All");
-
-  const [overdueFilter, setOverdueFilter] =
-    useState("All");
+  // STEP 1 — Add Month Filter State
+  const [monthFilter, setMonthFilter] = useState("All");
 
   // =====================================================
   // SECURITY
   // =====================================================
-
-  if (
-    user?.role !== "Admin" &&
-    user?.role !== "Super Admin"
-  ) {
+  if (user?.role !== "Admin" && user?.role !== "Super Admin") {
     return (
       <MainLayout>
-        <div className="p-10 text-red-500 text-xl">
-          Access Denied
-        </div>
+        <div className="p-10 text-red-500 text-xl">Access Denied</div>
       </MainLayout>
     );
   }
@@ -108,7 +77,6 @@ export default function AdminAnalytics() {
   // =====================================================
   // FETCH
   // =====================================================
-
   useEffect(() => {
     fetchTickets();
   }, []);
@@ -116,9 +84,7 @@ export default function AdminAnalytics() {
   const fetchTickets = async () => {
     try {
       setLoading(true);
-
       const res = await api.get("/tickets");
-
       setTickets(res.data || []);
     } catch (err) {
       console.error(err);
@@ -130,41 +96,33 @@ export default function AdminAnalytics() {
   // =====================================================
   // FILTERS
   // =====================================================
-
   const categories = [
     "All",
-    ...new Set(
-      tickets
-        .map((t) => t.category)
-        .filter(Boolean)
-    ),
+    ...new Set(tickets.map((t) => t.category).filter(Boolean)),
   ];
 
   const divisions = [
     "All",
-    ...new Set(
-      tickets
-        .map((t) => t.division)
-        .filter(Boolean)
-    ),
+    ...new Set(tickets.map((t) => t.division).filter(Boolean)),
   ];
 
-  // =====================================================
-  // GROUPED DATA
-  // =====================================================
+  // STEP 2 — Create Month Options
+  const months = useMemo(() => {
+    const monthValues = tickets.map((ticket) => getMonthLabel(ticket.due_date));
+    return ["All", ...new Set(monthValues)];
+  }, [tickets]);
 
+  // =====================================================
+  // GROUPED DATA (Hierarchical by Group + Month + Week)
+  // =====================================================
   const groupedData = useMemo(() => {
     const grouped = {};
 
     const filtered = tickets.filter((ticket) => {
       const divisionMatch =
-        divisionFilter === "All" ||
-        ticket.division === divisionFilter;
-
+        divisionFilter === "All" || ticket.division === divisionFilter;
       const categoryMatch =
-        categoryFilter === "All" ||
-        ticket.category === categoryFilter;
-
+        categoryFilter === "All" || ticket.category === categoryFilter;
       const overdueMatch =
         overdueFilter === "All"
           ? true
@@ -172,20 +130,20 @@ export default function AdminAnalytics() {
           ? isOverdue(ticket)
           : !isOverdue(ticket);
 
-      return (
-        divisionMatch &&
-        categoryMatch &&
-        overdueMatch
-      );
+      // STEP 3 — Add Month Filter Logic
+      const monthMatch =
+        monthFilter === "All"
+          ? true
+          : getMonthLabel(ticket.due_date) === monthFilter;
+
+      return divisionMatch && categoryMatch && overdueMatch && monthMatch;
     });
 
     filtered.forEach((ticket) => {
-      // STEP 4: Add weekLabel and monthLabel
       const weekLabel = getWeekLabel(ticket.due_date);
       const monthLabel = getMonthLabel(ticket.due_date);
 
       let group = "Unknown";
-
       if (groupBy === "user") {
         group = ticket.assigned_to_name || "Unassigned";
       } else if (groupBy === "category") {
@@ -194,27 +152,21 @@ export default function AdminAnalytics() {
         group = ticket.given_by || "Unknown";
       }
 
-      // STEP 6: Removed period variable
-      // STEP 5: Changed key to group only
-      const key = group;
+      // STEP 5 & 6 — Create hierarchical key: group-month-week
+      const key = `${group}-${monthLabel}-${weekLabel}`;
 
       if (!grouped[key]) {
         grouped[key] = {
-          group,
-          // STEP 7: Added monthLabel and weekLabel
+          group,           // original group (user / category / given_by)
           monthLabel,
           weekLabel,
-          // STEP 8: Removed period field
-
           open: 0,
           progress: 0,
           completed: 0,
           overdue: 0,
           total: 0,
-
           loggedMinutes: 0,
           allottedMinutes: 0,
-
           tickets: [],
         };
       }
@@ -248,42 +200,44 @@ export default function AdminAnalytics() {
       }
     });
 
-    return Object.values(grouped).sort((a, b) =>
-      a.group.localeCompare(b.group)
-    );
+    // BONUS: sort by monthLabel then weekLabel (optional: can be enhanced with date sorting)
+    return Object.values(grouped).sort((a, b) => {
+      const monthCompare = a.monthLabel.localeCompare(b.monthLabel);
+      if (monthCompare !== 0) return monthCompare;
+      // simple week number extraction for sorting (Week 18 vs Week 19)
+      const weekA = parseInt(a.weekLabel.split(" ")[1]) || 0;
+      const weekB = parseInt(b.weekLabel.split(" ")[1]) || 0;
+      return weekA - weekB;
+    });
   }, [
     tickets,
     groupBy,
-    // STEP 9: Removed periodType dependency
     divisionFilter,
     categoryFilter,
     overdueFilter,
+    monthFilter,
   ]);
 
   // =====================================================
-  // TOGGLE ROW
+  // TOGGLE ROW (using composite key)
   // =====================================================
-
   const toggleRow = (key) => {
     setExpandedRows((prev) =>
-      prev.includes(key)
-        ? prev.filter((x) => x !== key)
-        : [...prev, key]
+      prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key]
     );
   };
 
   // =====================================================
-  // EXPORT
+  // EXPORT EXCEL
   // =====================================================
-
   const exportExcel = () => {
     const rows = [];
-
     groupedData.forEach((group) => {
       group.tickets.forEach((ticket) => {
         rows.push({
           Group: group.group,
-          // STEP 15: Removed Period field
+          Month: group.monthLabel,
+          Week: group.weekLabel,
           Ticket: ticket.title,
           Status: ticket.status,
           Priority: ticket.priority,
@@ -293,22 +247,16 @@ export default function AdminAnalytics() {
           AssignedTo: ticket.assigned_to_name,
           TimeLogged: formatHours(
             (ticket.time_entries || []).reduce(
-              (sum, entry) =>
-                sum + (entry.duration_minutes || 0),
+              (sum, entry) => sum + (entry.duration_minutes || 0),
               0
             )
           ),
         });
       });
     });
-
     const worksheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(
-      workbook,
-      worksheet,
-      "Operations Review"
-    );
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Operations Review");
     const excelBuffer = XLSX.write(workbook, {
       bookType: "xlsx",
       type: "array",
@@ -322,21 +270,13 @@ export default function AdminAnalytics() {
   // =====================================================
   // KPI
   // =====================================================
-
-  const totalOpen = tickets.filter(
-    (t) => t.status === "Open"
-  ).length;
-
-  const totalCompleted = tickets.filter(
-    (t) => t.status === "Completed"
-  ).length;
-
+  const totalOpen = tickets.filter((t) => t.status === "Open").length;
+  const totalCompleted = tickets.filter((t) => t.status === "Completed").length;
   const totalOverdue = tickets.filter(isOverdue).length;
 
   // =====================================================
   // LOADING
   // =====================================================
-
   if (loading) {
     return (
       <MainLayout>
@@ -348,16 +288,13 @@ export default function AdminAnalytics() {
   // =====================================================
   // UI
   // =====================================================
-
   return (
     <MainLayout>
       <div className="p-4 lg:p-8">
         {/* HEADER */}
         <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-4 mb-8">
           <div>
-            <h1 className="text-4xl font-bold">
-              Operations Review
-            </h1>
+            <h1 className="text-4xl font-bold">Operations Review</h1>
             <p className="text-gray-500 mt-2">
               Ticket delivery performance matrix
             </p>
@@ -391,8 +328,8 @@ export default function AdminAnalytics() {
 
         {/* FILTERS */}
         <div className="bg-white rounded-3xl p-6 border mb-8">
-          {/* STEP 3: Changed from md:grid-cols-5 to md:grid-cols-4 */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+          {/* STEP 4 — grid columns: md:grid-cols-5 and add Month filter */}
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-5">
             <Filter
               label="Group By"
               value={groupBy}
@@ -404,26 +341,18 @@ export default function AdminAnalytics() {
               ]}
             />
 
-            {/* STEP 2: Removed Period filter */}
-
             <Filter
               label="Division"
               value={divisionFilter}
               onChange={setDivisionFilter}
-              options={divisions.map((d) => ({
-                label: d,
-                value: d,
-              }))}
+              options={divisions.map((d) => ({ label: d, value: d }))}
             />
 
             <Filter
               label="Category"
               value={categoryFilter}
               onChange={setCategoryFilter}
-              options={categories.map((c) => ({
-                label: c,
-                value: c,
-              }))}
+              options={categories.map((c) => ({ label: c, value: c }))}
             />
 
             <Filter
@@ -436,6 +365,14 @@ export default function AdminAnalytics() {
                 { label: "Non Overdue", value: "NonOverdue" },
               ]}
             />
+
+            {/* Month Filter */}
+            <Filter
+              label="Month"
+              value={monthFilter}
+              onChange={setMonthFilter}
+              options={months.map((m) => ({ label: m, value: m }))}
+            />
           </div>
         </div>
 
@@ -445,8 +382,7 @@ export default function AdminAnalytics() {
             <table className="w-full">
               <thead className="bg-gray-100">
                 <tr className="text-left">
-                  <th className="p-5 font-semibold">Group</th>
-                  {/* STEP 10: Removed Week/Month header */}
+                  <th className="p-5 font-semibold">Group / Period</th>
                   <th className="p-5 font-semibold">Open</th>
                   <th className="p-5 font-semibold">In Progress</th>
                   <th className="p-5 font-semibold">Completed</th>
@@ -454,12 +390,11 @@ export default function AdminAnalytics() {
                   <th className="p-5 font-semibold">Logged Time</th>
                   <th className="p-5 font-semibold">Allotted Time</th>
                   <th className="p-5 font-semibold">Total</th>
-                </tr>
+                 </tr>
               </thead>
               <tbody>
                 {groupedData.map((group, index) => {
-                  // STEP 12: rowKey = group.group
-                  const rowKey = group.group;
+                  const rowKey = `${group.group}-${group.monthLabel}-${group.weekLabel}`;
                   const expanded = expandedRows.includes(rowKey);
 
                   return (
@@ -471,10 +406,20 @@ export default function AdminAnalytics() {
                           index % 2 === 0 ? "bg-white" : "bg-gray-50"
                         }`}
                       >
-                        <td className="p-5 font-semibold">
-                          {expanded ? "▼" : "▶"} {group.group}
+                        {/* STEP 8 — Main row title with month and week subtext */}
+                        <td className="p-5">
+                          <div>
+                            <div className="font-bold">
+                              {expanded ? "▼" : "▶"} {group.group}
+                            </div>
+                            <div className="text-sm text-gray-500 mt-1">
+                              {group.monthLabel}
+                            </div>
+                            <div className="text-xs text-gray-400">
+                              {group.weekLabel}
+                            </div>
+                          </div>
                         </td>
-                        {/* STEP 11: Removed period cell */}
                         <td className="p-5">
                           <Badge color="yellow" value={group.open} />
                         </td>
@@ -493,17 +438,13 @@ export default function AdminAnalytics() {
                         <td className="p-5 font-semibold">
                           {formatHours(group.allottedMinutes)}
                         </td>
-                        <td className="p-5 font-bold">
-                          {group.total}
-                        </td>
+                        <td className="p-5 font-bold">{group.total}</td>
                       </tr>
 
                       {/* Expanded details */}
                       {expanded && (
                         <tr>
-                          {/* STEP 14: colSpan changed from 9 to 8 */}
                           <td colSpan="8" className="bg-gray-50 p-6">
-                            {/* STEP 13: Drilldown header */}
                             <div className="mb-5">
                               <h3 className="text-xl font-bold">
                                 {group.group}
@@ -535,7 +476,6 @@ export default function AdminAnalytics() {
                                         sum + (entry.duration_minutes || 0),
                                       0
                                     );
-
                                     return (
                                       <tr
                                         key={ticket.id}
@@ -549,9 +489,7 @@ export default function AdminAnalytics() {
                                         <td className="p-4">
                                           <StatusBadge status={ticket.status} />
                                         </td>
-                                        <td className="p-4">
-                                          {ticket.priority}
-                                        </td>
+                                        <td className="p-4">{ticket.priority}</td>
                                         <td className="p-4">
                                           {ticket.due_date
                                             ? new Date(
@@ -559,19 +497,13 @@ export default function AdminAnalytics() {
                                               ).toLocaleDateString()
                                             : "-"}
                                         </td>
-                                        <td className="p-4">
-                                          {ticket.category}
-                                        </td>
-                                        <td className="p-4">
-                                          {ticket.division}
-                                        </td>
+                                        <td className="p-4">{ticket.category}</td>
+                                        <td className="p-4">{ticket.division}</td>
                                         <td className="p-4">
                                           {formatHours(totalMinutes)}
                                         </td>
                                         <td className="p-4">
-                                          {formatHours(
-                                            ticket.allotted_minutes || 0
-                                          )}
+                                          {formatHours(ticket.allotted_minutes || 0)}
                                         </td>
                                       </tr>
                                     );
@@ -597,7 +529,6 @@ export default function AdminAnalytics() {
 // =====================================================
 // COMPONENTS
 // =====================================================
-
 function KPI({ title, value, color }) {
   return (
     <div className="bg-white rounded-3xl border p-6">
@@ -638,7 +569,6 @@ function Badge({ value, color }) {
     green: "bg-green-100 text-green-700",
     red: "bg-red-100 text-red-700",
   };
-
   return (
     <span
       className={`px-3 py-1 rounded-full text-sm font-semibold ${colors[color]}`}
@@ -655,7 +585,6 @@ function StatusBadge({ status }) {
     "Waiting For Approval": "bg-orange-100 text-orange-700",
     Completed: "bg-green-100 text-green-700",
   };
-
   return (
     <span
       className={`px-3 py-1 rounded-full text-sm font-semibold ${
