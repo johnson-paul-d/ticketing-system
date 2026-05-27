@@ -133,7 +133,7 @@ export default function TicketCalendar() {
       });
 
       // =====================================================
-      // LEAVE EVENTS – FULL DAY BLOCK (00:00 → 23:59:59)
+      // LEAVE EVENTS – FULL DAY COLUMN BLOCK (TIMED)
       // =====================================================
 
       leaves.forEach((leave) => {
@@ -148,7 +148,8 @@ export default function TicketCalendar() {
           title: `🏖 ${leave.user_name || "Employee"} On Leave`,
           start,
           end,
-          allDay: true,
+          allDay: false,                 // timed event – covers full day column
+          className: "leave-event",      // for CSS layering
           type: "leave",
           backgroundColor: "#dc2626",
           borderColor: "#7f1d1d",
@@ -160,7 +161,7 @@ export default function TicketCalendar() {
       });
 
       // =====================================================
-      // PERMISSION EVENTS (timed blocks) – FIXED
+      // PERMISSION EVENTS (timed blocks)
       // =====================================================
 
       permissions.forEach((permission) => {
@@ -197,7 +198,7 @@ export default function TicketCalendar() {
   };
 
   // =====================================================
-  // USERS – FIXED (single instance, no hook inside loop)
+  // USERS
   // =====================================================
 
   const uniqueUsers = useMemo(() => {
@@ -208,7 +209,7 @@ export default function TicketCalendar() {
   }, [events]);
 
   // =====================================================
-  // FILTER – LEAVE VISIBLE IN WEEK/DAY VIEW
+  // FILTER
   // =====================================================
 
   const filteredEvents = useMemo(() => {
@@ -222,14 +223,13 @@ export default function TicketCalendar() {
       );
     }
 
-    // WEEK / DAY / AGENDA – now includes leave events
     return filtered.filter(
       (e) => e.type === "work_log" || e.type === "permission" || e.type === "leave"
     );
   }, [events, selectedUser, currentView]);
 
   // =====================================================
-  // MOVE / RESIZE – FIXED: use moment format, NOT toISOString()
+  // MOVE / RESIZE
   // =====================================================
 
   const moveEvent = async ({ event, start, end }) => {
@@ -269,7 +269,7 @@ export default function TicketCalendar() {
   };
 
   // =====================================================
-  // EVENT STYLE (compact)
+  // EVENT STYLE (with leave as background blocker)
   // =====================================================
 
   const eventStyleGetter = (event) => {
@@ -301,13 +301,15 @@ export default function TicketCalendar() {
       style.backgroundColor = "#dc2626";
       style.border = "3px solid #7f1d1d";
       style.fontWeight = "800";
+      style.opacity = 0.18;      // makes it act as a background blocker
+      style.zIndex = 1;          // sits behind other events
     }
 
     return { style };
   };
 
   // =====================================================
-  // CUSTOM EVENT – ULTRA CLEAN & COMPACT
+  // CUSTOM EVENT
   // =====================================================
 
   const CustomEvent = ({ event }) => (

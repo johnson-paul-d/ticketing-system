@@ -56,3 +56,24 @@
     font-size: 9px !important;
   }
 }
+
+/* =====================================================
+   LEAVE EVENTS – FULL DAY BACKGROUND BLOCKER
+   ===================================================== */
+
+/* Leave events should sit behind work items & permissions */
+.rbc-event.leave-event {
+  z-index: 1 !important;
+}
+
+/* Other events (work logs, permissions, due dates) appear on top */
+.rbc-event {
+  z-index: 5;
+}
+
+/* Optional: improve readability of background leave text */
+.rbc-event.leave-event .rbc-event-content {
+  opacity: 1;
+  color: #fff;
+  text-shadow: 0 0 2px rgba(0,0,0,0.5);
+}
