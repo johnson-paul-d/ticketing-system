@@ -31,9 +31,8 @@ export default function MainLayout({ children }) {
     ...(user?.role === "Admin"
       ? [{ label: "Admin Panel", path: "/admin", icon: Shield }]
       : []),
-    { label: "Reports", path: "/reports", icon: BarChart3 },
     {
-  label: "Operations Review",
+  label: "Reports",
   path: "/admin-analytics",
   icon: BarChart3,
 },
