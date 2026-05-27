@@ -152,7 +152,7 @@ router.post('/', auth, async (req, res) => {
       description,
       priority: priority || 'Medium',
       category: category || null,
-      division: division || null,          // ✅ FIXED: added division field
+      division: division || null,
       assigned_to: assigned_to || null,
       due_date: due_date || null,
       allotted_minutes: allotted_minutes || 0,
@@ -213,7 +213,7 @@ router.post('/', auth, async (req, res) => {
 });
 
 // =====================================================
-// UPDATE TICKET (with given_by support)
+// UPDATE TICKET (with given_by support + time log validation)
 // =====================================================
 
 router.put('/:id', auth, async (req, res) => {
@@ -240,6 +240,30 @@ router.put('/:id', auth, async (req, res) => {
     if (req.user.role !== 'Admin' && req.user.role !== 'Super Admin') {
       if (existing.assigned_to !== req.user.id) {
         return res.status(403).json({ message: 'Access denied' });
+      }
+    }
+
+    // =====================================================
+    // VALIDATE TIME LOG BEFORE APPROVAL STATUS
+    // =====================================================
+    const approvalTriggers = ['Completed', 'Waiting For Sources', 'Waiting For Resources'];
+    if (status && approvalTriggers.includes(status)) {
+      const { data: timeEntries, error: timeError } =
+        await supabase
+          .from('ticket_time_entries')
+          .select('id')
+          .eq('ticket_id', existing.id);
+
+      if (timeError) {
+        return res.status(500).json({
+          message: 'Failed to validate time logs',
+        });
+      }
+
+      if (!timeEntries || timeEntries.length === 0) {
+        return res.status(400).json({
+          message: 'Please log time before marking ticket as completed',
+        });
       }
     }
 
@@ -298,7 +322,9 @@ router.put('/:id', auth, async (req, res) => {
       updateData.allotted_minutes = allotted_minutes;
     }
 
-    const approvalTriggers = ['Completed', 'Waiting For Sources', 'Waiting For Resources'];
+    // =====================================================
+    // APPROVAL REQUEST LOGIC (unchanged)
+    // =====================================================
     if (status && approvalTriggers.includes(status)) {
       updateData.status = 'Waiting For Approval';
       updateData.approval_required = true;

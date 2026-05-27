@@ -342,13 +342,7 @@ export default function AdminAnalytics() {
   const [overdueFilter, setOverdueFilter]   = useState("All");
   const [monthFilter, setMonthFilter]       = useState("All");
 
-  if (user?.role !== "Admin" && user?.role !== "Super Admin") {
-    return (
-      <MainLayout>
-        <div className="p-10 text-red-500 text-xl font-medium">Access Denied</div>
-      </MainLayout>
-    );
-  }
+  // ========== REMOVED ACCESS DENIED BLOCK ==========
 
   useEffect(() => {
     const fetch_ = async () => {
@@ -371,10 +365,16 @@ export default function AdminAnalytics() {
 
   const groupedHierarchy = useMemo(() => {
     const filtered = tickets.filter((t) => {
+      // STEP 2: Non‑admins see only their own tickets
+      if (user?.role !== "Admin" && user?.role !== "Super Admin") {
+        const isOwnTicket = t.assigned_to === user.id || t.assigned_to_name === user.name;
+        if (!isOwnTicket) return false;
+      }
+
       if (divisionFilter !== "All" && t.division !== divisionFilter) return false;
       if (categoryFilter !== "All" && t.category !== categoryFilter) return false;
-      if (overdueFilter === "Overdue"    && !isOverdue(t)) return false;
-      if (overdueFilter === "NonOverdue" &&  isOverdue(t)) return false;
+      if (overdueFilter === "Overdue" && !isOverdue(t)) return false;
+      if (overdueFilter === "NonOverdue" && isOverdue(t)) return false;
       if (monthFilter !== "All" && getMonthLabel(t.due_date) !== monthFilter) return false;
       return true;
     });
@@ -422,7 +422,7 @@ export default function AdminAnalytics() {
         .sort((a, b) => b.tickets.filter(isOverdue).length - a.tickets.filter(isOverdue).length)
         .map((g) => [g.groupName, g])
     );
-  }, [tickets, groupBy, divisionFilter, categoryFilter, overdueFilter, monthFilter]);
+  }, [tickets, groupBy, divisionFilter, categoryFilter, overdueFilter, monthFilter, user]); // added 'user' to deps
 
   const kpis = useMemo(() => {
     const all = Object.values(groupedHierarchy).flatMap((g) => g.tickets);
