@@ -18,7 +18,7 @@ const timeEntryRoutes =
   require("./routes/timeEntries");
 const salesforceRoutes = require("./routes/salesforce");
 const googleAdsRoutes = require("./routes/googleAds");
-app.use("/api/google-ads", googleAdsRoutes);
+
 app.use(express.json());
 
 app.use(express.text());
@@ -31,6 +31,8 @@ const allowedOrigins = [
   'https://mktg-ticketing-system.vercel.app',
   'http://localhost:3000', // local development
 ].filter(Boolean);
+
+
 
 const corsOptions = {
   origin: function (origin, callback) {
@@ -75,6 +77,7 @@ app.use("/api/leave-requests", leaveRoutes);
 
 
 app.use("/api/salesforce", salesforceRoutes);
+app.use("/api/google-ads", googleAdsRoutes);
 
 app.use(
   "/api/permission-requests",
