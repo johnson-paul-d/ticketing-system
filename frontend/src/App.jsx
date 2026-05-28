@@ -12,6 +12,7 @@ import Reports from "./pages/Reports";
 import ProtectedRoute from "./components/ProtectedRoute";
 import TicketTimeline from "./pages/TicketTimeTracker";
 import AdminAnalytics from "./pages/AdminAnalytics";
+import GoogleAdsDashboard from "./pages/GoogleAdsDashboard";
 
 function App() {
   return (
