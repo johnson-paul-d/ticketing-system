@@ -7,7 +7,7 @@ export default function ExecutiveFilters({
   const uniqueCampaigns = [
     "All",
     ...new Set(
-      campaigns.map((c) => c.campaign)
+      (campaigns || []).map((c) => c.campaign)
     ),
   ];
 
