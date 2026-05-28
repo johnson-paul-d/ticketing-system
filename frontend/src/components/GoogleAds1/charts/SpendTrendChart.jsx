@@ -17,7 +17,7 @@ export default function SpendTrendChart({
   // FORMAT DATA
   // =====================================================
 
-  const data = trends.map((t) => ({
+  const data = (trends || []).map((t) => ({
 
     date: new Date(
       t.report_date

@@ -6,7 +6,7 @@ export default function NarrativeSummary({
 }) {
 
   const topCampaign =
-    campaigns.sort(
+    campaigns.sort( 
       (a, b) =>
         Number(b.conversions || 0) -
         Number(a.conversions || 0)

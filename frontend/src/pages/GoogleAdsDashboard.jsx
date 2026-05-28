@@ -22,7 +22,7 @@ import OpportunityTable from "../components/GoogleAds1/tables/OpportunityTable";
 import CampaignIntelligenceTable from "../components/GoogleAds1/tables/CampaignIntelligenceTable";
 
 import RecommendationPanel from "../components/GoogleAds1/insights/RecommendationPanel";
-import NarrativeSummary from "../components/GoogleAds1/insights/NarrativeSummary";
+import NarrativeSummary from "../components/Goo gleAds1/insights/NarrativeSummary";
 
 export default function GoogleAdsDashboard() {
 

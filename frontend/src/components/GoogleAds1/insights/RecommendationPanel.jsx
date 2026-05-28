@@ -22,7 +22,7 @@ export default function RecommendationPanel({
         space-y-4
       ">
 
-        {recommendations.map(
+        {(campaigns || []).map(
           (r, index) => (
 
             <div

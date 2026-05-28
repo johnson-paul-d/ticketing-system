@@ -18,7 +18,7 @@ export default function ForecastChart({
 }) {
 
   const conversions =
-    trends.map((t) =>
+    (trends || []).map((t) =>
       Number(t.conversions || 0)
     );
 
@@ -28,7 +28,7 @@ export default function ForecastChart({
       7
     );
 
-  const data = trends.map((t) => ({
+  const data = (trends || []).map((t) => ({
     date: t.report_date,
     actual:
       Number(t.conversions || 0),

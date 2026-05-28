@@ -16,7 +16,7 @@ export default function TemporalHeatmap({
   // BUILD HEATMAP DATA
   // =====================================================
 
-  const heatmapData = trends.map(
+  const heatmapData = (trends || []).map(
     (t) => {
 
       const date =

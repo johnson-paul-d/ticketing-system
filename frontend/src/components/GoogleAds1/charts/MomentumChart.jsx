@@ -13,7 +13,7 @@ export default function MomentumChart({
   campaigns,
 }) {
 
-  const data = campaigns.map((c) => {
+  const data = (campaigns || []).map((c) => {
 
     const current =
       Number(c.conversions || 0);

@@ -23,7 +23,7 @@ export default function CampaignEfficiencyMatrix({
   // FORMAT DATA
   // =====================================================
 
-  const formattedData = campaigns.map(
+  googleAds1const formattedData = (campaigns || []).map(
     (campaign) => {
 
       const ctr =
