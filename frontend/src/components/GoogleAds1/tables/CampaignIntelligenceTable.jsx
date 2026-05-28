@@ -1,4 +1,4 @@
-```jsx
+
 import {
   calculateCPA,
   calculateEfficiencyScore,
@@ -592,4 +592,3 @@ export default function CampaignIntelligenceTable({
     </div>
   );
 }
-```
