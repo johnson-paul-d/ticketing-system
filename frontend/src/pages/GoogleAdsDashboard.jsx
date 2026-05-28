@@ -1,6 +1,10 @@
+// ======================================================
+// GOOGLE ADS EXECUTIVE INTELLIGENCE DASHBOARD
+// FULL REACT CODE
+// ======================================================
+
 import { useEffect, useMemo, useState } from "react";
-import MainLayout from "../layouts/MainLayout";
-import api from "../services/api";
+import axios from "axios";
 
 import {
   ResponsiveContainer,
@@ -8,34 +12,31 @@ import {
   Line,
   BarChart,
   Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-  Legend,
   PieChart,
   Pie,
   Cell,
   ScatterChart,
   Scatter,
-  ZAxis,
   FunnelChart,
   Funnel,
-  LabelList,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ZAxis,
 } from "recharts";
 
 import {
-  IndianRupee,
+  DollarSign,
   MousePointerClick,
   Eye,
   Target,
   TrendingUp,
   AlertTriangle,
-  Sparkles,
+  Brain,
   Activity,
 } from "lucide-react";
-
-import { motion } from "framer-motion";
 
 const COLORS = [
   "#6366F1",
@@ -47,480 +48,728 @@ const COLORS = [
 ];
 
 export default function GoogleAdsDashboard() {
+
+  // ======================================================
+  // STATES
+  // ======================================================
+
   const [overview, setOverview] = useState(null);
-  const [trends, setTrends] = useState([]);
+
   const [campaigns, setCampaigns] = useState([]);
+
   const [keywords, setKeywords] = useState([]);
+
+  const [trends, setTrends] = useState([]);
+
   const [loading, setLoading] = useState(true);
 
-  const [dateRange, setDateRange] = useState("30d");
-  const [selectedCampaign, setSelectedCampaign] = useState("All");
+  const [dateRange, setDateRange] =
+    useState("30d");
+
+  const [selectedCampaign, setSelectedCampaign] =
+    useState("All");
+
+  // ======================================================
+  // FETCH DATA
+  // ======================================================
 
   useEffect(() => {
     fetchDashboard();
   }, []);
 
   const fetchDashboard = async () => {
+
     try {
-      const [overviewRes, trendsRes, campaignsRes, keywordsRes] =
-        await Promise.all([
-          api.get("/google-ads/overview"),
-          api.get("/google-ads/trends"),
-          api.get("/google-ads/campaigns"),
-          api.get("/google-ads/keywords"),
-        ]);
+
+      const [
+        overviewRes,
+        campaignsRes,
+        keywordsRes,
+        trendsRes,
+      ] = await Promise.all([
+
+        axios.get(
+          "https://ticketing-backend-6azk.onrender.com/api/google-ads/overview"
+        ),
+
+        axios.get(
+          "https://ticketing-backend-6azk.onrender.com/api/google-ads/campaigns"
+        ),
+
+        axios.get(
+          "https://ticketing-backend-6azk.onrender.com/api/google-ads/keywords"
+        ),
+
+        axios.get(
+          "https://ticketing-backend-6azk.onrender.com/api/google-ads/trends"
+        ),
+
+      ]);
 
       setOverview(overviewRes.data);
-      setTrends(trendsRes.data);
+
       setCampaigns(campaignsRes.data);
+
       setKeywords(keywordsRes.data);
+
+      setTrends(trendsRes.data);
+
     } catch (err) {
+
       console.error(err);
+
     } finally {
+
       setLoading(false);
+
     }
   };
 
-  // ========== FILTERED TRENDS (Date + Campaign) ==========
-  const filteredTrends = useMemo(() => {
-    let filtered = [...trends];
+  // ======================================================
+  // FILTERS
+  // ======================================================
 
-    // DATE FILTER
-    if (dateRange === "7d") {
-      filtered = filtered.slice(-7);
-    } else if (dateRange === "30d") {
-      filtered = filtered.slice(-30);
-    } else if (dateRange === "90d") {
-      filtered = filtered.slice(-90);
-    } else if (dateRange === "365d") {
-      filtered = filtered.slice(-365);
-    }
-
-    // CAMPAIGN FILTER
-    if (selectedCampaign !== "All") {
-      filtered = filtered.filter(
-        (item) => item.campaign === selectedCampaign
-      );
-    }
-
-    return filtered;
-  }, [trends, dateRange, selectedCampaign]);
-
-  // ========== FILTERED CAMPAIGNS ==========
   const filteredCampaigns = useMemo(() => {
+
     let filtered = [...campaigns];
 
     if (selectedCampaign !== "All") {
+
       filtered = filtered.filter(
-        (c) => c.campaign === selectedCampaign
+        (c) =>
+          c.campaign === selectedCampaign
       );
+
     }
 
     return filtered;
-  }, [campaigns, selectedCampaign]);
 
-  // ========== FILTERED KEYWORDS ==========
+  }, [
+    campaigns,
+    selectedCampaign,
+  ]);
+
   const filteredKeywords = useMemo(() => {
+
     let filtered = [...keywords];
 
     if (selectedCampaign !== "All") {
+
       filtered = filtered.filter(
-        (k) => k.campaign === selectedCampaign
+        (k) =>
+          k.campaign === selectedCampaign
       );
+
     }
 
     return filtered;
-  }, [keywords, selectedCampaign]);
+
+  }, [
+    keywords,
+    selectedCampaign,
+  ]);
+
+  const filteredTrends = useMemo(() => {
+
+    let filtered = [...trends];
+
+    if (dateRange === "7d") {
+      filtered = filtered.slice(-7);
+    }
+
+    if (dateRange === "30d") {
+      filtered = filtered.slice(-30);
+    }
+
+    if (dateRange === "90d") {
+      filtered = filtered.slice(-90);
+    }
+
+    return filtered;
+
+  }, [
+    trends,
+    dateRange,
+  ]);
+
+  // ======================================================
+  // KPIs
+  // ======================================================
 
   const wasteSpend = useMemo(() => {
+
     return campaigns
-      .filter((c) => Number(c.conversions) === 0)
-      .reduce((sum, c) => sum + Number(c.cost || 0), 0);
+      .filter(
+        (c) =>
+          Number(c.conversions || 0) === 0
+      )
+      .reduce(
+        (sum, c) =>
+          sum + Number(c.cost || 0),
+        0
+      );
+
   }, [campaigns]);
 
+  const wasteSpendPercent = useMemo(() => {
+
+    if (!overview) return 0;
+
+    return (
+      (wasteSpend /
+        Number(overview.totalSpend || 1)) *
+      100
+    );
+
+  }, [wasteSpend, overview]);
+
   const topCampaign = useMemo(() => {
+
     return [...campaigns].sort(
       (a, b) =>
         Number(b.conversions || 0) -
         Number(a.conversions || 0)
     )[0];
+
   }, [campaigns]);
 
-  const aiInsights = useMemo(() => {
-    const insights = [];
+  // ======================================================
+  // AI INSIGHTS
+  // ======================================================
 
-    if (wasteSpend > 10000) {
-      insights.push(
-        `₹${wasteSpend.toLocaleString()} spent on campaigns with zero conversions.`
+  const insights = useMemo(() => {
+
+    const result = [];
+
+    if (wasteSpendPercent > 30) {
+
+      result.push(
+        `₹${wasteSpend.toLocaleString()} spent without conversions`
       );
+
     }
 
-    if (overview?.avgCpc > 25) {
-      insights.push(
-        `Average CPC is high. Consider keyword optimization.`
+    if (
+      Number(overview?.avgCpc || 0) > 25
+    ) {
+
+      result.push(
+        "Average CPC is increasing significantly"
       );
+
     }
 
     if (topCampaign) {
-      insights.push(
-        `${topCampaign.campaign} is generating the highest conversion volume.`
+
+      result.push(
+        `${topCampaign.campaign} is the highest converting campaign`
       );
+
     }
 
-    return insights;
-  }, [wasteSpend, overview, topCampaign]);
+    if (
+      Number(overview?.conversionRate || 0) < 2
+    ) {
+
+      result.push(
+        "Conversion rate is low. Landing page optimization recommended"
+      );
+
+    }
+
+    return result;
+
+  }, [
+    wasteSpend,
+    wasteSpendPercent,
+    overview,
+    topCampaign,
+  ]);
+
+  // ======================================================
+  // FUNNEL
+  // ======================================================
 
   const funnelData = [
     {
-      value: overview?.totalImpressions || 0,
       name: "Impressions",
+      value:
+        overview?.totalImpressions || 0,
     },
     {
-      value: overview?.totalClicks || 0,
       name: "Clicks",
+      value:
+        overview?.totalClicks || 0,
     },
     {
-      value: overview?.totalConversions || 0,
       name: "Conversions",
+      value:
+        overview?.totalConversions || 0,
     },
   ];
 
+  // ======================================================
+  // LOADING
+  // ======================================================
+
   if (loading || !overview) {
+
     return (
-      <MainLayout>
-        <div className="p-8 text-xl font-semibold">
-          Loading Executive Intelligence Dashboard...
-        </div>
-      </MainLayout>
+      <div className="min-h-screen bg-black text-white flex items-center justify-center text-4xl">
+        Loading Executive Dashboard...
+      </div>
     );
+
   }
 
+  // ======================================================
+  // UI
+  // ======================================================
+
   return (
-    <MainLayout>
-      <div className="min-h-screen bg-slate-950 text-white p-6 space-y-6">
 
-        {/* ================================================= */}
-        {/* HEADER */}
-        {/* ================================================= */}
+    <div className="min-h-screen bg-[#050816] text-white p-6">
 
-        <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+      {/* ================================================= */}
+      {/* HEADER */}
+      {/* ================================================= */}
 
-          <div>
-            <h1 className="text-5xl font-black tracking-tight">
-              Google Ads Intelligence
-            </h1>
+      <div className="flex items-center justify-between mb-8">
 
-            <p className="text-slate-400 mt-3 text-lg">
-              Executive Marketing Performance Platform
-            </p>
-          </div>
+        <div>
 
-          <div className="flex gap-3 flex-wrap">
+          <h1 className="text-5xl font-black">
+            Google Ads Intelligence
+          </h1>
 
-            {["7d", "30d", "90d", "365d"].map((range) => (
-              <button
-                key={range}
-                onClick={() => setDateRange(range)}
-                className={`
-                  px-4 py-2 rounded-xl border
-                  ${dateRange === range
+          <p className="text-slate-400 mt-2">
+            Executive Marketing Analytics Platform
+          </p>
+
+        </div>
+
+        <div className="flex gap-3">
+
+          {["7d", "30d", "90d"].map((range) => (
+
+            <button
+              key={range}
+              onClick={() =>
+                setDateRange(range)
+              }
+              className={`
+                px-4 py-2 rounded-xl border
+                ${
+                  dateRange === range
                     ? "bg-indigo-600 border-indigo-600"
                     : "bg-slate-900 border-slate-700"
-                  }
-                `}
-              >
-                {range}
-              </button>
-            ))}
-          </div>
+                }
+              `}
+            >
+              {range}
+            </button>
+
+          ))}
+
+        </div>
+      </div>
+
+      {/* ================================================= */}
+      {/* FILTERS */}
+      {/* ================================================= */}
+
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 mb-8 flex gap-4 flex-wrap">
+
+        <select
+          value={selectedCampaign}
+          onChange={(e) =>
+            setSelectedCampaign(
+              e.target.value
+            )
+          }
+          className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3"
+        >
+
+          <option value="All">
+            All Campaigns
+          </option>
+
+          {campaigns.map((c, index) => (
+
+            <option
+              key={index}
+              value={c.campaign}
+            >
+              {c.campaign}
+            </option>
+
+          ))}
+
+        </select>
+
+      </div>
+
+      {/* ================================================= */}
+      {/* KPI GRID */}
+      {/* ================================================= */}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8 gap-5 mb-8">
+
+        <KPI
+          title="Total Spend"
+          value={`₹${Number(
+            overview.totalSpend
+          ).toLocaleString()}`}
+          icon={<DollarSign />}
+        />
+
+        <KPI
+          title="Clicks"
+          value={Number(
+            overview.totalClicks
+          ).toLocaleString()}
+          icon={<MousePointerClick />}
+        />
+
+        <KPI
+          title="Impressions"
+          value={Number(
+            overview.totalImpressions
+          ).toLocaleString()}
+          icon={<Eye />}
+        />
+
+        <KPI
+          title="Conversions"
+          value={Number(
+            overview.totalConversions
+          ).toFixed(0)}
+          icon={<Target />}
+        />
+
+        <KPI
+          title="CTR"
+          value={`${Number(
+            overview.ctr
+          ).toFixed(2)}%`}
+          icon={<TrendingUp />}
+        />
+
+        <KPI
+          title="Avg CPC"
+          value={`₹${Number(
+            overview.avgCpc
+          ).toFixed(2)}`}
+          icon={<Activity />}
+        />
+
+        <KPI
+          title="Waste Spend"
+          value={`₹${Number(
+            wasteSpend
+          ).toLocaleString()}`}
+          icon={<AlertTriangle />}
+        />
+
+        <KPI
+          title="Conv Rate"
+          value={`${Number(
+            overview.conversionRate
+          ).toFixed(2)}%`}
+          icon={<Brain />}
+        />
+
+      </div>
+
+      {/* ================================================= */}
+      {/* AI INSIGHTS */}
+      {/* ================================================= */}
+
+      <div className="bg-gradient-to-br from-indigo-900 to-slate-900 rounded-3xl border border-indigo-700 p-6 mb-8">
+
+        <div className="flex items-center gap-3 mb-5">
+
+          <Brain className="text-yellow-400" />
+
+          <h2 className="text-2xl font-bold">
+            AI Executive Insights
+          </h2>
+
         </div>
 
-        {/* ================================================= */}
-        {/* KPI SECTION */}
-        {/* ================================================= */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8 gap-5">
+          {insights.map((insight, index) => (
 
-          <KPI
-            title="Total Spend"
-            value={`₹${Number(overview.totalSpend).toLocaleString()}`}
-            icon={<IndianRupee />}
-            color="from-indigo-500 to-indigo-700"
-          />
+            <div
+              key={index}
+              className="bg-white/5 border border-white/10 rounded-2xl p-5"
+            >
 
-          <KPI
-            title="Clicks"
-            value={Number(overview.totalClicks).toLocaleString()}
-            icon={<MousePointerClick />}
-            color="from-emerald-500 to-emerald-700"
-          />
+              {insight}
 
-          <KPI
-            title="Impressions"
-            value={Number(overview.totalImpressions).toLocaleString()}
-            icon={<Eye />}
-            color="from-cyan-500 to-cyan-700"
-          />
-
-          <KPI
-            title="Conversions"
-            value={Number(overview.totalConversions).toFixed(0)}
-            icon={<Target />}
-            color="from-amber-500 to-amber-700"
-          />
-
-          <KPI
-            title="CTR"
-            value={`${Number(overview.ctr).toFixed(2)}%`}
-            icon={<TrendingUp />}
-            color="from-rose-500 to-rose-700"
-          />
-
-          <KPI
-            title="Avg CPC"
-            value={`₹${Number(overview.avgCpc).toFixed(2)}`}
-            icon={<Activity />}
-            color="from-violet-500 to-violet-700"
-          />
-
-          <KPI
-            title="Conv. Rate"
-            value={`${Number(overview.conversionRate).toFixed(2)}%`}
-            icon={<Sparkles />}
-            color="from-sky-500 to-sky-700"
-          />
-
-          <KPI
-            title="Waste Spend"
-            value={`₹${Number(wasteSpend).toLocaleString()}`}
-            icon={<AlertTriangle />}
-            color="from-red-500 to-red-700"
-          />
-        </div>
-
-        {/* ================================================= */}
-        {/* AI INSIGHTS */}
-        {/* ================================================= */}
-
-        <div className="bg-gradient-to-br from-indigo-900 to-slate-900 rounded-3xl border border-indigo-700 p-6">
-
-          <div className="flex items-center gap-3 mb-6">
-            <Sparkles className="text-yellow-400" />
-
-            <h2 className="text-2xl font-bold">
-              AI Executive Insights
-            </h2>
-          </div>
-
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-
-            {aiInsights.map((insight, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white/5 border border-white/10 rounded-2xl p-5"
-              >
-                <div className="flex items-start gap-3">
-                  <AlertTriangle className="text-yellow-400 mt-1" />
-
-                  <p className="text-slate-200 leading-relaxed">
-                    {insight}
-                  </p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-
-        {/* ================================================= */}
-        {/* MAIN CHARTS */}
-        {/* ================================================= */}
-
-        <div className="grid grid-cols-1 2xl:grid-cols-3 gap-6">
-
-          {/* TREND CHART - USING FILTERED TRENDS */}
-
-          <div className="2xl:col-span-2 bg-slate-900 border border-slate-800 rounded-3xl p-6">
-
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold">
-                Spend vs Conversion Trend
-              </h2>
-
-              <p className="text-slate-400 mt-1">
-                Daily marketing efficiency analysis
-              </p>
             </div>
 
-            <ResponsiveContainer width="100%" height={400}>
-              <LineChart data={filteredTrends}>
-                <CartesianGrid stroke="#1E293B" />
+          ))}
 
-                <XAxis dataKey="date" stroke="#94A3B8" />
-
-                <YAxis stroke="#94A3B8" />
-
-                <Tooltip />
-
-                <Legend />
-
-                <Bar
-                  dataKey="conversions"
-                  fill="#10B981"
-                  radius={[6, 6, 0, 0]}
-                />
-
-                <Line
-                  type="monotone"
-                  dataKey="spend"
-                  stroke="#6366F1"
-                  strokeWidth={3}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* FUNNEL */}
-
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6">
-
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold">
-                Conversion Funnel
-              </h2>
-            </div>
-
-            <ResponsiveContainer width="100%" height={400}>
-              <FunnelChart>
-                <Tooltip />
-
-                <Funnel
-                  dataKey="value"
-                  data={funnelData}
-                  isAnimationActive
-                >
-                  <LabelList position="right" fill="#fff" stroke="none" dataKey="name" />
-                </Funnel>
-              </FunnelChart>
-            </ResponsiveContainer>
-          </div>
         </div>
 
-        {/* ================================================= */}
-        {/* SECONDARY CHARTS */}
-        {/* ================================================= */}
+      </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+      {/* ================================================= */}
+      {/* CHARTS */}
+      {/* ================================================= */}
 
-          {/* CAMPAIGN DISTRIBUTION - USING FILTERED CAMPAIGNS */}
+      <div className="grid grid-cols-1 2xl:grid-cols-2 gap-6 mb-8">
 
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6">
-
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold">
-                Campaign Spend Distribution
-              </h2>
-            </div>
-
-            <ResponsiveContainer width="100%" height={350}>
-              <PieChart>
-                <Pie
-                  data={filteredCampaigns}
-                  dataKey="cost"
-                  nameKey="campaign"
-                  outerRadius={120}
-                  label
-                >
-                  {filteredCampaigns.map((entry, index) => (
-                    <Cell
-                      key={index}
-                      fill={COLORS[index % COLORS.length]}
-                    />
-                  ))}
-                </Pie>
-
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* KEYWORD MATRIX - USING FILTERED KEYWORDS */}
-
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6">
-
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold">
-                Keyword Intelligence Matrix
-              </h2>
-
-              <p className="text-slate-400">
-                CPC vs Conversion Rate vs Spend
-              </p>
-            </div>
-
-            <ResponsiveContainer width="100%" height={350}>
-              <ScatterChart>
-                <CartesianGrid stroke="#1E293B" />
-
-                <XAxis
-                  type="number"
-                  dataKey="avg_cpc"
-                  name="Avg CPC"
-                  stroke="#94A3B8"
-                />
-
-                <YAxis
-                  type="number"
-                  dataKey="conversion_rate"
-                  name="Conversion Rate"
-                  stroke="#94A3B8"
-                />
-
-                <ZAxis
-                  type="number"
-                  dataKey="cost"
-                  range={[80, 500]}
-                />
-
-                <Tooltip cursor={{ strokeDasharray: "3 3" }} />
-
-                <Scatter
-                  name="Keywords"
-                  data={filteredKeywords}
-                  fill="#6366F1"
-                />
-              </ScatterChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* ================================================= */}
-        {/* WASTE ANALYSIS - USING FILTERED CAMPAIGNS */}
-        {/* ================================================= */}
+        {/* TREND */}
 
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6">
 
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold">
-              Waste Spend Analysis
-            </h2>
+          <h2 className="text-2xl font-bold mb-6">
+            Spend & Conversion Trend
+          </h2>
 
-            <p className="text-slate-400 mt-1">
-              Campaigns with low or zero conversion efficiency
-            </p>
-          </div>
+          <ResponsiveContainer width="100%" height={400}>
 
-          <ResponsiveContainer width="100%" height={300}>
+            <LineChart
+              data={filteredTrends}
+            >
+
+              <CartesianGrid stroke="#1E293B" />
+
+              <XAxis
+                dataKey="date"
+                stroke="#94A3B8"
+              />
+
+              <YAxis stroke="#94A3B8" />
+
+              <Tooltip />
+
+              <Legend />
+
+              <Bar
+                dataKey="conversions"
+                fill="#10B981"
+              />
+
+              <Line
+                type="monotone"
+                dataKey="spend"
+                stroke="#6366F1"
+                strokeWidth={3}
+              />
+
+            </LineChart>
+
+          </ResponsiveContainer>
+
+        </div>
+
+        {/* FUNNEL */}
+
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6">
+
+          <h2 className="text-2xl font-bold mb-6">
+            Conversion Funnel
+          </h2>
+
+          <ResponsiveContainer width="100%" height={400}>
+
+            <FunnelChart>
+
+              <Tooltip />
+
+              <Funnel
+                dataKey="value"
+                data={funnelData}
+                isAnimationActive
+              />
+
+            </FunnelChart>
+
+          </ResponsiveContainer>
+
+        </div>
+
+      </div>
+
+      {/* ================================================= */}
+      {/* CAMPAIGN + KEYWORD */}
+      {/* ================================================= */}
+
+      <div className="grid grid-cols-1 2xl:grid-cols-2 gap-6 mb-8">
+
+        {/* CAMPAIGN */}
+
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6">
+
+          <h2 className="text-2xl font-bold mb-6">
+            Spend per Campaign
+          </h2>
+
+          <ResponsiveContainer width="100%" height={400}>
+
+            <BarChart
+              data={filteredCampaigns}
+            >
+
+              <CartesianGrid stroke="#1E293B" />
+
+              <XAxis
+                dataKey="campaign"
+                stroke="#94A3B8"
+              />
+
+              <YAxis stroke="#94A3B8" />
+
+              <Tooltip />
+
+              <Legend />
+
+              <Bar
+                dataKey="cost"
+                fill="#6366F1"
+              />
+
+              <Line
+                type="monotone"
+                dataKey="conversions"
+                stroke="#EF4444"
+              />
+
+            </BarChart>
+
+          </ResponsiveContainer>
+
+        </div>
+
+        {/* BUBBLE */}
+
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6">
+
+          <h2 className="text-2xl font-bold mb-6">
+            Keyword Intelligence
+          </h2>
+
+          <ResponsiveContainer width="100%" height={400}>
+
+            <ScatterChart>
+
+              <CartesianGrid stroke="#1E293B" />
+
+              <XAxis
+                type="number"
+                dataKey="avg_cpc"
+                stroke="#94A3B8"
+              />
+
+              <YAxis
+                type="number"
+                dataKey="conversion_rate"
+                stroke="#94A3B8"
+              />
+
+              <ZAxis
+                type="number"
+                dataKey="cost"
+                range={[60, 500]}
+              />
+
+              <Tooltip />
+
+              <Scatter
+                data={filteredKeywords}
+                fill="#10B981"
+              />
+
+            </ScatterChart>
+
+          </ResponsiveContainer>
+
+        </div>
+
+      </div>
+
+      {/* ================================================= */}
+      {/* PIE + WASTE */}
+      {/* ================================================= */}
+
+      <div className="grid grid-cols-1 2xl:grid-cols-2 gap-6 mb-8">
+
+        {/* PIE */}
+
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6">
+
+          <h2 className="text-2xl font-bold mb-6">
+            Campaign Distribution
+          </h2>
+
+          <ResponsiveContainer width="100%" height={400}>
+
+            <PieChart>
+
+              <Pie
+                data={filteredCampaigns}
+                dataKey="cost"
+                nameKey="campaign"
+                outerRadius={120}
+                label
+              >
+
+                {filteredCampaigns.map(
+                  (entry, index) => (
+
+                    <Cell
+                      key={index}
+                      fill={
+                        COLORS[
+                          index %
+                            COLORS.length
+                        ]
+                      }
+                    />
+
+                  )
+                )}
+
+              </Pie>
+
+              <Tooltip />
+
+            </PieChart>
+
+          </ResponsiveContainer>
+
+        </div>
+
+        {/* WASTE */}
+
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6">
+
+          <h2 className="text-2xl font-bold mb-6">
+            Waste Spend Analysis
+          </h2>
+
+          <ResponsiveContainer width="100%" height={400}>
+
             <BarChart
               data={filteredCampaigns.filter(
-                (c) => Number(c.conversions) <= 1
+                (c) =>
+                  Number(
+                    c.conversions
+                  ) <= 1
               )}
               layout="vertical"
             >
+
               <CartesianGrid stroke="#1E293B" />
 
-              <XAxis type="number" stroke="#94A3B8" />
+              <XAxis
+                type="number"
+                stroke="#94A3B8"
+              />
 
               <YAxis
                 dataKey="campaign"
@@ -534,95 +783,106 @@ export default function GoogleAdsDashboard() {
               <Bar
                 dataKey="cost"
                 fill="#EF4444"
-                radius={[0, 8, 8, 0]}
               />
+
             </BarChart>
+
           </ResponsiveContainer>
+
         </div>
 
-        {/* ================================================= */}
-        {/* CAMPAIGN TABLE */}
-        {/* ================================================= */}
+      </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 overflow-auto">
+      {/* ================================================= */}
+      {/* TABLE */}
+      {/* ================================================= */}
 
-          <div className="flex items-center justify-between mb-6">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 overflow-auto">
 
-            <div>
-              <h2 className="text-2xl font-bold">
-                Campaign Intelligence Table
-              </h2>
+        <h2 className="text-2xl font-bold mb-6">
+          Campaign Intelligence Table
+        </h2>
 
-              <p className="text-slate-400 mt-1">
-                Executive campaign ranking and recommendations
-              </p>
-            </div>
+        <table className="w-full min-w-[1200px]">
 
-            <select
-              value={selectedCampaign}
-              onChange={(e) =>
-                setSelectedCampaign(e.target.value)
-              }
-              className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-2"
-            >
-              <option>All</option>
+          <thead>
 
-              {campaigns.map((campaign, index) => (
-                <option
-                  key={index}
-                  value={campaign.campaign}
-                >
-                  {campaign.campaign}
-                </option>
-              ))}
-            </select>
-          </div>
+            <tr className="border-b border-slate-800 text-left text-slate-400">
 
-          <table className="w-full min-w-[1200px]">
-            <thead>
-              <tr className="border-b border-slate-800 text-slate-400 text-left">
-                <th className="pb-4">Campaign</th>
-                <th className="pb-4">Spend</th>
-                <th className="pb-4">Clicks</th>
-                <th className="pb-4">Conversions</th>
-                <th className="pb-4">Avg CPC</th>
-                <th className="pb-4">Performance Score</th>
-                <th className="pb-4">Recommendation</th>
-               </tr>
-            </thead>
+              <th className="pb-4">
+                Campaign
+              </th>
 
-            <tbody>
-              {filteredCampaigns.map((campaign, index) => {
+              <th className="pb-4">
+                Spend
+              </th>
 
-                const score = Math.min(
-                  100,
-                  (
-                    Number(campaign.conversions || 0) * 10 +
-                    Number(campaign.clicks || 0) / 10
-                  ).toFixed(0)
-                );
+              <th className="pb-4">
+                Clicks
+              </th>
 
-                let recommendation = "Monitor";
+              <th className="pb-4">
+                Conversions
+              </th>
 
-                if (score > 70) {
-                  recommendation = "Scale Campaign";
-                } else if (
-                  Number(campaign.conversions) === 0
+              <th className="pb-4">
+                Avg CPC
+              </th>
+
+              <th className="pb-4">
+                Recommendation
+              </th>
+
+            </tr>
+
+          </thead>
+
+          <tbody>
+
+            {filteredCampaigns.map(
+              (campaign, index) => {
+
+                let recommendation =
+                  "Monitor";
+
+                if (
+                  Number(
+                    campaign.conversions
+                  ) === 0
                 ) {
-                  recommendation = "Pause Campaign";
+
+                  recommendation =
+                    "Pause Campaign";
+
+                }
+
+                if (
+                  Number(
+                    campaign.conversions
+                  ) > 10
+                ) {
+
+                  recommendation =
+                    "Scale Campaign";
+
                 }
 
                 return (
+
                   <tr
                     key={index}
-                    className="border-b border-slate-800 hover:bg-slate-800/40"
+                    className="border-b border-slate-800"
                   >
-                    <td className="py-5 font-medium">
+
+                    <td className="py-5">
                       {campaign.campaign}
                     </td>
 
                     <td className="py-5">
-                      ₹{Number(campaign.cost).toLocaleString()}
+                      ₹
+                      {Number(
+                        campaign.cost
+                      ).toLocaleString()}
                     </td>
 
                     <td className="py-5">
@@ -630,49 +890,62 @@ export default function GoogleAdsDashboard() {
                     </td>
 
                     <td className="py-5">
-                      {campaign.conversions}
+                      {
+                        campaign.conversions
+                      }
                     </td>
 
                     <td className="py-5">
-                      ₹{Number(campaign.avg_cpc).toFixed(2)}
+                      ₹
+                      {Number(
+                        campaign.avg_cpc
+                      ).toFixed(2)}
                     </td>
 
                     <td className="py-5">
-                      <div className="w-full bg-slate-800 rounded-full h-3 overflow-hidden">
-                        <div
-                          className="h-full bg-indigo-500 rounded-full"
-                          style={{ width: `${score}%` }}
-                        />
-                      </div>
-                    </td>
 
-                    <td className="py-5">
                       <span className="px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 text-sm">
+
                         {recommendation}
+
                       </span>
+
                     </td>
+
                   </tr>
+
                 );
-              })}
-            </tbody>
-          </table>
-        </div>
+              }
+            )}
+
+          </tbody>
+
+        </table>
+
       </div>
-    </MainLayout>
+
+    </div>
   );
 }
 
-function KPI({ title, value, icon, color }) {
-  return (
-    <motion.div
-      whileHover={{ y: -5 }}
-      className="relative overflow-hidden rounded-3xl border border-slate-800 bg-slate-900 p-5"
-    >
-      <div className={`absolute inset-0 bg-gradient-to-br ${color} opacity-10`} />
+// ======================================================
+// KPI COMPONENT
+// ======================================================
 
-      <div className="relative z-10 flex items-center justify-between">
+function KPI({
+  title,
+  value,
+  icon,
+}) {
+
+  return (
+
+    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5">
+
+      <div className="flex items-center justify-between">
 
         <div>
+
           <p className="text-slate-400 text-sm">
             {title}
           </p>
@@ -680,16 +953,17 @@ function KPI({ title, value, icon, color }) {
           <h2 className="text-3xl font-bold mt-3">
             {value}
           </h2>
+
         </div>
 
-        <div className={`
-          w-14 h-14 rounded-2xl
-          bg-gradient-to-br ${color}
-          flex items-center justify-center
-        `}>
+        <div className="w-14 h-14 rounded-2xl bg-indigo-600 flex items-center justify-center">
+
           {icon}
+
         </div>
+
       </div>
-    </motion.div>
+
+    </div>
   );
 }
