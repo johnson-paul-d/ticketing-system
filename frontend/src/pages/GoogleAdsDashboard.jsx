@@ -10,19 +10,19 @@ import ExecutiveFilters from "../components/GoogleAds1/filters/ExecutiveFilters"
 import KPIGrid from "../components/GoogleAds1/kpis/KPIGrid";
 import ExecutiveScoreCard from "../components/GoogleAds1/kpis/ExecutiveScoreCard";
 
-import CampaignEfficiencyMatrix from "../components/googleAds1/charts/CampaignEfficiencyMatrix";
-import MatchTypeAnalytics from "../components/googleAds1/charts/MatchTypeAnalytics";
-import SpendTrendChart from "../components/googleAds1/charts/SpendTrendChart";
-import WasteSpendTrend from "../components/googleAds1/charts/WasteSpendTrend";
-import ForecastChart from "../components/googleAds1/charts/ForecastChart";
-import MomentumChart from "../components/googleAds1/charts/MomentumChart";
-import TemporalHeatmap from "../components/googleAds1/charts/TemporalHeatmap";
+import CampaignEfficiencyMatrix from "../components/GoogleAds1/charts/CampaignEfficiencyMatrix";
+import MatchTypeAnalytics from "../components/GoogleAds1/charts/MatchTypeAnalytics";
+import SpendTrendChart from "../components/GoogleAds1/charts/SpendTrendChart";
+import WasteSpendTrend from "../components/GoogleAds1/charts/WasteSpendTrend";
+import ForecastChart from "../components/GoogleAds1/charts/ForecastChart";
+import MomentumChart from "../components/GoogleAds1/charts/MomentumChart";
+import TemporalHeatmap from "../components/GoogleAds1/charts/TemporalHeatmap";
 
-import OpportunityTable from "../components/googleAds1/tables/OpportunityTable";
-import CampaignIntelligenceTable from "../components/googleAds1/tables/CampaignIntelligenceTable";
+import OpportunityTable from "../components/GoogleAds1/tables/OpportunityTable";
+import CampaignIntelligenceTable from "../components/GoogleAds1/tables/CampaignIntelligenceTable";
 
-import RecommendationPanel from "../components/googleAds1/insights/RecommendationPanel";
-import NarrativeSummary from "../components/googleAds1/insights/NarrativeSummary";
+import RecommendationPanel from "../components/GoogleAds1/insights/RecommendationPanel";
+import NarrativeSummary from "../components/GoogleAds1/insights/NarrativeSummary";
 
 export default function GoogleAdsDashboard() {
 
