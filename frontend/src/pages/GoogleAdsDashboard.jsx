@@ -5,24 +5,24 @@ import MainLayout from "../layouts/MainLayout";
 import useGoogleAdsData from "../hooks/useGoogleAdsData";
 import useExecutiveMetrics from "../hooks/useExecutiveMetrics";
 
-import ExecutiveFilters from "../components/googleAds/filters/ExecutiveFilters";
+import ExecutiveFilters from "../components/GoogleAds1/filters/ExecutiveFilters";
 
-import KPIGrid from "../components/googleAds/kpis/KPIGrid";
-import ExecutiveScoreCard from "../components/googleAds/kpis/ExecutiveScoreCard";
+import KPIGrid from "../components/GoogleAds1/kpis/KPIGrid";
+import ExecutiveScoreCard from "../components/GoogleAds1/kpis/ExecutiveScoreCard";
 
-import CampaignEfficiencyMatrix from "../components/googleAds/charts/CampaignEfficiencyMatrix";
-import MatchTypeAnalytics from "../components/googleAds/charts/MatchTypeAnalytics";
-import SpendTrendChart from "../components/googleAds/charts/SpendTrendChart";
-import WasteSpendTrend from "../components/googleAds/charts/WasteSpendTrend";
-import ForecastChart from "../components/googleAds/charts/ForecastChart";
-import MomentumChart from "../components/googleAds/charts/MomentumChart";
-import TemporalHeatmap from "../components/googleAds/charts/TemporalHeatmap";
+import CampaignEfficiencyMatrix from "../components/googleAds1/charts/CampaignEfficiencyMatrix";
+import MatchTypeAnalytics from "../components/googleAds1/charts/MatchTypeAnalytics";
+import SpendTrendChart from "../components/googleAds1/charts/SpendTrendChart";
+import WasteSpendTrend from "../components/googleAds1/charts/WasteSpendTrend";
+import ForecastChart from "../components/googleAds1/charts/ForecastChart";
+import MomentumChart from "../components/googleAds1/charts/MomentumChart";
+import TemporalHeatmap from "../components/googleAds1/charts/TemporalHeatmap";
 
-import OpportunityTable from "../components/googleAds/tables/OpportunityTable";
-import CampaignIntelligenceTable from "../components/googleAds/tables/CampaignIntelligenceTable";
+import OpportunityTable from "../components/googleAds1/tables/OpportunityTable";
+import CampaignIntelligenceTable from "../components/googleAds1/tables/CampaignIntelligenceTable";
 
-import RecommendationPanel from "../components/googleAds/insights/RecommendationPanel";
-import NarrativeSummary from "../components/googleAds/insights/NarrativeSummary";
+import RecommendationPanel from "../components/googleAds1/insights/RecommendationPanel";
+import NarrativeSummary from "../components/googleAds1/insights/NarrativeSummary";
 
 export default function GoogleAdsDashboard() {
 
