@@ -11,7 +11,7 @@ import {
 } from "recharts";
 
 export default function MatchTypeAnalytics({
-  keywords,
+  keywords = [],
 }) {
 
   // =====================================================

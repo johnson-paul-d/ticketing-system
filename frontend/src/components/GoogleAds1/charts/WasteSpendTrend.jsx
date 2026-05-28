@@ -11,7 +11,7 @@ import {
 } from "recharts";
 
 export default function MatchTypeAnalytics({
-  keywords,
+  keywords = [],
 }) {
 
   // =====================================================
@@ -20,7 +20,7 @@ export default function MatchTypeAnalytics({
 
   const grouped = {};
 
-  keywords.forEach((keyword) => {
+ (keywords || []).forEach((keyword) => {
 
     const matchType =
       keyword.match_type || "UNKNOWN";
