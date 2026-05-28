@@ -80,17 +80,57 @@ export default function GoogleAdsDashboard() {
       setLoading(false);
     }
   };
-  
 
-  const filteredCampaigns = useMemo(() => {
-    if (selectedCampaign === "All") {
-      return campaigns;
+  // ========== FILTERED TRENDS (Date + Campaign) ==========
+  const filteredTrends = useMemo(() => {
+    let filtered = [...trends];
+
+    // DATE FILTER
+    if (dateRange === "7d") {
+      filtered = filtered.slice(-7);
+    } else if (dateRange === "30d") {
+      filtered = filtered.slice(-30);
+    } else if (dateRange === "90d") {
+      filtered = filtered.slice(-90);
+    } else if (dateRange === "365d") {
+      filtered = filtered.slice(-365);
     }
 
-    return campaigns.filter(
-      (c) => c.campaign === selectedCampaign
-    );
+    // CAMPAIGN FILTER
+    if (selectedCampaign !== "All") {
+      filtered = filtered.filter(
+        (item) => item.campaign === selectedCampaign
+      );
+    }
+
+    return filtered;
+  }, [trends, dateRange, selectedCampaign]);
+
+  // ========== FILTERED CAMPAIGNS ==========
+  const filteredCampaigns = useMemo(() => {
+    let filtered = [...campaigns];
+
+    if (selectedCampaign !== "All") {
+      filtered = filtered.filter(
+        (c) => c.campaign === selectedCampaign
+      );
+    }
+
+    return filtered;
   }, [campaigns, selectedCampaign]);
+
+  // ========== FILTERED KEYWORDS ==========
+  const filteredKeywords = useMemo(() => {
+    let filtered = [...keywords];
+
+    if (selectedCampaign !== "All") {
+      filtered = filtered.filter(
+        (k) => k.campaign === selectedCampaign
+      );
+    }
+
+    return filtered;
+  }, [keywords, selectedCampaign]);
 
   const wasteSpend = useMemo(() => {
     return campaigns
@@ -299,7 +339,7 @@ export default function GoogleAdsDashboard() {
 
         <div className="grid grid-cols-1 2xl:grid-cols-3 gap-6">
 
-          {/* TREND CHART */}
+          {/* TREND CHART - USING FILTERED TRENDS */}
 
           <div className="2xl:col-span-2 bg-slate-900 border border-slate-800 rounded-3xl p-6">
 
@@ -314,7 +354,7 @@ export default function GoogleAdsDashboard() {
             </div>
 
             <ResponsiveContainer width="100%" height={400}>
-              <LineChart data={trends}>
+              <LineChart data={filteredTrends}>
                 <CartesianGrid stroke="#1E293B" />
 
                 <XAxis dataKey="date" stroke="#94A3B8" />
@@ -373,7 +413,7 @@ export default function GoogleAdsDashboard() {
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
 
-          {/* CAMPAIGN DISTRIBUTION */}
+          {/* CAMPAIGN DISTRIBUTION - USING FILTERED CAMPAIGNS */}
 
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6">
 
@@ -386,13 +426,13 @@ export default function GoogleAdsDashboard() {
             <ResponsiveContainer width="100%" height={350}>
               <PieChart>
                 <Pie
-                  data={campaigns}
+                  data={filteredCampaigns}
                   dataKey="cost"
                   nameKey="campaign"
                   outerRadius={120}
                   label
                 >
-                  {campaigns.map((entry, index) => (
+                  {filteredCampaigns.map((entry, index) => (
                     <Cell
                       key={index}
                       fill={COLORS[index % COLORS.length]}
@@ -405,7 +445,7 @@ export default function GoogleAdsDashboard() {
             </ResponsiveContainer>
           </div>
 
-          {/* KEYWORD MATRIX */}
+          {/* KEYWORD MATRIX - USING FILTERED KEYWORDS */}
 
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6">
 
@@ -447,7 +487,7 @@ export default function GoogleAdsDashboard() {
 
                 <Scatter
                   name="Keywords"
-                  data={keywords}
+                  data={filteredKeywords}
                   fill="#6366F1"
                 />
               </ScatterChart>
@@ -456,7 +496,7 @@ export default function GoogleAdsDashboard() {
         </div>
 
         {/* ================================================= */}
-        {/* WASTE ANALYSIS */}
+        {/* WASTE ANALYSIS - USING FILTERED CAMPAIGNS */}
         {/* ================================================= */}
 
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6">
@@ -473,7 +513,7 @@ export default function GoogleAdsDashboard() {
 
           <ResponsiveContainer width="100%" height={300}>
             <BarChart
-              data={campaigns.filter(
+              data={filteredCampaigns.filter(
                 (c) => Number(c.conversions) <= 1
               )}
               layout="vertical"
@@ -548,7 +588,7 @@ export default function GoogleAdsDashboard() {
                 <th className="pb-4">Avg CPC</th>
                 <th className="pb-4">Performance Score</th>
                 <th className="pb-4">Recommendation</th>
-              </tr>
+               </tr>
             </thead>
 
             <tbody>
