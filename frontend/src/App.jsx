@@ -105,6 +105,11 @@ function App() {
   element={<AdminAnalytics />}
 />
 
+<Route
+  path="/google-ads"
+  element={<GoogleAdsDashboard />}
+/>
+
         <Route
           path="/timeline"
           element={
