@@ -80,6 +80,7 @@ export default function GoogleAdsDashboard() {
       setLoading(false);
     }
   };
+  
 
   const filteredCampaigns = useMemo(() => {
     if (selectedCampaign === "All") {

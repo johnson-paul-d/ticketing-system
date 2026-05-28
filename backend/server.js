@@ -17,7 +17,7 @@ const permissionRoutes = require("./routes/permissionRoutes");
 const timeEntryRoutes =
   require("./routes/timeEntries");
 const salesforceRoutes = require("./routes/salesforce");
-const googleAdsRoutes = require("./routes/googleAdsDashboard");
+const googleAdsRoutes = require("./routes/googleAds");
 
 app.use(express.json());
 
