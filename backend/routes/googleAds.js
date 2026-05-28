@@ -8,7 +8,7 @@ const auth = require("../middleware/auth");
 // GOOGLE ADS OVERVIEW
 // =====================================================
 
-router.get("/overview", auth, async (req, res) => {
+router.get("/overview", async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("google_ads_campaign_analysis")
@@ -192,6 +192,7 @@ router.get("/keywords", async (req, res) => {
     }
 
     const keywords = data.map((row) => ({
+  campaign: row.campaign,
       keyword: row.keyword,
       avg_cpc: Number(row.avg_cpc || 0),
       conversion_rate:
