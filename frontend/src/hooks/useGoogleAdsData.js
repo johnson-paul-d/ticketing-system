@@ -10,7 +10,7 @@ import {
 export default function useGoogleAdsData() {
 
   const [overview, setOverview] =
-    useState(null);
+    useState({});
 
   const [campaigns, setCampaigns] =
     useState([]);
@@ -48,17 +48,41 @@ export default function useGoogleAdsData() {
         getTrends(),
       ]);
 
-      setOverview(overviewData);
+      console.log({
+        overviewData,
+        campaignData,
+        keywordData,
+        trendData,
+      });
 
-      setCampaigns(campaignData);
+      setOverview(
+        overviewData || {}
+      );
 
-      setKeywords(keywordData);
+      setCampaigns(
+        Array.isArray(campaignData)
+          ? campaignData
+          : campaignData?.data || []
+      );
 
-      setTrends(trendData);
+      setKeywords(
+        Array.isArray(keywordData)
+          ? keywordData
+          : keywordData?.data || []
+      );
+
+      setTrends(
+        Array.isArray(trendData)
+          ? trendData
+          : trendData?.data || []
+      );
 
     } catch (err) {
 
-      console.error(err);
+      console.error(
+        "Google Ads Fetch Error:",
+        err
+      );
 
     } finally {
 
