@@ -17,7 +17,7 @@ const permissionRoutes = require("./routes/permissionRoutes");
 const timeEntryRoutes =
   require("./routes/timeEntries");
 const salesforceRoutes = require("./routes/salesforce");
-const googleAdsRoutes = require("./routes/googleAds");
+const googleAdsRoutes = require("./routes/googleAdsDashboard");
 
 app.use(express.json());
 
@@ -25,7 +25,7 @@ app.use(express.text());
 
 app.use(express.urlencoded({ extended: true }));
 
-// Allowed origins – add your Vercel frontend URL
+// Allowed origins – add your Vercel frontend URL 
 const allowedOrigins = [
   process.env.FRONTEND_URL,
   'https://mktg-ticketing-system.vercel.app',
