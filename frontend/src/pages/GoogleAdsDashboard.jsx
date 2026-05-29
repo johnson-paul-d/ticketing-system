@@ -35,16 +35,32 @@ export default function GoogleAdsDashboard() {
     loading,
   } = useGoogleAdsData();
 
+  // DEBUG LOGS (temporary)
+  console.log("Raw Campaign Rows", rawCampaigns?.length || 0);
+
   // =====================================================
   // FILTERS
   // =====================================================
   const [filters, setFilters] = useState({
     campaign: "All",
-    dateRange: "30d",   // "7d", "30d", "90d"
+    dateRange: "all",   // "all", "7d", "30d", "90d"
     matchType: "All",
     performanceTier: "All",
     keywordSearch: "",
   });
+
+  // =====================================================
+  // CLEAR FILTERS
+  // =====================================================
+  const clearFilters = () => {
+    setFilters({
+      campaign: "All",
+      dateRange: "all",
+      matchType: "All",
+      performanceTier: "All",
+      keywordSearch: "",
+    });
+  };
 
   // =====================================================
   // UNIQUE CAMPAIGNS FOR FILTER DROPDOWN (from raw data)
@@ -59,16 +75,21 @@ export default function GoogleAdsDashboard() {
 
   // =====================================================
   // 1. DATE FILTERING (relative to LATEST date in dataset)
+  //    Supports "all" – no date cut-off
   // =====================================================
   const { dateFilteredRows, cutoffDate } = useMemo(() => {
+    if (filters.dateRange === "all") {
+      return {
+        dateFilteredRows: rawCampaigns,
+        cutoffDate: null,
+      };
+    }
+
     // Find the latest report_date in rawCampaigns
     const latestDate = new Date(
-      Math.max(
-        ...rawCampaigns.map((r) => new Date(r.report_date).getTime())
-      )
+      Math.max(...rawCampaigns.map((r) => new Date(r.report_date).getTime()))
     );
 
-    // Determine number of days based on filter
     const days =
       filters.dateRange === "7d"
         ? 7
@@ -79,7 +100,6 @@ export default function GoogleAdsDashboard() {
     const cutoff = new Date(latestDate);
     cutoff.setDate(cutoff.getDate() - days);
 
-    // Filter rows where report_date >= cutoff
     const filtered = rawCampaigns.filter((row) => {
       if (!row.report_date) return false;
       const reportDate = new Date(row.report_date);
@@ -88,6 +108,8 @@ export default function GoogleAdsDashboard() {
 
     return { dateFilteredRows: filtered, cutoffDate: cutoff };
   }, [rawCampaigns, filters.dateRange]);
+
+  console.log("Date Filtered Rows", dateFilteredRows.length);
 
   // =====================================================
   // 2. CAMPAIGN FILTERING (applied on date-filtered rows)
@@ -100,6 +122,8 @@ export default function GoogleAdsDashboard() {
       (row) => row.campaign === filters.campaign
     );
   }, [dateFilteredRows, filters.campaign]);
+
+  console.log("Campaign Filtered Rows", campaignFilteredRows.length);
 
   // =====================================================
   // 3. AGGREGATION (group by campaign → summed metrics)
@@ -131,6 +155,8 @@ export default function GoogleAdsDashboard() {
     return Array.from(campaignMap.values());
   }, [campaignFilteredRows]);
 
+  console.log("Aggregated Campaigns", aggregatedCampaigns.length);
+
   // =====================================================
   // 4. DASHBOARD KPIs (sum of all filtered rows)
   // =====================================================
@@ -156,16 +182,23 @@ export default function GoogleAdsDashboard() {
   }, [campaignFilteredRows]);
 
   // =====================================================
-  // 5. FILTERED TRENDS (using same cutoffDate)
+  // 5. FILTERED TRENDS (using same cutoffDate – handles null = all)
   // =====================================================
   const filteredTrends = useMemo(() => {
     if (!rawTrends) return [];
+
+    if (!cutoffDate) {
+      return rawTrends;
+    }
+
     return rawTrends.filter((t) => {
       if (!t.report_date) return false;
       const trendDate = new Date(t.report_date);
       return trendDate >= cutoffDate;
     });
   }, [rawTrends, cutoffDate]);
+
+  console.log("Filtered Trends", filteredTrends.length);
 
   // =====================================================
   // 6. EXECUTIVE METRICS (uses aggregated campaigns & overview)
@@ -193,14 +226,6 @@ export default function GoogleAdsDashboard() {
       return true;
     });
   }, [keywords, filters.matchType, filters.keywordSearch]);
-
-  // =====================================================
-  // DEBUGGING (optional)
-  // =====================================================
-  console.log("Dashboard KPI", dashboardOverview);
-  console.log("Aggregated campaigns", aggregatedCampaigns.length);
-  console.log("Filtered trends length", filteredTrends.length);
-  console.log("Keyword Count", filteredKeywords.length);
 
   // =====================================================
   // LOADING
@@ -249,10 +274,11 @@ export default function GoogleAdsDashboard() {
           </div>
         </div>
 
-        {/* FILTERS – using unique campaigns from raw data */}
+        {/* FILTERS – using unique campaigns from raw data, with clearFilters */}
         <ExecutiveFilters
           filters={filters}
           setFilters={setFilters}
+          clearFilters={clearFilters}
           campaigns={uniqueCampaignsForFilter}
         />
 
