@@ -490,6 +490,24 @@ export default function GoogleAdsDashboard() {
     rows: campaignFilteredRows,
   });
 
+  // ======================= NEW KPI COMPUTATIONS =======================
+  const totalCampaigns = aggregatedCampaigns.length;
+  const activeCampaigns = aggregatedCampaigns.filter(
+    c => Number(c.cost || 0) > 0
+  ).length;
+  const activeCampaignRate =
+    totalCampaigns > 0
+      ? (activeCampaigns / totalCampaigns) * 100
+      : 0;
+  const conversionEfficiency =
+    Number(dashboardOverview?.totalSpend || 0) > 0
+      ? (
+          Number(dashboardOverview?.totalConversions || 0) /
+          Number(dashboardOverview?.totalSpend || 0)
+        ) * 1000
+      : 0;
+  const campaignHealth = performanceScore;
+
   // ═══════════════════════════════════════════════════════════════════════════
   // KEYWORD FILTERING (normalized campaign matching)
   // ═══════════════════════════════════════════════════════════════════════════
@@ -630,7 +648,6 @@ export default function GoogleAdsDashboard() {
     ...(directorCampaigns || []).map((c) => Number(c.cost || 0)),
     1
   );
-  const totalCampaigns = adv.totalCampaigns;
 
   const budgetAllocationData = useMemo(() => {
     const totalSpend = dashboardOverview.totalSpend;
@@ -899,8 +916,17 @@ export default function GoogleAdsDashboard() {
           hasActiveFilters={hasActiveDirectorFilters}
         />
 
-        {/* Original KPI Grid */}
-        <KPIGrid overview={dashboardOverview} wasteSpend={wasteSpend} zeroConversionDays={zeroConversionDays} />
+        {/* UPDATED KPI Grid with new props */}
+        <KPIGrid
+          overview={dashboardOverview}
+          wasteSpend={wasteSpend}
+          zeroConversionDays={zeroConversionDays}
+          activeCampaignRate={activeCampaignRate}
+          conversionEfficiency={conversionEfficiency}
+          campaignHealth={campaignHealth}
+          activeCampaigns={activeCampaigns}
+          totalCampaigns={totalCampaigns}
+        />
 
         {/* Director Insights Row - responsive grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
@@ -1021,7 +1047,7 @@ export default function GoogleAdsDashboard() {
                   <th className="text-right px-4 py-3 font-semibold">CPC</th>
                   <th className="px-5 py-3 font-semibold">Spend</th>
                   <th className="text-center px-4 py-3 font-semibold">Health</th>
-                 </tr>
+                </tr>
               </thead>
               <tbody>
                 {directorCampaigns.length === 0 ? (
@@ -1088,7 +1114,7 @@ export default function GoogleAdsDashboard() {
                   <th className="text-right px-4 py-3 font-semibold">Spend Share</th>
                   <th className="text-right px-4 py-3 font-semibold">Conv Share</th>
                   <th className="px-5 py-3 font-semibold">Efficiency Gap</th>
-                 </tr>
+                </table>
               </thead>
               <tbody>
                 {budgetAllocationData.slice(0, 10).map((c) => {
@@ -1156,7 +1182,13 @@ export default function GoogleAdsDashboard() {
               />
             </div>
           </div>
-          <ExecutiveScoreCard score={performanceScore} />
+          {/* UPDATED ExecutiveScoreCard with new props */}
+          <ExecutiveScoreCard
+            score={performanceScore}
+            efficiencyIndex={conversionEfficiency.toFixed(1)}
+            activeRate={activeCampaignRate.toFixed(0)}
+            wasteSpend={wasteSpend}
+          />
         </div>
 
         {/* Campaign Efficiency Matrix */}
