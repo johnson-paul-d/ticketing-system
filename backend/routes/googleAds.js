@@ -80,7 +80,7 @@ router.get("/overview", async (req, res) => {
 });
 
 // =====================================================
-// TRENDS API - FIXED: returns report_date and cost
+// TRENDS API - returns report_date and cost (grouped by date)
 // =====================================================
 
 router.get("/trends", async (req, res) => {
@@ -91,7 +91,6 @@ router.get("/trends", async (req, res) => {
       .order("report_date", { ascending: true })
       .range(0, 5000);
 
-    // ADDED: log number of rows returned
     console.log("Trend rows returned:", data?.length);
 
     if (error) {
@@ -127,7 +126,7 @@ router.get("/trends", async (req, res) => {
 });
 
 // =====================================================
-// CAMPAIGNS API - MODIFIED: returns raw rows ordered by report_date
+// CAMPAIGNS API - groups by report_date + campaign
 // =====================================================
 
 router.get("/campaigns", async (req, res) => {
@@ -138,7 +137,6 @@ router.get("/campaigns", async (req, res) => {
       .order("report_date", { ascending: true })
       .range(0, 5000);
 
-    // ADDED: log number of rows returned
     console.log("Campaign rows returned:", data?.length);
 
     if (error) {
@@ -148,7 +146,30 @@ router.get("/campaigns", async (req, res) => {
       });
     }
 
-    res.json(data);
+    // Group by report_date + campaign
+    const grouped = {};
+
+    data.forEach((row) => {
+      const key = `${row.report_date}_${row.campaign}`;
+
+      if (!grouped[key]) {
+        grouped[key] = {
+          report_date: row.report_date,
+          campaign: row.campaign,
+          cost: 0,
+          conversions: 0,
+          clicks: 0,
+          impressions: 0,
+        };
+      }
+
+      grouped[key].cost += Number(row.cost || 0);
+      grouped[key].clicks += Number(row.clicks || 0);
+      grouped[key].impressions += Number(row.impressions || 0);
+      grouped[key].conversions += Number(row.conversions || 0);
+    });
+
+    res.json(Object.values(grouped));
   } catch (err) {
     console.error(err);
     res.status(500).json({
@@ -158,7 +179,7 @@ router.get("/campaigns", async (req, res) => {
 });
 
 // =====================================================
-// KEYWORDS API - FIXED: adds missing fields
+// KEYWORDS API - adds computed conversion_rate
 // =====================================================
 
 router.get("/keywords", async (req, res) => {
