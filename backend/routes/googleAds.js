@@ -88,9 +88,11 @@ router.get("/trends", async (req, res) => {
     const { data, error } = await supabase
       .from("google_ads_campaign_analysis")
       .select("*")
-      .order("report_date", {
-        ascending: true,
-      });
+      .order("report_date", { ascending: true })
+      .range(0, 5000);
+
+    // ADDED: log number of rows returned
+    console.log("Trend rows returned:", data?.length);
 
     if (error) {
       throw error;
@@ -103,14 +105,14 @@ router.get("/trends", async (req, res) => {
 
       if (!grouped[date]) {
         grouped[date] = {
-          report_date: date,      // changed from 'date'
-          cost: 0,                // changed from 'spend'
+          report_date: date,
+          cost: 0,
           conversions: 0,
           clicks: 0,
         };
       }
 
-      grouped[date].cost += Number(row.cost || 0);           // changed from spend
+      grouped[date].cost += Number(row.cost || 0);
       grouped[date].conversions += Number(row.conversions || 0);
       grouped[date].clicks += Number(row.clicks || 0);
     });
@@ -133,7 +135,11 @@ router.get("/campaigns", async (req, res) => {
     const { data, error } = await supabase
       .from("google_ads_campaign_analysis")
       .select("*")
-      .order("report_date", { ascending: true });
+      .order("report_date", { ascending: true })
+      .range(0, 5000);
+
+    // ADDED: log number of rows returned
+    console.log("Campaign rows returned:", data?.length);
 
     if (error) {
       return res.status(500).json({
@@ -152,7 +158,7 @@ router.get("/campaigns", async (req, res) => {
 });
 
 // =====================================================
-// KEYWORDS API - FIXED: adds missing fields (match_type, clicks, impressions, conversions)
+// KEYWORDS API - FIXED: adds missing fields
 // =====================================================
 
 router.get("/keywords", async (req, res) => {
@@ -168,13 +174,13 @@ router.get("/keywords", async (req, res) => {
     const keywords = data.map((row) => ({
       campaign: row.campaign,
       keyword: row.keyword,
-      match_type: row.match_type || "UNKNOWN",           // added match_type
-      clicks: Number(row.clicks || 0),                   // added clicks
-      impressions: Number(row.impressions || 0),         // added impressions
-      conversions: Number(row.conversions || 0),         // added conversions
-      cost: Number(row.cost || 0),                       // added cost
-      avg_cpc: Number(row.avg_cpc || 0),                 // added avg_cpc
-      conversion_rate:                                   // added conversion_rate
+      match_type: row.match_type || "UNKNOWN",
+      clicks: Number(row.clicks || 0),
+      impressions: Number(row.impressions || 0),
+      conversions: Number(row.conversions || 0),
+      cost: Number(row.cost || 0),
+      avg_cpc: Number(row.avg_cpc || 0),
+      conversion_rate:
         Number(row.clicks || 0) > 0
           ? (Number(row.conversions || 0) / Number(row.clicks || 0)) * 100
           : 0,
