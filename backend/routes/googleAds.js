@@ -80,7 +80,7 @@ router.get("/overview", async (req, res) => {
 });
 
 // =====================================================
-// TRENDS API
+// TRENDS API - FIXED: returns report_date and cost
 // =====================================================
 
 router.get("/trends", async (req, res) => {
@@ -103,14 +103,14 @@ router.get("/trends", async (req, res) => {
 
       if (!grouped[date]) {
         grouped[date] = {
-          date,
-          spend: 0,
+          report_date: date,      // changed from 'date'
+          cost: 0,                // changed from 'spend'
           conversions: 0,
           clicks: 0,
         };
       }
 
-      grouped[date].spend += Number(row.cost || 0);
+      grouped[date].cost += Number(row.cost || 0);           // changed from spend
       grouped[date].conversions += Number(row.conversions || 0);
       grouped[date].clicks += Number(row.clicks || 0);
     });
@@ -125,7 +125,7 @@ router.get("/trends", async (req, res) => {
 });
 
 // =====================================================
-// CAMPAIGNS API
+// CAMPAIGNS API - FIXED: adds impressions, ctr, conversion_rate
 // =====================================================
 
 router.get("/campaigns", async (req, res) => {
@@ -148,6 +148,7 @@ router.get("/campaigns", async (req, res) => {
           campaign,
           cost: 0,
           clicks: 0,
+          impressions: 0,        // added impressions
           conversions: 0,
           avg_cpc: 0,
           rows: 0,
@@ -156,17 +157,36 @@ router.get("/campaigns", async (req, res) => {
 
       grouped[campaign].cost += Number(row.cost || 0);
       grouped[campaign].clicks += Number(row.clicks || 0);
+      grouped[campaign].impressions += Number(row.impressions || 0); // sum impressions
       grouped[campaign].conversions += Number(row.conversions || 0);
       grouped[campaign].avg_cpc += Number(row.avg_cpc || 0);
       grouped[campaign].rows += 1;
     });
 
-    const result = Object.values(grouped)
-      .map((item) => ({
-        ...item,
+    const result = Object.values(grouped).map((item) => {
+      // calculate CTR
+      const ctr =
+        item.impressions > 0
+          ? item.clicks / item.impressions
+          : 0;
+
+      // calculate conversion rate (as percentage)
+      const conversion_rate =
+        item.clicks > 0
+          ? (item.conversions / item.clicks) * 100
+          : 0;
+
+      return {
+        campaign: item.campaign,
+        cost: item.cost,
+        clicks: item.clicks,
+        impressions: item.impressions,
+        conversions: item.conversions,
         avg_cpc: item.avg_cpc / item.rows,
-      }))
-      .sort((a, b) => b.cost - a.cost);
+        ctr,                 // added
+        conversion_rate,     // added
+      };
+    }).sort((a, b) => b.cost - a.cost);
 
     res.json(result);
   } catch (err) {
@@ -178,7 +198,7 @@ router.get("/campaigns", async (req, res) => {
 });
 
 // =====================================================
-// KEYWORDS API
+// KEYWORDS API - FIXED: adds missing fields (match_type, clicks, impressions, conversions)
 // =====================================================
 
 router.get("/keywords", async (req, res) => {
@@ -192,14 +212,18 @@ router.get("/keywords", async (req, res) => {
     }
 
     const keywords = data.map((row) => ({
-  campaign: row.campaign,
+      campaign: row.campaign,
       keyword: row.keyword,
-      avg_cpc: Number(row.avg_cpc || 0),
-      conversion_rate:
-        Number(row.conversions || 0) > 0 && Number(row.clicks || 0) > 0
-          ? (Number(row.conversions) / Number(row.clicks)) * 100
+      match_type: row.match_type || "UNKNOWN",           // added match_type
+      clicks: Number(row.clicks || 0),                   // added clicks
+      impressions: Number(row.impressions || 0),         // added impressions
+      conversions: Number(row.conversions || 0),         // added conversions
+      cost: Number(row.cost || 0),                       // added cost
+      avg_cpc: Number(row.avg_cpc || 0),                 // added avg_cpc
+      conversion_rate:                                   // added conversion_rate
+        Number(row.clicks || 0) > 0
+          ? (Number(row.conversions || 0) / Number(row.clicks || 0)) * 100
           : 0,
-      cost: Number(row.cost || 0),
     }));
 
     res.json(keywords);
