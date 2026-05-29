@@ -125,74 +125,28 @@ router.get("/trends", async (req, res) => {
 });
 
 // =====================================================
-// CAMPAIGNS API - FIXED: adds impressions, ctr, conversion_rate
+// CAMPAIGNS API - MODIFIED: returns raw rows ordered by report_date
 // =====================================================
 
 router.get("/campaigns", async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("google_ads_campaign_analysis")
-      .select("*");
+      .select("*")
+      .order("report_date", { ascending: true });
 
     if (error) {
-      throw error;
+      return res.status(500).json({
+        message: "Failed to fetch campaigns",
+        error,
+      });
     }
 
-    const grouped = {};
-
-    data.forEach((row) => {
-      const campaign = row.campaign;
-
-      if (!grouped[campaign]) {
-        grouped[campaign] = {
-          campaign,
-          cost: 0,
-          clicks: 0,
-          impressions: 0,        // added impressions
-          conversions: 0,
-          avg_cpc: 0,
-          rows: 0,
-        };
-      }
-
-      grouped[campaign].cost += Number(row.cost || 0);
-      grouped[campaign].clicks += Number(row.clicks || 0);
-      grouped[campaign].impressions += Number(row.impressions || 0); // sum impressions
-      grouped[campaign].conversions += Number(row.conversions || 0);
-      grouped[campaign].avg_cpc += Number(row.avg_cpc || 0);
-      grouped[campaign].rows += 1;
-    });
-
-    const result = Object.values(grouped).map((item) => {
-      // calculate CTR
-      const ctr =
-        item.impressions > 0
-          ? item.clicks / item.impressions
-          : 0;
-
-      // calculate conversion rate (as percentage)
-      const conversion_rate =
-        item.clicks > 0
-          ? (item.conversions / item.clicks) * 100
-          : 0;
-
-      return {
-        campaign: item.campaign,
-        cost: item.cost,
-        clicks: item.clicks,
-        impressions: item.impressions,
-        conversions: item.conversions,
-        avg_cpc: item.avg_cpc / item.rows,
-        ctr,                 // added
-        conversion_rate,     // added
-      };
-    }).sort((a, b) => b.cost - a.cost);
-
-    res.json(result);
+    res.json(data);
   } catch (err) {
     console.error(err);
     res.status(500).json({
-      message: "Server Error",
+      message: "Server error",
     });
   }
 });

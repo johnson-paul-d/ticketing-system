@@ -10,30 +10,31 @@ import {
 } from "recharts";
 
 export default function MomentumChart({
-  campaigns,
+  campaigns = [],
 }) {
 
-  const data = (campaigns || []).map((c) => {
+  const data = campaigns.map((campaign) => {
 
-    const current =
-      Number(c.conversions || 0);
+    const clicks =
+      Number(campaign.clicks || 0);
 
-    const previous =
-      Math.max(
-        1,
-        current - Math.random() * 5
-      );
+    const conversions =
+      Number(campaign.conversions || 0);
 
-    const momentum =
-      ((current - previous) / previous) *
-      100;
+    const conversionRate =
+      clicks > 0
+        ? (conversions / clicks) * 100
+        : 0;
 
     return {
+      campaign:
+        campaign.campaign ||
+        "Unknown",
 
-      campaign: c.campaign,
       momentum:
-        Number(momentum.toFixed(1)),
-
+        Number(
+          conversionRate.toFixed(2)
+        ),
     };
   });
 
@@ -47,16 +48,19 @@ export default function MomentumChart({
     ">
 
       <h2 className="
-        text-2xl font-bold
-        text-white mb-2
+        text-2xl
+        font-bold
+        text-white
+        mb-2
       ">
         Campaign Momentum
       </h2>
 
       <p className="
-        text-slate-400 mb-6
+        text-slate-400
+        mb-6
       ">
-        Growth acceleration analysis
+        Conversion rate performance by campaign
       </p>
 
       <ResponsiveContainer
@@ -64,7 +68,9 @@ export default function MomentumChart({
         height={350}
       >
 
-        <BarChart data={data}>
+        <BarChart
+          data={data}
+        >
 
           <CartesianGrid
             stroke="#1E293B"
@@ -77,27 +83,39 @@ export default function MomentumChart({
 
           <YAxis
             stroke="#94A3B8"
+            tickFormatter={(v) =>
+              `${v}%`
+            }
           />
 
-          <Tooltip />
+          <Tooltip
+            formatter={(value) => [
+              `${value}%`,
+              "Conversion Rate",
+            ]}
+          />
 
           <Bar
             dataKey="momentum"
             radius={[8, 8, 0, 0]}
           >
 
-            {data.map((entry, index) => (
+            {data.map(
+              (entry, index) => (
 
-              <Cell
-                key={index}
-                fill={
-                  entry.momentum > 0
-                    ? "#10B981"
-                    : "#EF4444"
-                }
-              />
+                <Cell
+                  key={index}
+                  fill={
+                    entry.momentum >= 3
+                      ? "#10B981"
+                      : entry.momentum >= 1
+                      ? "#F59E0B"
+                      : "#EF4444"
+                  }
+                />
 
-            ))}
+              )
+            )}
 
           </Bar>
 
@@ -106,5 +124,6 @@ export default function MomentumChart({
       </ResponsiveContainer>
 
     </div>
+
   );
 }
