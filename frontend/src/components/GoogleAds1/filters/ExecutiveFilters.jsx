@@ -2,12 +2,16 @@ export default function ExecutiveFilters({
   filters,
   setFilters,
   campaigns,
+  availableYears,
+  months,
 }) {
 
   const uniqueCampaigns = [
     "All",
     ...new Set(
-      (campaigns || []).map((c) => c.campaign)
+      (campaigns || []).map(
+        (c) => c.campaign
+      )
     ),
   ];
 
@@ -39,15 +43,11 @@ export default function ExecutiveFilters({
           text-white
         "
       >
-
         {uniqueCampaigns.map((c) => (
-
           <option key={c}>
             {c}
           </option>
-
         ))}
-
       </select>
 
       <select
@@ -66,10 +66,9 @@ export default function ExecutiveFilters({
           text-white
         "
       >
-
         <option value="all">
-  All Time
-</option>
+          All Time
+        </option>
 
         <option value="7d">
           Last 7 Days
@@ -83,7 +82,69 @@ export default function ExecutiveFilters({
           Last 90 Days
         </option>
 
-      </select> 
+      </select>
+
+      <select
+        value={filters.year}
+        onChange={(e) =>
+          setFilters({
+            ...filters,
+            year: e.target.value,
+          })
+        }
+        className="
+          bg-slate-900
+          border border-slate-700
+          rounded-xl
+          px-4 py-3
+          text-white
+        "
+      >
+        <option value="All">
+          All Years
+        </option>
+
+        {(availableYears || []).map((year) => (
+          <option
+            key={year}
+            value={year}
+          >
+            {year}
+          </option>
+        ))}
+      </select>
+
+      <select
+        value={filters.month}
+        onChange={(e) =>
+          setFilters({
+            ...filters,
+            month: e.target.value,
+          })
+        }
+        className="
+          bg-slate-900
+          border border-slate-700
+          rounded-xl
+          px-4 py-3
+          text-white
+        "
+      >
+        <option value="All">
+          All Months
+        </option>
+
+        {(months || []).map(
+          (month, index) => (
+            <option
+              key={month}
+              value={index}
+            >
+              {month}
+            </option>
+          )
+        )}
+      </select>
 
     </div>
   );

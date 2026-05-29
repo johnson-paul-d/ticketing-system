@@ -301,7 +301,8 @@ export default function GoogleAdsDashboard() {
   // ═══════════════════════════════════════════════════════════════════════════
   const DEFAULT_FILTERS = {
     campaign:        "All",
-    dateRange:       "all",
+    year:            "All",     // NEW
+    month:           "All",     // NEW
     matchType:       "All",
     performanceTier: "All",
     keywordSearch:   "",
@@ -337,26 +338,45 @@ export default function GoogleAdsDashboard() {
   }, [rawCampaigns]);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // DATE FILTERING
+  // NEW: AVAILABLE YEARS (Step 2)
   // ═══════════════════════════════════════════════════════════════════════════
-  const { dateFilteredRows, cutoffDate } = useMemo(() => {
-    if (filters.dateRange === "all")
-      return { dateFilteredRows: rawCampaigns, cutoffDate: null };
+  const availableYears = useMemo(() => {
+    const years = new Set();
+    rawCampaigns.forEach(row => {
+      if (!row.report_date) return;
+      years.add(new Date(row.report_date).getFullYear());
+    });
+    return [...years].sort();
+  }, [rawCampaigns]);
 
-    const latestDate = new Date(
-      Math.max(...rawCampaigns.map((r) => new Date(r.report_date).getTime()))
-    );
-    const days = filters.dateRange === "7d" ? 7 : filters.dateRange === "30d" ? 30 : 90;
-    const cutoff = new Date(latestDate);
-    cutoff.setDate(cutoff.getDate() - days);
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEW: MONTHS CONSTANT (Step 3)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const MONTHS = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
 
-    return {
-      dateFilteredRows: rawCampaigns.filter(
-        (r) => r.report_date && new Date(r.report_date) >= cutoff
-      ),
-      cutoffDate: cutoff,
-    };
-  }, [rawCampaigns, filters.dateRange]);
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DATE FILTERING (replaced with year + month only) - Step 4
+  // ═══════════════════════════════════════════════════════════════════════════
+  const dateFilteredRows = useMemo(() => {
+    let rows = [...rawCampaigns];
+
+    if (filters.year !== "All") {
+      rows = rows.filter(row => {
+        return new Date(row.report_date).getFullYear().toString() === filters.year;
+      });
+    }
+
+    if (filters.month !== "All") {
+      rows = rows.filter(row => {
+        return new Date(row.report_date).getMonth() === Number(filters.month);
+      });
+    }
+
+    return rows;
+  }, [rawCampaigns, filters.year, filters.month]);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // CAMPAIGN FILTERING
@@ -407,18 +427,28 @@ export default function GoogleAdsDashboard() {
   }, [campaignFilteredRows]);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // FILTERED TRENDS
+  // FILTERED TRENDS (now respects campaign, year, month) - Problem 2 solved
   // ═══════════════════════════════════════════════════════════════════════════
   const filteredTrends = useMemo(() => {
-    if (!rawTrends) return [];
-    if (!cutoffDate) return rawTrends;
-    return rawTrends.filter(
-      (t) => t.report_date && new Date(t.report_date) >= cutoffDate
-    );
-  }, [rawTrends, cutoffDate]);
+    let rows = [...rawTrends];
+
+    if (filters.campaign !== "All") {
+      rows = rows.filter(r => r.campaign === filters.campaign);
+    }
+
+    if (filters.year !== "All") {
+      rows = rows.filter(r => new Date(r.report_date).getFullYear().toString() === filters.year);
+    }
+
+    if (filters.month !== "All") {
+      rows = rows.filter(r => new Date(r.report_date).getMonth() === Number(filters.month));
+    }
+
+    return rows;
+  }, [rawTrends, filters.campaign, filters.year, filters.month]);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // EXECUTIVE METRICS (UPDATED: added rows and zeroConversionDays)
+  // EXECUTIVE METRICS
   // ═══════════════════════════════════════════════════════════════════════════
   const {
     wasteSpend,
@@ -432,15 +462,21 @@ export default function GoogleAdsDashboard() {
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // KEYWORD FILTERING
+  // KEYWORD FILTERING (now includes campaign filter) - Problem 3 solved
   // ═══════════════════════════════════════════════════════════════════════════
   const filteredKeywords = useMemo(() => {
-    return keywords.filter((kw) => {
-      if (filters.matchType !== "All" && kw.match_type !== filters.matchType) return false;
-      if (filters.keywordSearch && !kw.keyword?.toLowerCase().includes(filters.keywordSearch.toLowerCase())) return false;
-      return true;
-    });
-  }, [keywords, filters.matchType, filters.keywordSearch]);
+    let filtered = [...keywords];
+    if (filters.matchType !== "All") {
+      filtered = filtered.filter(kw => kw.match_type === filters.matchType);
+    }
+    if (filters.keywordSearch) {
+      filtered = filtered.filter(kw => kw.keyword?.toLowerCase().includes(filters.keywordSearch.toLowerCase()));
+    }
+    if (filters.campaign !== "All") {
+      filtered = filtered.filter(kw => kw.campaign === filters.campaign);
+    }
+    return filtered;
+  }, [keywords, filters.matchType, filters.keywordSearch, filters.campaign]);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // ADVANCED DIRECTOR METRICS
@@ -551,7 +587,7 @@ export default function GoogleAdsDashboard() {
   }, [aggregatedCampaigns, filters, adv.cpa]);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // MOVED HOOKS & DERIVED VALUES (ABOVE THE LOADING RETURN)
+  // MOVED HOOKS & DERIVED VALUES
   // ═══════════════════════════════════════════════════════════════════════════
   const maxCost = Math.max(
     ...(directorCampaigns || []).map((c) => Number(c.cost || 0)),
@@ -769,13 +805,38 @@ export default function GoogleAdsDashboard() {
           />
         </div>
 
-        {/* Original Executive Filters */}
+        {/* Original Executive Filters (dateRange removed from logic but component still receives it – no effect) */}
         <ExecutiveFilters
           filters={filters}
           setFilters={setFilters}
           clearFilters={clearFilters}
           campaigns={uniqueCampaignsForFilter}
         />
+
+        {/* NEW: Year + Month Filters (Step 4 - UI addition) */}
+        <div className="flex flex-wrap items-center gap-3 mb-5 bg-[#0c1425] border border-slate-800/60 rounded-xl p-3">
+          <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">Time Period</span>
+          <select
+            value={filters.year}
+            onChange={(e) => setFilters(f => ({ ...f, year: e.target.value }))}
+            className="bg-transparent text-xs text-white border border-slate-700 rounded-lg px-3 py-2 outline-none"
+          >
+            <option value="All">All Years</option>
+            {availableYears.map(year => (
+              <option key={year} value={year}>{year}</option>
+            ))}
+          </select>
+          <select
+            value={filters.month}
+            onChange={(e) => setFilters(f => ({ ...f, month: e.target.value }))}
+            className="bg-transparent text-xs text-white border border-slate-700 rounded-lg px-3 py-2 outline-none"
+          >
+            <option value="All">All Months</option>
+            {MONTHS.map((month, idx) => (
+              <option key={month} value={idx}>{month}</option>
+            ))}
+          </select>
+        </div>
 
         {/* Director Filter Strip */}
         <DirectorFilterStrip
@@ -907,7 +968,7 @@ export default function GoogleAdsDashboard() {
                   <th className="text-right px-4 py-3 font-semibold">CPC</th>
                   <th className="px-5 py-3 font-semibold">Spend</th>
                   <th className="text-center px-4 py-3 font-semibold">Health</th>
-                 </tr>
+                </tr>
               </thead>
               <tbody>
                 {directorCampaigns.length === 0 ? (
@@ -974,7 +1035,7 @@ export default function GoogleAdsDashboard() {
                   <th className="text-right px-4 py-3 font-semibold">Spend Share</th>
                   <th className="text-right px-4 py-3 font-semibold">Conv Share</th>
                   <th className="px-5 py-3 font-semibold">Efficiency Gap</th>
-                 </tr>
+                </tr>
               </thead>
               <tbody>
                 {budgetAllocationData.slice(0, 10).map((c) => {

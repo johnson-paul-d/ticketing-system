@@ -15,7 +15,7 @@ export default function MatchTypeAnalytics({
 }) {
 
   // =====================================================
-  // GROUP MATCH TYPES
+  // GROUP MATCH TYPES (NORMALIZED)
   // =====================================================
 
   const grouped = {};
@@ -23,7 +23,9 @@ export default function MatchTypeAnalytics({
   (keywords || []).forEach((keyword) => {
 
     const matchType =
-      keyword.match_type || "UNKNOWN";
+      (keyword.match_type || "UNKNOWN")
+        .toUpperCase()
+        .trim();
 
     if (!grouped[matchType]) {
 
@@ -54,7 +56,7 @@ export default function MatchTypeAnalytics({
   });
 
   // =====================================================
-  // CALCULATE METRICS
+  // CALCULATE METRICS (IMPROVED EFFICIENCY)
   // =====================================================
 
   const data = Object.values(grouped)
@@ -75,9 +77,11 @@ export default function MatchTypeAnalytics({
           ? m.cost / m.conversions
           : 0;
 
+      // New: Conversions per ₹1000 spend
       const efficiency =
-        (ctr * conversionRate) /
-        Math.max(cpa, 1);
+        m.cost > 0
+          ? (m.conversions / m.cost) * 1000
+          : 0;
 
       return {
 
@@ -106,6 +110,27 @@ export default function MatchTypeAnalytics({
       (a, b) =>
         b.conversions - a.conversions
     );
+
+  // =====================================================
+  // EXECUTIVE KPIs (BEST CPA, CVR, SPEND)
+  // =====================================================
+
+  const bestCPA = [...data]
+    .filter(d => d.conversions > 0)
+    .sort((a,b) => a.cpa - b.cpa)[0];
+
+  const bestCVR = [...data]
+    .sort(
+      (a,b) =>
+        b.conversionRate -
+        a.conversionRate
+    )[0];
+
+  const highestSpend = [...data]
+    .sort(
+      (a,b) =>
+        b.cost - a.cost
+    )[0];
 
   // =====================================================
   // COLORS
@@ -302,7 +327,101 @@ export default function MatchTypeAnalytics({
       </div>
 
       {/* =====================================================
-          CHART
+          EXECUTIVE KPI CARDS (ABOVE CHART)
+      ===================================================== */}
+
+      <div className="
+        grid grid-cols-1
+        md:grid-cols-3
+        gap-4
+        mb-6
+      ">
+
+        {/* Lowest CPA Card */}
+
+        <div className="
+          bg-slate-950
+          border border-slate-800
+          rounded-2xl
+          p-4
+        ">
+          <div className="text-slate-400 text-sm">
+            Lowest CPA
+          </div>
+
+          <div className="
+            text-white
+            text-xl
+            font-bold
+          ">
+            {bestCPA?.matchType || "—"}
+          </div>
+
+          <div className="
+            text-emerald-400
+          ">
+            ₹{bestCPA?.cpa?.toFixed(0) || "0"}
+          </div>
+        </div>
+
+        {/* Best CVR Card */}
+
+        <div className="
+          bg-slate-950
+          border border-slate-800
+          rounded-2xl
+          p-4
+        ">
+          <div className="text-slate-400 text-sm">
+            Best CVR
+          </div>
+
+          <div className="
+            text-white
+            text-xl
+            font-bold
+          ">
+            {bestCVR?.matchType || "—"}
+          </div>
+
+          <div className="
+            text-cyan-400
+          ">
+            {bestCVR?.conversionRate?.toFixed(1) || "0"}%
+          </div>
+        </div>
+
+        {/* Highest Spend Card */}
+
+        <div className="
+          bg-slate-950
+          border border-slate-800
+          rounded-2xl
+          p-4
+        ">
+          <div className="text-slate-400 text-sm">
+            Highest Spend
+          </div>
+
+          <div className="
+            text-white
+            text-xl
+            font-bold
+          ">
+            {highestSpend?.matchType || "—"}
+          </div>
+
+          <div className="
+            text-yellow-400
+          ">
+            ₹{highestSpend?.cost?.toLocaleString() || "0"}
+          </div>
+        </div>
+
+      </div>
+
+      {/* =====================================================
+          CHART (SINGLE EFFICIENCY BAR)
       ===================================================== */}
 
       <ResponsiveContainer
@@ -346,13 +465,9 @@ export default function MatchTypeAnalytics({
 
           <Legend />
 
-          {/* =====================================================
-              SPEND
-          ===================================================== */}
-
           <Bar
-            dataKey="cost"
-            name="Spend"
+            dataKey="efficiency"
+            name="Efficiency Score"
             radius={[8, 8, 0, 0]}
           >
 
@@ -371,23 +486,12 @@ export default function MatchTypeAnalytics({
 
           </Bar>
 
-          {/* =====================================================
-              CONVERSIONS
-          ===================================================== */}
-
-          <Bar
-            dataKey="conversions"
-            name="Conversions"
-            fill="#10B981"
-            radius={[8, 8, 0, 0]}
-          />
-
         </BarChart>
 
       </ResponsiveContainer>
 
       {/* =====================================================
-          EXECUTIVE INSIGHTS
+          EXECUTIVE INSIGHTS (STRATEGIC RECOMMENDATIONS)
       ===================================================== */}
 
       <div className="
