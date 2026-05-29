@@ -418,11 +418,17 @@ export default function GoogleAdsDashboard() {
   }, [rawTrends, cutoffDate]);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // EXECUTIVE METRICS
+  // EXECUTIVE METRICS (UPDATED: added rows and zeroConversionDays)
   // ═══════════════════════════════════════════════════════════════════════════
-  const { wasteSpend, performanceScore, recommendations } = useExecutiveMetrics({
+  const {
+    wasteSpend,
+    zeroConversionDays,
+    performanceScore,
+    recommendations,
+  } = useExecutiveMetrics({
     overview: dashboardOverview,
     campaigns: aggregatedCampaigns,
+    rows: campaignFilteredRows,
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -667,6 +673,7 @@ export default function GoogleAdsDashboard() {
         )}
 
         {/* Director 12-KPI Strip - fully responsive grid */}
+        {/* NOTE: Custom two-row Zero Conv Days card inserted after Waste Spend */}
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-12 gap-3 mb-5">
           <DirectorKPI label="Total Spend" value={fmt.currency(dashboardOverview.totalSpend)} subValue={`${adv.activeCampaigns} active campaigns`} accent="blue" />
           <DirectorKPI label="Total Clicks" value={fmt.num(dashboardOverview.totalClicks)} subValue={`CTR ${adv.ctr.toFixed(2)}%`} accent="violet" />
@@ -678,6 +685,17 @@ export default function GoogleAdsDashboard() {
           <DirectorKPI label="Efficiency Index" value={adv.efficiencyIndex.toFixed(3)} subValue="conversions per ₹1K" accent="rose" />
           <DirectorKPI label="Campaign Health" value={`${performanceScore}/100`} accent="emerald" />
           <DirectorKPI label="Waste Spend" value={fmt.currency(wasteSpend)} accent="red" />
+
+          {/* ─── Custom Two‑Row Zero Conv Days KPI ─── */}
+          <div className="relative bg-[#0c1425] border border-slate-800/80 rounded-2xl p-4 ring-1 ring-red-500/20 overflow-hidden flex flex-col gap-1">
+            <div className="absolute inset-0 bg-gradient-to-br from-red-900/30 to-transparent opacity-60 pointer-events-none" />
+            <span className="relative text-[10px] font-semibold text-slate-500 uppercase tracking-widest leading-none">Zero Conv Days</span>
+            <span className="relative text-2xl font-black leading-tight text-red-400">{zeroConversionDays}</span>
+            <div className="relative flex items-center justify-between mt-0.5">
+              <span className="text-[11px] text-slate-600">days with spend but no conversions</span>
+            </div>
+          </div>
+
           <DirectorKPI label="Top Campaign" value={adv.topCampaign?.conversions || 0} subValue="conversions" accent="cyan" />
           <DirectorKPI
             label="Active Rate"
@@ -828,7 +846,7 @@ export default function GoogleAdsDashboard() {
                   <th className="text-right px-4 py-3 font-semibold">CPC</th>
                   <th className="px-5 py-3 font-semibold">Spend</th>
                   <th className="text-center px-4 py-3 font-semibold">Health</th>
-                </tr>
+                 </tr>
               </thead>
               <tbody>
                 {directorCampaigns.length === 0 ? (
@@ -905,24 +923,24 @@ export default function GoogleAdsDashboard() {
                     <tr key={c.campaign} className="border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors">
                       <td className="px-5 py-3 text-white font-medium max-w-[220px] truncate" title={c.campaign}>
                         {c.campaign}
-                       </td>
+                      </td>
                       <td className="text-right px-4 py-3 font-mono">
                         <span className="text-slate-300">{c.spendShare.toFixed(1)}%</span>
                         <div className="w-24 h-1.5 bg-slate-800 rounded-full mt-1 ml-auto">
                           <div className="h-full bg-blue-500 rounded-full" style={{ width: `${Math.min(c.spendShare, 100)}%` }} />
                         </div>
-                       </td>
+                      </td>
                       <td className="text-right px-4 py-3 font-mono">
                         <span className="text-slate-300">{c.convShare.toFixed(1)}%</span>
                         <div className="w-24 h-1.5 bg-slate-800 rounded-full mt-1 ml-auto">
                           <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${Math.min(c.convShare, 100)}%` }} />
                         </div>
-                       </td>
+                      </td>
                       <td className="px-5 py-3">
                         <span className={`text-[11px] font-semibold ${isEfficient ? "text-emerald-400" : "text-red-400"}`}>
                           {isEfficient ? `▲ +${gap.toFixed(1)}%` : `▼ ${gap.toFixed(1)}%`}
                         </span>
-                       </td>
+                      </td>
                     </tr>
                   );
                 })}
