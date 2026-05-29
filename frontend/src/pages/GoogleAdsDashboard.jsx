@@ -1,26 +1,18 @@
 import { useState, useMemo } from "react";
-
 import MainLayout from "../layouts/MainLayout";
-
 import useGoogleAdsData from "../hooks/useGoogleAdsData";
 import useExecutiveMetrics from "../hooks/useExecutiveMetrics";
-
 import ExecutiveFilters from "../components/GoogleAds1/filters/ExecutiveFilters";
-
 import KPIGrid from "../components/GoogleAds1/kpis/KPIGrid";
 import ExecutiveScoreCard from "../components/GoogleAds1/kpis/ExecutiveScoreCard";
-
 import CampaignEfficiencyMatrix from "../components/GoogleAds1/charts/CampaignEfficiencyMatrix";
 import MatchTypeAnalytics from "../components/GoogleAds1/charts/MatchTypeAnalytics";
 import SpendTrendChart from "../components/GoogleAds1/charts/SpendTrendChart";
 import WasteSpendTrend from "../components/GoogleAds1/charts/WasteSpendTrend";
 import ForecastChart from "../components/GoogleAds1/charts/ForecastChart";
-// Removed: MomentumChart, TemporalHeatmap
 import CampaignRankingTable from "../components/GoogleAds1/tables/CampaignRankingTable";
-
 import OpportunityTable from "../components/GoogleAds1/tables/OpportunityTable";
 import CampaignIntelligenceTable from "../components/GoogleAds1/tables/CampaignIntelligenceTable";
-
 import RecommendationPanel from "../components/GoogleAds1/insights/RecommendationPanel";
 import NarrativeSummary from "../components/GoogleAds1/insights/NarrativeSummary";
 
@@ -44,7 +36,7 @@ const fmt = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DIRECTOR KPI CARD  (self-contained, no external dep)
+// DIRECTOR KPI CARD
 // ─────────────────────────────────────────────────────────────────────────────
 const ACCENT = {
   blue:   { ring: "ring-blue-500/20",   text: "text-blue-400",   glow: "from-blue-900/30",   dot: "bg-blue-500"   },
@@ -89,7 +81,7 @@ function HealthBadge({ cvr, spend }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MINI SPEND BAR (CSS)
+// MINI SPEND BAR
 // ─────────────────────────────────────────────────────────────────────────────
 function MiniBar({ value, max, color = "emerald" }) {
   const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
@@ -117,7 +109,7 @@ function TierRow({ label, count, total, dotColor }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DONUT CHART COMPONENT
+// DONUT CHART
 // ─────────────────────────────────────────────────────────────────────────────
 function HealthDonut({ elite, strong, average, weak, noConv, total }) {
   const elitePct = total > 0 ? (elite / total) * 100 : 0;
@@ -154,21 +146,17 @@ function HealthDonut({ elite, strong, average, weak, noConv, total }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DIRECTOR FILTER STRIP
+// DIRECTOR FILTER STRIP (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 function DirectorFilterStrip({ filters, setFilters, onClear, hasActiveFilters }) {
-  const sel =
-    "bg-transparent text-xs text-white border-none outline-none cursor-pointer appearance-none";
-  const inp =
-    "bg-transparent text-xs text-white border-none outline-none w-16 placeholder:text-slate-700";
-  const pill =
-    "flex items-center gap-2 bg-[#0c1425] border border-slate-700/60 rounded-xl px-3 py-2";
+  const sel = "bg-transparent text-xs text-white border-none outline-none cursor-pointer appearance-none";
+  const inp = "bg-transparent text-xs text-white border-none outline-none w-16 placeholder:text-slate-700";
+  const pill = "flex items-center gap-2 bg-[#0c1425] border border-slate-700/60 rounded-xl px-3 py-2";
 
   return (
     <div className="flex flex-wrap items-center gap-2 mb-5">
       <span className="text-[10px] font-semibold text-slate-600 uppercase tracking-widest mr-1">Director Filters</span>
 
-      {/* Sort By */}
       <div className={pill}>
         <span className="text-[10px] text-slate-500 font-medium uppercase tracking-wide whitespace-nowrap">Sort</span>
         <select value={filters.sortBy} onChange={(e) => setFilters((f) => ({ ...f, sortBy: e.target.value }))} className={sel}>
@@ -182,7 +170,6 @@ function DirectorFilterStrip({ filters, setFilters, onClear, hasActiveFilters })
         </select>
       </div>
 
-      {/* Campaign Status */}
       <div className={pill}>
         <span className="text-[10px] text-slate-500 font-medium uppercase tracking-wide whitespace-nowrap">Status</span>
         <select value={filters.campaignStatus} onChange={(e) => setFilters((f) => ({ ...f, campaignStatus: e.target.value }))} className={sel}>
@@ -195,7 +182,6 @@ function DirectorFilterStrip({ filters, setFilters, onClear, hasActiveFilters })
         </select>
       </div>
 
-      {/* Metric Focus */}
       <div className={pill}>
         <span className="text-[10px] text-slate-500 font-medium uppercase tracking-wide whitespace-nowrap">Focus</span>
         <select value={filters.metricFocus} onChange={(e) => setFilters((f) => ({ ...f, metricFocus: e.target.value }))} className={sel}>
@@ -206,77 +192,33 @@ function DirectorFilterStrip({ filters, setFilters, onClear, hasActiveFilters })
         </select>
       </div>
 
-      {/* Min Spend */}
       <div className={pill}>
         <span className="text-[10px] text-slate-500 font-medium uppercase tracking-wide whitespace-nowrap">Min $</span>
-        <input
-          type="number"
-          min={0}
-          placeholder="0"
-          value={filters.minSpend}
-          onChange={(e) => setFilters((f) => ({ ...f, minSpend: e.target.value }))}
-          className={inp}
-        />
+        <input type="number" min={0} placeholder="0" value={filters.minSpend} onChange={(e) => setFilters((f) => ({ ...f, minSpend: e.target.value }))} className={inp} />
       </div>
 
-      {/* Min Conversions */}
       <div className={pill}>
         <span className="text-[10px] text-slate-500 font-medium uppercase tracking-wide whitespace-nowrap">Min Conv</span>
-        <input
-          type="number"
-          min={0}
-          placeholder="0"
-          value={filters.conversionMin}
-          onChange={(e) => setFilters((f) => ({ ...f, conversionMin: e.target.value }))}
-          className={inp}
-        />
+        <input type="number" min={0} placeholder="0" value={filters.conversionMin} onChange={(e) => setFilters((f) => ({ ...f, conversionMin: e.target.value }))} className={inp} />
       </div>
 
-      {/* Max CPA */}
       <div className={pill}>
         <span className="text-[10px] text-slate-500 font-medium uppercase tracking-wide whitespace-nowrap">Max CPA $</span>
-        <input
-          type="number"
-          min={0}
-          placeholder="∞"
-          value={filters.cpaMax}
-          onChange={(e) => setFilters((f) => ({ ...f, cpaMax: e.target.value }))}
-          className={inp}
-        />
+        <input type="number" min={0} placeholder="∞" value={filters.cpaMax} onChange={(e) => setFilters((f) => ({ ...f, cpaMax: e.target.value }))} className={inp} />
       </div>
 
-      {/* Min CTR */}
       <div className={pill}>
         <span className="text-[10px] text-slate-500 font-medium uppercase tracking-wide whitespace-nowrap">Min CTR %</span>
-        <input
-          type="number"
-          min={0}
-          step={0.1}
-          placeholder="0"
-          value={filters.ctrMin}
-          onChange={(e) => setFilters((f) => ({ ...f, ctrMin: e.target.value }))}
-          className={inp}
-        />
+        <input type="number" min={0} step={0.1} placeholder="0" value={filters.ctrMin} onChange={(e) => setFilters((f) => ({ ...f, ctrMin: e.target.value }))} className={inp} />
       </div>
 
-      {/* Min Impressions */}
       <div className={pill}>
         <span className="text-[10px] text-slate-500 font-medium uppercase tracking-wide whitespace-nowrap">Min Impr</span>
-        <input
-          type="number"
-          min={0}
-          placeholder="0"
-          value={filters.impressionMin}
-          onChange={(e) => setFilters((f) => ({ ...f, impressionMin: e.target.value }))}
-          className={inp}
-        />
+        <input type="number" min={0} placeholder="0" value={filters.impressionMin} onChange={(e) => setFilters((f) => ({ ...f, impressionMin: e.target.value }))} className={inp} />
       </div>
 
       {hasActiveFilters && (
-        <button
-          onClick={onClear}
-          className="text-[11px] text-red-400 border border-red-800/50 bg-red-950/30 px-3 py-2 rounded-xl hover:bg-red-950/60 transition-colors"
-        >
+        <button onClick={onClear} className="text-[11px] text-red-400 border border-red-800/50 bg-red-950/30 px-3 py-2 rounded-xl hover:bg-red-950/60 transition-colors">
           ✕ Clear All
         </button>
       )}
@@ -308,8 +250,6 @@ function AIInsightCard({ title, value, subtitle, icon, accent = "blue" }) {
 // ─────────────────────────────────────────────────────────────────────────────
 function ExecutiveWaterfall({ totalSpend, wasteSpend, totalConversions }) {
   const effectiveSpend = totalSpend - wasteSpend;
-  const conversionValue = totalConversions;
-
   return (
     <div className="bg-[#0c1425] border border-slate-800 rounded-2xl p-5">
       <h3 className="text-sm font-bold text-white mb-4">Executive Waterfall</h3>
@@ -331,7 +271,7 @@ function ExecutiveWaterfall({ totalSpend, wasteSpend, totalConversions }) {
         <div className="text-slate-600 text-xl">→</div>
         <div className="flex-1 min-w-[120px] text-center">
           <div className="text-[10px] text-slate-500 uppercase">Conversions</div>
-          <div className="text-xl font-bold text-emerald-400">{fmt.num(conversionValue)}</div>
+          <div className="text-xl font-bold text-emerald-400">{fmt.num(totalConversions)}</div>
         </div>
       </div>
     </div>
@@ -344,7 +284,7 @@ function ExecutiveWaterfall({ totalSpend, wasteSpend, totalConversions }) {
 export default function GoogleAdsDashboard() {
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // DATA (raw rows from backend – unchanged hooks)
+  // DATA (raw rows from backend)
   // ═══════════════════════════════════════════════════════════════════════════
   const {
     campaigns: rawCampaigns,
@@ -353,33 +293,27 @@ export default function GoogleAdsDashboard() {
     loading,
   } = useGoogleAdsData();
 
-  console.log("Raw Campaign Rows", rawCampaigns?.length || 0);
-
   // ═══════════════════════════════════════════════════════════════════════════
-  // FILTERS STATE  (superset: original + director additions)
+  // FILTERS STATE
   // ═══════════════════════════════════════════════════════════════════════════
   const DEFAULT_FILTERS = {
-    // ── original ──
     campaign:        "All",
     dateRange:       "all",
     matchType:       "All",
     performanceTier: "All",
     keywordSearch:   "",
-    // ── director additions ──
-    sortBy:          "cost",     // cost | clicks | conversions | impressions | ctr | cpa | efficiency
+    sortBy:          "cost",
     minSpend:        "",
     conversionMin:   "",
     cpaMax:          "",
     ctrMin:          "",
     impressionMin:   "",
-    campaignStatus:  "All",      // All | Active | Top Performer | Underperforming | Efficient | No Conversions
-    metricFocus:     "All",      // All | Spend | Conversion | Efficiency
+    campaignStatus:  "All",
+    metricFocus:     "All",
   };
 
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
-
   const clearFilters = () => setFilters(DEFAULT_FILTERS);
-
   const hasActiveDirectorFilters =
     filters.sortBy !== "cost" ||
     filters.minSpend ||
@@ -421,8 +355,6 @@ export default function GoogleAdsDashboard() {
     };
   }, [rawCampaigns, filters.dateRange]);
 
-  console.log("Date Filtered Rows", dateFilteredRows.length);
-
   // ═══════════════════════════════════════════════════════════════════════════
   // CAMPAIGN FILTERING
   // ═══════════════════════════════════════════════════════════════════════════
@@ -431,10 +363,8 @@ export default function GoogleAdsDashboard() {
     return dateFilteredRows.filter((r) => r.campaign === filters.campaign);
   }, [dateFilteredRows, filters.campaign]);
 
-  console.log("Campaign Filtered Rows", campaignFilteredRows.length);
-
   // ═══════════════════════════════════════════════════════════════════════════
-  // AGGREGATION (group by campaign → summed metrics + derived metrics)
+  // AGGREGATION (group by campaign)
   // ═══════════════════════════════════════════════════════════════════════════
   const aggregatedCampaigns = useMemo(() => {
     const map = new Map();
@@ -458,8 +388,6 @@ export default function GoogleAdsDashboard() {
       return { ...c, ctr, conversion_rate, avg_cpc, cpa, efficiency };
     });
   }, [campaignFilteredRows]);
-
-  console.log("Aggregated Campaigns", aggregatedCampaigns.length);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // DASHBOARD KPIs
@@ -486,10 +414,8 @@ export default function GoogleAdsDashboard() {
     );
   }, [rawTrends, cutoffDate]);
 
-  console.log("Filtered Trends", filteredTrends.length);
-
   // ═══════════════════════════════════════════════════════════════════════════
-  // EXECUTIVE METRICS (unchanged hook)
+  // EXECUTIVE METRICS
   // ═══════════════════════════════════════════════════════════════════════════
   const { wasteSpend, performanceScore, recommendations } = useExecutiveMetrics({
     overview: dashboardOverview,
@@ -497,7 +423,7 @@ export default function GoogleAdsDashboard() {
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // KEYWORD FILTERING (unchanged)
+  // KEYWORD FILTERING
   // ═══════════════════════════════════════════════════════════════════════════
   const filteredKeywords = useMemo(() => {
     return keywords.filter((kw) => {
@@ -508,7 +434,7 @@ export default function GoogleAdsDashboard() {
   }, [keywords, filters.matchType, filters.keywordSearch]);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // ADVANCED DIRECTOR METRICS  (derived, no new hooks)
+  // ADVANCED DIRECTOR METRICS
   // ═══════════════════════════════════════════════════════════════════════════
   const adv = useMemo(() => {
     const { totalSpend, totalClicks, totalImpressions, totalConversions } = dashboardOverview;
@@ -538,7 +464,6 @@ export default function GoogleAdsDashboard() {
 
     const topSpendShare = totalSpend > 0 && highestSpend ? (highestSpend.cost / totalSpend) * 100 : 0;
 
-    // Avg CPA across campaigns that convert
     const convCampaigns = aggregatedCampaigns.filter((c) => c.conversions > 0);
     const avgCampaignCPA = convCampaigns.length > 0
       ? convCampaigns.reduce((s, c) => s + c.cost / c.conversions, 0) / convCampaigns.length
@@ -554,12 +479,11 @@ export default function GoogleAdsDashboard() {
   }, [dashboardOverview, aggregatedCampaigns]);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // DIRECTOR CAMPAIGNS (new filters applied + sorted)
+  // DIRECTOR CAMPAIGNS (filtered + sorted)
   // ═══════════════════════════════════════════════════════════════════════════
   const directorCampaigns = useMemo(() => {
     let result = [...aggregatedCampaigns];
 
-    // Numeric threshold filters
     const minSpendVal   = parseFloat(filters.minSpend)     || 0;
     const convMinVal    = parseFloat(filters.conversionMin) || 0;
     const cpaMaxVal     = parseFloat(filters.cpaMax)        || 0;
@@ -572,7 +496,6 @@ export default function GoogleAdsDashboard() {
     if (cpaMaxVal    > 0) result = result.filter((c) => c.conversions > 0 && (c.cost / c.conversions) <= cpaMaxVal);
     if (ctrMinVal    > 0) result = result.filter((c) => c.impressions > 0 && (c.clicks / c.impressions) * 100 >= ctrMinVal);
 
-    // Campaign status filter
     if (filters.campaignStatus === "Active") {
       result = result.filter((c) => c.cost > 0);
     } else if (filters.campaignStatus === "Top Performer") {
@@ -585,7 +508,6 @@ export default function GoogleAdsDashboard() {
       result = result.filter((c) => c.cost > 0 && c.conversions === 0);
     }
 
-    // Metric focus
     if (filters.metricFocus === "Spend") {
       result = result.filter((c) => c.cost > 0);
     } else if (filters.metricFocus === "Conversion") {
@@ -594,7 +516,6 @@ export default function GoogleAdsDashboard() {
       result = result.filter((c) => c.clicks > 0 && c.conversions / c.clicks >= 0.03);
     }
 
-    // Sort
     return result.sort((a, b) => {
       switch (filters.sortBy) {
         case "clicks":      return b.clicks - a.clicks;
@@ -615,13 +536,37 @@ export default function GoogleAdsDashboard() {
           const eB = b.cost > 0 ? b.conversions / b.cost : 0;
           return eB - eA;
         }
-        default: return b.cost - a.cost; // cost
+        default: return b.cost - a.cost;
       }
     });
   }, [aggregatedCampaigns, filters, adv.cpa]);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // LOADING
+  // MOVED HOOKS & DERIVED VALUES (ABOVE THE LOADING RETURN)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // These were previously after `if (loading)`, causing hook order mismatch.
+  const maxCost = Math.max(
+    ...(directorCampaigns || []).map((c) => Number(c.cost || 0)),
+    1
+  );
+  const totalCampaigns = adv.totalCampaigns;
+
+  const budgetAllocationData = useMemo(() => {
+    const totalSpend = dashboardOverview.totalSpend;
+    const totalConversions = dashboardOverview.totalConversions;
+    return aggregatedCampaigns.map(c => ({
+      ...c,
+      spendShare: totalSpend > 0 ? (c.cost / totalSpend) * 100 : 0,
+      convShare: totalConversions > 0 ? (c.conversions / totalConversions) * 100 : 0,
+    })).sort((a, b) => b.spendShare - a.spendShare);
+  }, [aggregatedCampaigns, dashboardOverview]);
+
+  const scaleOpportunity = adv.topCampaign ? Math.round(adv.topCampaign.conversions * 0.23) : 0;
+
+  const topSpendCampaigns = [...aggregatedCampaigns].sort((a, b) => b.cost - a.cost).slice(0, 10);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LOADING EARLY RETURN
   // ═══════════════════════════════════════════════════════════════════════════
   if (loading) {
     return (
@@ -637,30 +582,6 @@ export default function GoogleAdsDashboard() {
     );
   }
 
-  const maxCost = Math.max(...directorCampaigns.map((c) => c.cost), 1);
-  const totalCampaigns = adv.totalCampaigns;
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Budget Allocation Matrix Data
-  // ─────────────────────────────────────────────────────────────────────────────
-  const budgetAllocationData = useMemo(() => {
-    const totalSpend = dashboardOverview.totalSpend;
-    const totalConversions = dashboardOverview.totalConversions;
-    return aggregatedCampaigns.map(c => ({
-      ...c,
-      spendShare: totalSpend > 0 ? (c.cost / totalSpend) * 100 : 0,
-      convShare: totalConversions > 0 ? (c.conversions / totalConversions) * 100 : 0,
-    })).sort((a, b) => b.spendShare - a.spendShare);
-  }, [aggregatedCampaigns, dashboardOverview]);
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // AI Insights Data
-  // ─────────────────────────────────────────────────────────────────────────────
-  const scaleOpportunity = adv.topCampaign ? Math.round(adv.topCampaign.conversions * 0.23) : 0;
-
-  // Campaign Spend Distribution Data (for Priority 9)
-  const topSpendCampaigns = [...aggregatedCampaigns].sort((a, b) => b.cost - a.cost).slice(0, 10);
-
   // ═══════════════════════════════════════════════════════════════════════════
   // RENDER
   // ═══════════════════════════════════════════════════════════════════════════
@@ -668,9 +589,7 @@ export default function GoogleAdsDashboard() {
     <MainLayout>
       <div className="min-h-screen bg-[#020617] px-6 py-5">
 
-        {/* ──────────────────────────────────────────────────────────────────
-            DIRECTOR COMMAND HEADER
-        ────────────────────────────────────────────────────────────────── */}
+        {/* Director Command Header */}
         <div className="flex items-start justify-between mb-5">
           <div>
             <div className="flex items-center gap-3 mb-2">
@@ -689,7 +608,6 @@ export default function GoogleAdsDashboard() {
             </p>
           </div>
 
-          {/* Header KPI badges */}
           <div className="flex items-stretch gap-3">
             {wasteSpend > 0 && (
               <div className="bg-red-950/50 border border-red-800/50 rounded-2xl px-4 py-3 text-right">
@@ -710,9 +628,7 @@ export default function GoogleAdsDashboard() {
           </div>
         </div>
 
-        {/* ──────────────────────────────────────────────────────────────────
-            DIRECTOR ALERT BAR
-        ────────────────────────────────────────────────────────────────── */}
+        {/* Director Alert Bar */}
         {(adv.noConv > 0 || adv.elite > 0 || adv.topSpendShare > 60 || adv.cvr > 5) && (
           <div className="flex items-center gap-2 mb-5 overflow-x-auto pb-0.5">
             {adv.noConv > 0 && (
@@ -748,85 +664,31 @@ export default function GoogleAdsDashboard() {
           </div>
         )}
 
-        {/* ──────────────────────────────────────────────────────────────────
-            DIRECTOR 12-KPI STRIP (Priority 2)
-        ────────────────────────────────────────────────────────────────── */}
+        {/* Director 12-KPI Strip - Fixed Active Rate guard */}
         <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-12 gap-3 mb-5">
-          <DirectorKPI
-            label="Total Spend"
-            value={fmt.currency(dashboardOverview.totalSpend)}
-            subValue={`${adv.activeCampaigns} active campaigns`}
-            accent="blue"
-          />
-          <DirectorKPI
-            label="Total Clicks"
-            value={fmt.num(dashboardOverview.totalClicks)}
-            subValue={`CTR ${adv.ctr.toFixed(2)}%`}
-            accent="violet"
-          />
-          <DirectorKPI
-            label="Impressions"
-            value={fmt.num(dashboardOverview.totalImpressions)}
-            subValue={`${adv.totalCampaigns} campaigns`}
-            accent="indigo"
-          />
-          <DirectorKPI
-            label="Conversions"
-            value={fmt.num(dashboardOverview.totalConversions)}
-            subValue={`CVR ${adv.cvr.toFixed(2)}%`}
-            accent="emerald"
-          />
-          <DirectorKPI
-            label="Avg CPC"
-            value={fmt.currency(adv.cpc)}
-            subValue="cost per click"
-            accent="cyan"
-          />
-          <DirectorKPI
-            label="Avg CPA"
-            value={fmt.currency(adv.cpa)}
-            subValue="cost per acquisition"
-            accent="amber"
-          />
-          <DirectorKPI
-            label="Click-Through Rate"
-            value={fmt.pct(adv.ctr)}
-            subValue={adv.ctr >= 2 ? "Above 2% target" : "Below 2% target"}
-            accent={adv.ctr >= 2 ? "emerald" : "red"}
-          />
-          <DirectorKPI
-            label="Efficiency Index"
-            value={adv.efficiencyIndex.toFixed(3)}
-            subValue="conversions per $1K"
-            accent="rose"
-          />
-          {/* New KPIs */}
-          <DirectorKPI
-            label="Campaign Health"
-            value={`${performanceScore}/100`}
-            accent="emerald"
-          />
-          <DirectorKPI
-            label="Waste Spend"
-            value={fmt.currency(wasteSpend)}
-            accent="red"
-          />
-          <DirectorKPI
-            label="Top Campaign"
-            value={adv.topCampaign?.conversions || 0}
-            subValue="conversions"
-            accent="cyan"
-          />
+          <DirectorKPI label="Total Spend" value={fmt.currency(dashboardOverview.totalSpend)} subValue={`${adv.activeCampaigns} active campaigns`} accent="blue" />
+          <DirectorKPI label="Total Clicks" value={fmt.num(dashboardOverview.totalClicks)} subValue={`CTR ${adv.ctr.toFixed(2)}%`} accent="violet" />
+          <DirectorKPI label="Impressions" value={fmt.num(dashboardOverview.totalImpressions)} subValue={`${adv.totalCampaigns} campaigns`} accent="indigo" />
+          <DirectorKPI label="Conversions" value={fmt.num(dashboardOverview.totalConversions)} subValue={`CVR ${adv.cvr.toFixed(2)}%`} accent="emerald" />
+          <DirectorKPI label="Avg CPC" value={fmt.currency(adv.cpc)} subValue="cost per click" accent="cyan" />
+          <DirectorKPI label="Avg CPA" value={fmt.currency(adv.cpa)} subValue="cost per acquisition" accent="amber" />
+          <DirectorKPI label="Click-Through Rate" value={fmt.pct(adv.ctr)} subValue={adv.ctr >= 2 ? "Above 2% target" : "Below 2% target"} accent={adv.ctr >= 2 ? "emerald" : "red"} />
+          <DirectorKPI label="Efficiency Index" value={adv.efficiencyIndex.toFixed(3)} subValue="conversions per $1K" accent="rose" />
+          <DirectorKPI label="Campaign Health" value={`${performanceScore}/100`} accent="emerald" />
+          <DirectorKPI label="Waste Spend" value={fmt.currency(wasteSpend)} accent="red" />
+          <DirectorKPI label="Top Campaign" value={adv.topCampaign?.conversions || 0} subValue="conversions" accent="cyan" />
           <DirectorKPI
             label="Active Rate"
-            value={`${((adv.activeCampaigns / adv.totalCampaigns) * 100).toFixed(0)}%`}
+            value={`${
+              adv.totalCampaigns > 0
+                ? ((adv.activeCampaigns / adv.totalCampaigns) * 100).toFixed(0)
+                : 0
+            }%`}
             accent="violet"
           />
         </div>
 
-        {/* ──────────────────────────────────────────────────────────────────
-            ORIGINAL EXECUTIVE FILTERS
-        ────────────────────────────────────────────────────────────────── */}
+        {/* Original Executive Filters */}
         <ExecutiveFilters
           filters={filters}
           setFilters={setFilters}
@@ -834,9 +696,7 @@ export default function GoogleAdsDashboard() {
           campaigns={uniqueCampaignsForFilter}
         />
 
-        {/* ──────────────────────────────────────────────────────────────────
-            DIRECTOR FILTER STRIP  (new filters)
-        ────────────────────────────────────────────────────────────────── */}
+        {/* Director Filter Strip */}
         <DirectorFilterStrip
           filters={filters}
           setFilters={setFilters}
@@ -844,15 +704,10 @@ export default function GoogleAdsDashboard() {
           hasActiveFilters={hasActiveDirectorFilters}
         />
 
-        {/* ──────────────────────────────────────────────────────────────────
-            ORIGINAL KPI GRID
-        ────────────────────────────────────────────────────────────────── */}
+        {/* Original KPI Grid */}
         <KPIGrid overview={dashboardOverview} wasteSpend={wasteSpend} />
 
-        {/* ──────────────────────────────────────────────────────────────────
-            DIRECTOR INSIGHTS ROW (3 panels: Top Converter, Highest Spend, Key Ratios)
-            (Removed Campaign Health panel - moved to new location)
-        ────────────────────────────────────────────────────────────────── */}
+        {/* Director Insights Row */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-4">
           {/* Top Converter Spotlight */}
           <div className="bg-[#0c1425] border border-slate-800 rounded-2xl p-5">
@@ -937,11 +792,8 @@ export default function GoogleAdsDashboard() {
           </div>
         </div>
 
-        {/* ──────────────────────────────────────────────────────────────────
-            DIRECTOR CAMPAIGN PERFORMANCE MATRIX
-        ────────────────────────────────────────────────────────────────── */}
+        {/* Campaign Performance Matrix Table */}
         <div className="bg-[#0c1425] border border-slate-800 rounded-2xl mb-4 overflow-hidden">
-          {/* Table header */}
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
             <div>
               <h3 className="text-sm font-bold text-white">Campaign Performance Matrix</h3>
@@ -949,7 +801,6 @@ export default function GoogleAdsDashboard() {
                 Sorted by <span className="text-slate-400">{filters.sortBy}</span> · {directorCampaigns.length} of {totalCampaigns} campaigns
               </p>
             </div>
-            {/* Legend */}
             <div className="hidden sm:flex items-center gap-3 text-[10px] text-slate-500">
               {[["bg-emerald-500","Elite"],["bg-blue-500","Strong"],["bg-amber-400","Avg"],["bg-orange-500","Weak"],["bg-red-500","No Conv"]].map(([dot, lbl]) => (
                 <span key={lbl} className="flex items-center gap-1">
@@ -960,7 +811,6 @@ export default function GoogleAdsDashboard() {
             </div>
           </div>
 
-          {/* Table */}
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
@@ -994,10 +844,7 @@ export default function GoogleAdsDashboard() {
                     const barColor = cvr >= 5 ? "emerald" : cvr >= 2 ? "blue" : cvr >= 1 ? "amber" : "red";
 
                     return (
-                      <tr
-                        key={c.campaign}
-                        className="border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors"
-                      >
+                      <tr key={c.campaign} className="border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors">
                         <td className="px-5 py-3 text-white font-medium max-w-[220px] truncate" title={c.campaign}>
                           {c.campaign}
                         </td>
@@ -1032,9 +879,7 @@ export default function GoogleAdsDashboard() {
           </div>
         </div>
 
-        {/* ──────────────────────────────────────────────────────────────────
-            BUDGET ALLOCATION MATRIX (Priority 3)
-        ────────────────────────────────────────────────────────────────── */}
+        {/* Budget Allocation Matrix */}
         <div className="bg-[#0c1425] border border-slate-800 rounded-2xl mb-4 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-800">
             <h3 className="text-sm font-bold text-white">Budget Allocation Matrix</h3>
@@ -1084,11 +929,8 @@ export default function GoogleAdsDashboard() {
           </div>
         </div>
 
-        {/* ──────────────────────────────────────────────────────────────────
-            CAMPAIGN HEALTH DONUT + EXECUTIVE SCORE CARD (Priority 7)
-        ────────────────────────────────────────────────────────────────── */}
+        {/* Campaign Health Donut + Executive Score Card */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-4">
-          {/* Campaign Health Panel with Donut */}
           <div className="bg-[#0c1425] border border-slate-800 rounded-2xl p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-bold text-white">Campaign Health</h3>
@@ -1122,9 +964,7 @@ export default function GoogleAdsDashboard() {
           <ExecutiveScoreCard score={performanceScore} />
         </div>
 
-        {/* ──────────────────────────────────────────────────────────────────
-            CAMPAIGN EFFICIENCY MATRIX (moved below)
-        ────────────────────────────────────────────────────────────────── */}
+        {/* Campaign Efficiency Matrix */}
         <div className="mb-4">
           <CampaignEfficiencyMatrix campaigns={directorCampaigns} />
         </div>
@@ -1141,7 +981,7 @@ export default function GoogleAdsDashboard() {
           <ForecastChart trends={filteredTrends} />
         </div>
 
-        {/* Executive Waterfall (Priority 10) */}
+        {/* Executive Waterfall */}
         <div className="mb-4">
           <ExecutiveWaterfall
             totalSpend={dashboardOverview.totalSpend}
@@ -1150,13 +990,13 @@ export default function GoogleAdsDashboard() {
           />
         </div>
 
-        {/* CampaignRankingTable (replaces MomentumChart) + OpportunityTable */}
+        {/* Campaign Ranking + Opportunity Table */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-4">
           <CampaignRankingTable campaigns={directorCampaigns} />
           <OpportunityTable campaigns={directorCampaigns} />
         </div>
 
-        {/* Campaign Spend Distribution (replaces TemporalHeatmap - Priority 9) */}
+        {/* Campaign Spend Distribution */}
         <div className="bg-[#0c1425] border border-slate-800 rounded-2xl mb-4 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-800">
             <h3 className="text-sm font-bold text-white">Campaign Spend Distribution</h3>
@@ -1180,50 +1020,14 @@ export default function GoogleAdsDashboard() {
           </div>
         </div>
 
-        {/* AI Insights Row (Priority 8) */}
+        {/* AI Insights Row */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
-          <AIInsightCard
-            title="Best Campaign"
-            value={adv.topCampaign?.campaign?.split(' ').slice(0,2).join(' ') || "—"}
-            subtitle={`${adv.topCampaign?.conversions || 0} conversions`}
-            icon="🏆"
-            accent="emerald"
-          />
-          <AIInsightCard
-            title="Search Campaign"
-            value="Brand + Non-Brand"
-            subtitle="Split 65% / 35%"
-            icon="🔍"
-            accent="blue"
-          />
-          <AIInsightCard
-            title="Worst Campaign"
-            value={adv.worstCampaign?.campaign?.split(' ').slice(0,2).join(' ') || "—"}
-            subtitle={`${fmt.currency(adv.worstCampaign?.cost || 0)} spent, 0 conv`}
-            icon="⚠️"
-            accent="red"
-          />
-          <AIInsightCard
-            title="Brand Campaign"
-            value="Protect share"
-            subtitle="CTR 8.2% vs 3.1%"
-            icon="🛡️"
-            accent="indigo"
-          />
-          <AIInsightCard
-            title="Highest CPA"
-            value={adv.highestCPA ? fmt.currency(adv.highestCPA.cost / adv.highestCPA.conversions) : "—"}
-            subtitle={adv.highestCPA?.campaign?.split(' ').slice(0,2).join(' ') || ""}
-            icon="💰"
-            accent="amber"
-          />
-          <AIInsightCard
-            title="Scale Opportunity"
-            value={`+${scaleOpportunity}`}
-            subtitle="conversions possible"
-            icon="📈"
-            accent="cyan"
-          />
+          <AIInsightCard title="Best Campaign" value={adv.topCampaign?.campaign?.split(' ').slice(0,2).join(' ') || "—"} subtitle={`${adv.topCampaign?.conversions || 0} conversions`} icon="🏆" accent="emerald" />
+          <AIInsightCard title="Search Campaign" value="Brand + Non-Brand" subtitle="Split 65% / 35%" icon="🔍" accent="blue" />
+          <AIInsightCard title="Worst Campaign" value={adv.worstCampaign?.campaign?.split(' ').slice(0,2).join(' ') || "—"} subtitle={`${fmt.currency(adv.worstCampaign?.cost || 0)} spent, 0 conv`} icon="⚠️" accent="red" />
+          <AIInsightCard title="Brand Campaign" value="Protect share" subtitle="CTR 8.2% vs 3.1%" icon="🛡️" accent="indigo" />
+          <AIInsightCard title="Highest CPA" value={adv.highestCPA ? fmt.currency(adv.highestCPA.cost / adv.highestCPA.conversions) : "—"} subtitle={adv.highestCPA?.campaign?.split(' ').slice(0,2).join(' ') || ""} icon="💰" accent="amber" />
+          <AIInsightCard title="Scale Opportunity" value={`+${scaleOpportunity}`} subtitle="conversions possible" icon="📈" accent="cyan" />
         </div>
 
         {/* Recommendations */}
