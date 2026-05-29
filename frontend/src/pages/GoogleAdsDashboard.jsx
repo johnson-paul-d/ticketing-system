@@ -17,15 +17,18 @@ import RecommendationPanel from "../components/GoogleAds1/insights/Recommendatio
 import NarrativeSummary from "../components/GoogleAds1/insights/NarrativeSummary";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FORMATTING HELPERS
+// FORMATTING HELPERS (USD → INR)
 // ─────────────────────────────────────────────────────────────────────────────
+const USD_TO_INR = 83;
+
 const fmt = {
-  currency: (v) =>
-    v >= 1_000_000
-      ? `$${(v / 1_000_000).toFixed(2)}M`
-      : v >= 1_000
-      ? `$${(v / 1_000).toFixed(1)}K`
-      : `$${v.toFixed(2)}`,
+  currency: (v) => {
+    const inr = v * USD_TO_INR;
+    if (inr >= 10_000_000) return `₹${(inr / 10_000_000).toFixed(2)}Cr`;
+    if (inr >= 100_000) return `₹${(inr / 100_000).toFixed(2)}L`;
+    if (inr >= 1_000) return `₹${(inr / 1_000).toFixed(1)}K`;
+    return `₹${inr.toFixed(2)}`;
+  },
   pct: (v) => `${v.toFixed(2)}%`,
   num: (v) =>
     v >= 1_000_000
@@ -193,7 +196,7 @@ function DirectorFilterStrip({ filters, setFilters, onClear, hasActiveFilters })
       </div>
 
       <div className={pill}>
-        <span className="text-[10px] text-slate-500 font-medium uppercase tracking-wide whitespace-nowrap">Min $</span>
+        <span className="text-[10px] text-slate-500 font-medium uppercase tracking-wide whitespace-nowrap">Min ₹</span>
         <input type="number" min={0} placeholder="0" value={filters.minSpend} onChange={(e) => setFilters((f) => ({ ...f, minSpend: e.target.value }))} className={inp} />
       </div>
 
@@ -203,7 +206,7 @@ function DirectorFilterStrip({ filters, setFilters, onClear, hasActiveFilters })
       </div>
 
       <div className={pill}>
-        <span className="text-[10px] text-slate-500 font-medium uppercase tracking-wide whitespace-nowrap">Max CPA $</span>
+        <span className="text-[10px] text-slate-500 font-medium uppercase tracking-wide whitespace-nowrap">Max CPA ₹</span>
         <input type="number" min={0} placeholder="∞" value={filters.cpaMax} onChange={(e) => setFilters((f) => ({ ...f, cpaMax: e.target.value }))} className={inp} />
       </div>
 
@@ -544,7 +547,6 @@ export default function GoogleAdsDashboard() {
   // ═══════════════════════════════════════════════════════════════════════════
   // MOVED HOOKS & DERIVED VALUES (ABOVE THE LOADING RETURN)
   // ═══════════════════════════════════════════════════════════════════════════
-  // These were previously after `if (loading)`, causing hook order mismatch.
   const maxCost = Math.max(
     ...(directorCampaigns || []).map((c) => Number(c.cost || 0)),
     1
@@ -583,14 +585,14 @@ export default function GoogleAdsDashboard() {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // RENDER
+  // RENDER (fully responsive)
   // ═══════════════════════════════════════════════════════════════════════════
   return (
     <MainLayout>
-      <div className="min-h-screen bg-[#020617] px-6 py-5">
+      <div className="min-h-screen bg-[#020617] px-4 py-3 sm:px-6 sm:py-5">
 
         {/* Director Command Header */}
-        <div className="flex items-start justify-between mb-5">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-5">
           <div>
             <div className="flex items-center gap-3 mb-2">
               <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -600,15 +602,15 @@ export default function GoogleAdsDashboard() {
               <span className="text-slate-700 text-xs">|</span>
               <span className="text-slate-500 text-xs">{adv.activeCampaigns} active / {adv.totalCampaigns} total campaigns</span>
             </div>
-            <h1 className="text-4xl font-black tracking-tight text-white leading-none">
+            <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-white leading-tight sm:leading-none">
               Google Ads Command
             </h1>
-            <p className="text-slate-500 mt-1.5 text-sm">
+            <p className="text-slate-500 mt-1 text-xs sm:text-sm">
               Director-level marketing intelligence & optimization platform
             </p>
           </div>
 
-          <div className="flex items-stretch gap-3">
+          <div className="flex flex-wrap items-stretch gap-3">
             {wasteSpend > 0 && (
               <div className="bg-red-950/50 border border-red-800/50 rounded-2xl px-4 py-3 text-right">
                 <div className="text-[10px] text-red-400 font-bold uppercase tracking-widest">⚠ Waste Spend</div>
@@ -628,9 +630,9 @@ export default function GoogleAdsDashboard() {
           </div>
         </div>
 
-        {/* Director Alert Bar */}
+        {/* Director Alert Bar - responsive wrap */}
         {(adv.noConv > 0 || adv.elite > 0 || adv.topSpendShare > 60 || adv.cvr > 5) && (
-          <div className="flex items-center gap-2 mb-5 overflow-x-auto pb-0.5">
+          <div className="flex flex-wrap items-center gap-2 mb-5">
             {adv.noConv > 0 && (
               <div className="flex items-center gap-2 bg-red-950/40 border border-red-800/40 rounded-xl px-3.5 py-2 text-xs text-red-300 whitespace-nowrap shrink-0">
                 <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
@@ -664,8 +666,8 @@ export default function GoogleAdsDashboard() {
           </div>
         )}
 
-        {/* Director 12-KPI Strip - Fixed Active Rate guard */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-12 gap-3 mb-5">
+        {/* Director 12-KPI Strip - fully responsive grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-12 gap-3 mb-5">
           <DirectorKPI label="Total Spend" value={fmt.currency(dashboardOverview.totalSpend)} subValue={`${adv.activeCampaigns} active campaigns`} accent="blue" />
           <DirectorKPI label="Total Clicks" value={fmt.num(dashboardOverview.totalClicks)} subValue={`CTR ${adv.ctr.toFixed(2)}%`} accent="violet" />
           <DirectorKPI label="Impressions" value={fmt.num(dashboardOverview.totalImpressions)} subValue={`${adv.totalCampaigns} campaigns`} accent="indigo" />
@@ -673,7 +675,7 @@ export default function GoogleAdsDashboard() {
           <DirectorKPI label="Avg CPC" value={fmt.currency(adv.cpc)} subValue="cost per click" accent="cyan" />
           <DirectorKPI label="Avg CPA" value={fmt.currency(adv.cpa)} subValue="cost per acquisition" accent="amber" />
           <DirectorKPI label="Click-Through Rate" value={fmt.pct(adv.ctr)} subValue={adv.ctr >= 2 ? "Above 2% target" : "Below 2% target"} accent={adv.ctr >= 2 ? "emerald" : "red"} />
-          <DirectorKPI label="Efficiency Index" value={adv.efficiencyIndex.toFixed(3)} subValue="conversions per $1K" accent="rose" />
+          <DirectorKPI label="Efficiency Index" value={adv.efficiencyIndex.toFixed(3)} subValue="conversions per ₹1K" accent="rose" />
           <DirectorKPI label="Campaign Health" value={`${performanceScore}/100`} accent="emerald" />
           <DirectorKPI label="Waste Spend" value={fmt.currency(wasteSpend)} accent="red" />
           <DirectorKPI label="Top Campaign" value={adv.topCampaign?.conversions || 0} subValue="conversions" accent="cyan" />
@@ -707,8 +709,8 @@ export default function GoogleAdsDashboard() {
         {/* Original KPI Grid */}
         <KPIGrid overview={dashboardOverview} wasteSpend={wasteSpend} />
 
-        {/* Director Insights Row */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-4">
+        {/* Director Insights Row - responsive grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
           {/* Top Converter Spotlight */}
           <div className="bg-[#0c1425] border border-slate-800 rounded-2xl p-5">
             <div className="flex items-center justify-between mb-4">
@@ -792,16 +794,16 @@ export default function GoogleAdsDashboard() {
           </div>
         </div>
 
-        {/* Campaign Performance Matrix Table */}
+        {/* Campaign Performance Matrix Table - responsive overflow */}
         <div className="bg-[#0c1425] border border-slate-800 rounded-2xl mb-4 overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between px-5 py-4 border-b border-slate-800 gap-2">
             <div>
               <h3 className="text-sm font-bold text-white">Campaign Performance Matrix</h3>
               <p className="text-[11px] text-slate-600 mt-0.5">
                 Sorted by <span className="text-slate-400">{filters.sortBy}</span> · {directorCampaigns.length} of {totalCampaigns} campaigns
               </p>
             </div>
-            <div className="hidden sm:flex items-center gap-3 text-[10px] text-slate-500">
+            <div className="flex flex-wrap items-center gap-3 text-[10px] text-slate-500">
               {[["bg-emerald-500","Elite"],["bg-blue-500","Strong"],["bg-amber-400","Avg"],["bg-orange-500","Weak"],["bg-red-500","No Conv"]].map(([dot, lbl]) => (
                 <span key={lbl} className="flex items-center gap-1">
                   <span className={`w-2 h-2 rounded-full ${dot}`} />
@@ -812,7 +814,7 @@ export default function GoogleAdsDashboard() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-xs">
+            <table className="w-full text-xs min-w-[800px]">
               <thead>
                 <tr className="text-slate-600 text-[10px] uppercase tracking-wide border-b border-slate-800/50">
                   <th className="text-left px-5 py-3 font-semibold">Campaign</th>
@@ -886,7 +888,7 @@ export default function GoogleAdsDashboard() {
             <p className="text-[11px] text-slate-600 mt-0.5">Spend Share vs Conversion Share — identify over/under-performing investments</p>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs">
+            <table className="w-full text-xs min-w-[600px]">
               <thead>
                 <tr className="text-slate-600 text-[10px] uppercase tracking-wide border-b border-slate-800/50">
                   <th className="text-left px-5 py-3 font-semibold">Campaign</th>
@@ -903,24 +905,24 @@ export default function GoogleAdsDashboard() {
                     <tr key={c.campaign} className="border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors">
                       <td className="px-5 py-3 text-white font-medium max-w-[220px] truncate" title={c.campaign}>
                         {c.campaign}
-                      </td>
+                       </td>
                       <td className="text-right px-4 py-3 font-mono">
                         <span className="text-slate-300">{c.spendShare.toFixed(1)}%</span>
                         <div className="w-24 h-1.5 bg-slate-800 rounded-full mt-1 ml-auto">
                           <div className="h-full bg-blue-500 rounded-full" style={{ width: `${Math.min(c.spendShare, 100)}%` }} />
                         </div>
-                      </td>
+                       </td>
                       <td className="text-right px-4 py-3 font-mono">
                         <span className="text-slate-300">{c.convShare.toFixed(1)}%</span>
                         <div className="w-24 h-1.5 bg-slate-800 rounded-full mt-1 ml-auto">
                           <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${Math.min(c.convShare, 100)}%` }} />
                         </div>
-                      </td>
+                       </td>
                       <td className="px-5 py-3">
                         <span className={`text-[11px] font-semibold ${isEfficient ? "text-emerald-400" : "text-red-400"}`}>
                           {isEfficient ? `▲ +${gap.toFixed(1)}%` : `▼ ${gap.toFixed(1)}%`}
                         </span>
-                      </td>
+                       </td>
                     </tr>
                   );
                 })}
@@ -929,8 +931,8 @@ export default function GoogleAdsDashboard() {
           </div>
         </div>
 
-        {/* Campaign Health Donut + Executive Score Card */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-4">
+        {/* Campaign Health Donut + Executive Score Card - responsive */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
           <div className="bg-[#0c1425] border border-slate-800 rounded-2xl p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-bold text-white">Campaign Health</h3>
@@ -969,14 +971,14 @@ export default function GoogleAdsDashboard() {
           <CampaignEfficiencyMatrix campaigns={directorCampaigns} />
         </div>
 
-        {/* Match Type + Waste Spend */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-4">
+        {/* Match Type + Waste Spend - responsive */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
           <MatchTypeAnalytics keywords={filteredKeywords} />
           <WasteSpendTrend trends={filteredTrends} />
         </div>
 
-        {/* Spend Trend + Forecast */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-4">
+        {/* Spend Trend + Forecast - responsive */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
           <SpendTrendChart trends={filteredTrends} />
           <ForecastChart trends={filteredTrends} />
         </div>
@@ -990,8 +992,8 @@ export default function GoogleAdsDashboard() {
           />
         </div>
 
-        {/* Campaign Ranking + Opportunity Table */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-4">
+        {/* Campaign Ranking + Opportunity Table - responsive */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
           <CampaignRankingTable campaigns={directorCampaigns} />
           <OpportunityTable campaigns={directorCampaigns} />
         </div>
@@ -1007,7 +1009,7 @@ export default function GoogleAdsDashboard() {
               const pct = (campaign.cost / dashboardOverview.totalSpend) * 100;
               return (
                 <div key={campaign.campaign} className="mb-3">
-                  <div className="flex items-center justify-between text-xs mb-1">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs mb-1 gap-1">
                     <span className="text-slate-400 truncate max-w-[200px]">{campaign.campaign}</span>
                     <span className="text-slate-500 font-mono">{fmt.currency(campaign.cost)} ({pct.toFixed(1)}%)</span>
                   </div>
@@ -1020,7 +1022,7 @@ export default function GoogleAdsDashboard() {
           </div>
         </div>
 
-        {/* AI Insights Row */}
+        {/* AI Insights Row - responsive */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
           <AIInsightCard title="Best Campaign" value={adv.topCampaign?.campaign?.split(' ').slice(0,2).join(' ') || "—"} subtitle={`${adv.topCampaign?.conversions || 0} conversions`} icon="🏆" accent="emerald" />
           <AIInsightCard title="Search Campaign" value="Brand + Non-Brand" subtitle="Split 65% / 35%" icon="🔍" accent="blue" />
