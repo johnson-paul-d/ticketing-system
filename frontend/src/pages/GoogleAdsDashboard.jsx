@@ -862,19 +862,12 @@ console.log(
           />
         </div>
 
-        {/* Original Executive Filters (dateRange removed from logic but component still receives it – no effect) */}
-        <ExecutiveFilters
-          filters={filters}
-          setFilters={setFilters}
-          clearFilters={clearFilters}
-          campaigns={uniqueCampaignsForFilter}
-        />
 
         {/* NEW: Year + Month Filters (Step 4 - UI addition) */}
         <div className="flex flex-wrap items-center gap-3 mb-5 bg-[#0c1425] border border-slate-800/60 rounded-xl p-3">
           <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">Time Period</span>
           <select
-            value={filters.year}
+            value={filters.year}  
             onChange={(e) => setFilters(f => ({ ...f, year: e.target.value }))}
             className="bg-transparent text-xs text-white border border-slate-700 rounded-lg px-3 py-2 outline-none"
           >
@@ -883,6 +876,29 @@ console.log(
               <option key={year} value={year}>{year}</option>
             ))}
           </select>
+          <select
+  value={filters.campaign}
+  onChange={(e) =>
+    setFilters((f) => ({
+      ...f,
+      campaign: e.target.value,
+    }))
+  }
+  className="bg-transparent text-xs text-white border border-slate-700 rounded-lg px-3 py-2 outline-none min-w-[260px]"
+>
+  <option value="All">
+    All Campaigns
+  </option>
+
+  {uniqueCampaignsForFilter.map((c) => (
+    <option
+      key={c.campaign}
+      value={c.campaign}
+    >
+      {c.campaign}
+    </option>
+  ))}
+</select>
           <select
             value={filters.month}
             onChange={(e) => setFilters(f => ({ ...f, month: e.target.value }))}
