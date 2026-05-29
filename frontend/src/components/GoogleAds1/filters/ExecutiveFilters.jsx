@@ -67,6 +67,10 @@ export default function ExecutiveFilters({
         "
       >
 
+        <option value="all">
+  All Time
+</option>
+
         <option value="7d">
           Last 7 Days
         </option>
