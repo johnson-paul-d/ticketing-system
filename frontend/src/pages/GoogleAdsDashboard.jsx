@@ -52,10 +52,10 @@ const ACCENT = {
   rose:   { ring: "ring-rose-500/20",   text: "text-rose-400",   glow: "from-rose-900/30",   dot: "bg-rose-500"   },
 };
 
-function DirectorKPI({ label, value, subValue, accent = "blue", delta }) {
+function DirectorKPI({ label, value, subValue, accent = "blue", delta, className = "" }) {
   const a = ACCENT[accent];
   return (
-    <div className={`relative bg-[#0c1425] border border-slate-800/80 rounded-2xl p-4 ring-1 ${a.ring} overflow-hidden flex flex-col gap-1`}>
+    <div className={`relative bg-[#0c1425] border border-slate-800/80 rounded-2xl p-4 ring-1 ${a.ring} overflow-hidden flex flex-col gap-1 ${className}`}>
       <div className={`absolute inset-0 bg-gradient-to-br ${a.glow} to-transparent opacity-60 pointer-events-none`} />
       <span className="relative text-[10px] font-semibold text-slate-500 uppercase tracking-widest leading-none">{label}</span>
       <span className={`relative text-2xl font-black leading-tight ${a.text}`}>{value}</span>
@@ -672,39 +672,100 @@ export default function GoogleAdsDashboard() {
           </div>
         )}
 
-        {/* Director 12-KPI Strip - fully responsive grid */}
-        {/* NOTE: Custom two-row Zero Conv Days card inserted after Waste Spend */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-12 gap-3 mb-5">
-          <DirectorKPI label="Total Spend" value={fmt.currency(dashboardOverview.totalSpend)} subValue={`${adv.activeCampaigns} active campaigns`} accent="blue" />
-          <DirectorKPI label="Total Clicks" value={fmt.num(dashboardOverview.totalClicks)} subValue={`CTR ${adv.ctr.toFixed(2)}%`} accent="violet" />
-          <DirectorKPI label="Impressions" value={fmt.num(dashboardOverview.totalImpressions)} subValue={`${adv.totalCampaigns} campaigns`} accent="indigo" />
-          <DirectorKPI label="Conversions" value={fmt.num(dashboardOverview.totalConversions)} subValue={`CVR ${adv.cvr.toFixed(2)}%`} accent="emerald" />
-          <DirectorKPI label="Avg CPC" value={fmt.currency(adv.cpc)} subValue="cost per click" accent="cyan" />
-          <DirectorKPI label="Avg CPA" value={fmt.currency(adv.cpa)} subValue="cost per acquisition" accent="amber" />
-          <DirectorKPI label="Click-Through Rate" value={fmt.pct(adv.ctr)} subValue={adv.ctr >= 2 ? "Above 2% target" : "Below 2% target"} accent={adv.ctr >= 2 ? "emerald" : "red"} />
-          <DirectorKPI label="Efficiency Index" value={adv.efficiencyIndex.toFixed(3)} subValue="conversions per ₹1K" accent="rose" />
-          <DirectorKPI label="Campaign Health" value={`${performanceScore}/100`} accent="emerald" />
-          <DirectorKPI label="Waste Spend" value={fmt.currency(wasteSpend)} accent="red" />
+        {/* ───────────────────────────────────────────────────────────────────── */}
+        {/* Director 12‑KPI Strip – New Executive Layout                          */}
+        {/* Row1: Spend | Clicks | Impressions | Conversions                      */}
+        {/* Row2: Avg CPC | Avg CPA | CTR | Efficiency Index                      */}
+        {/* Row3: Campaign Health (wide) | Waste Spend (wide) | Zero Conv | Top   */}
+        {/* ───────────────────────────────────────────────────────────────────── */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3 mb-5">
+          {/* ROW 1 */}
+          <DirectorKPI
+            label="Total Spend"
+            value={fmt.currency(dashboardOverview.totalSpend)}
+            subValue={`${adv.activeCampaigns} active campaigns`}
+            accent="blue"
+          />
+          <DirectorKPI
+            label="Total Clicks"
+            value={fmt.num(dashboardOverview.totalClicks)}
+            subValue={`CTR ${adv.ctr.toFixed(2)}%`}
+            accent="violet"
+          />
+          <DirectorKPI
+            label="Impressions"
+            value={fmt.num(dashboardOverview.totalImpressions)}
+            subValue={`${adv.totalCampaigns} campaigns`}
+            accent="indigo"
+          />
+          <DirectorKPI
+            label="Conversions"
+            value={fmt.num(dashboardOverview.totalConversions)}
+            subValue={`CVR ${adv.cvr.toFixed(2)}%`}
+            accent="emerald"
+          />
 
-          {/* ─── Custom Two‑Row Zero Conv Days KPI ─── */}
+          {/* ROW 2 */}
+          <DirectorKPI
+            label="Avg CPC"
+            value={fmt.currency(adv.cpc)}
+            subValue="cost per click"
+            accent="cyan"
+          />
+          <DirectorKPI
+            label="Avg CPA"
+            value={fmt.currency(adv.cpa)}
+            subValue="cost per acquisition"
+            accent="amber"
+          />
+          <DirectorKPI
+            label="CTR"
+            value={fmt.pct(adv.ctr)}
+            subValue={adv.ctr >= 2 ? "Above 2% target" : "Below 2% target"}
+            accent={adv.ctr >= 2 ? "emerald" : "red"}
+          />
+          <DirectorKPI
+            label="Efficiency Index"
+            value={adv.efficiencyIndex.toFixed(3)}
+            subValue="conversions per ₹1K"
+            accent="rose"
+          />
+
+          {/* ROW 3 – wide cards for Campaign Health & Waste Spend */}
+          <DirectorKPI
+            className="xl:col-span-2"
+            label="Campaign Health"
+            value={`${performanceScore}/100`}
+            accent="emerald"
+          />
+          <DirectorKPI
+            className="xl:col-span-2"
+            label="Waste Spend"
+            value={fmt.currency(wasteSpend)}
+            accent="red"
+          />
+
+          {/* Custom Zero Conv Days card */}
           <div className="relative bg-[#0c1425] border border-slate-800/80 rounded-2xl p-4 ring-1 ring-red-500/20 overflow-hidden flex flex-col gap-1">
             <div className="absolute inset-0 bg-gradient-to-br from-red-900/30 to-transparent opacity-60 pointer-events-none" />
-            <span className="relative text-[10px] font-semibold text-slate-500 uppercase tracking-widest leading-none">Zero Conv Days</span>
-            <span className="relative text-2xl font-black leading-tight text-red-400">{zeroConversionDays}</span>
+            <span className="relative text-[10px] font-semibold text-slate-500 uppercase tracking-widest leading-none">
+              Zero Conv Days
+            </span>
+            <span className="relative text-2xl font-black leading-tight text-red-400">
+              {zeroConversionDays}
+            </span>
             <div className="relative flex items-center justify-between mt-0.5">
-              <span className="text-[11px] text-slate-600">days with spend but no conversions</span>
+              <span className="text-[11px] text-slate-600">
+                days with spend but no conversions
+              </span>
             </div>
           </div>
 
-          <DirectorKPI label="Top Campaign" value={adv.topCampaign?.conversions || 0} subValue="conversions" accent="cyan" />
           <DirectorKPI
-            label="Active Rate"
-            value={`${
-              adv.totalCampaigns > 0
-                ? ((adv.activeCampaigns / adv.totalCampaigns) * 100).toFixed(0)
-                : 0
-            }%`}
-            accent="violet"
+            label="Top Campaign"
+            value={adv.topCampaign?.conversions || 0}
+            subValue="conversions"
+            accent="cyan"
           />
         </div>
 
@@ -913,7 +974,7 @@ export default function GoogleAdsDashboard() {
                   <th className="text-right px-4 py-3 font-semibold">Spend Share</th>
                   <th className="text-right px-4 py-3 font-semibold">Conv Share</th>
                   <th className="px-5 py-3 font-semibold">Efficiency Gap</th>
-                </tr>
+                 </tr>
               </thead>
               <tbody>
                 {budgetAllocationData.slice(0, 10).map((c) => {
