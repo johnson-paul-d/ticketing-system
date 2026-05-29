@@ -1114,7 +1114,7 @@ export default function GoogleAdsDashboard() {
                   <th className="text-right px-4 py-3 font-semibold">Spend Share</th>
                   <th className="text-right px-4 py-3 font-semibold">Conv Share</th>
                   <th className="px-5 py-3 font-semibold">Efficiency Gap</th>
-                </table>
+                </tr>
               </thead>
               <tbody>
                 {budgetAllocationData.slice(0, 10).map((c) => {
