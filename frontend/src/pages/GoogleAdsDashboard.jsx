@@ -444,41 +444,10 @@ export default function GoogleAdsDashboard() {
   }, [campaignFilteredRows]);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // FILTERED TRENDS (normalized + year/month)
+  // FILTERED TRENDS (only year/month, no campaign filter – trend table may not contain campaign info)
   // ═══════════════════════════════════════════════════════════════════════════
   const filteredTrends = useMemo(() => {
-    console.log("Selected Campaign:", filters.campaign);
-    console.log("First Trend Row:", rawTrends?.[0]);
-
-console.log(
-  "Trend Campaign Values:",
-  [...new Set(rawTrends.map(r =>
-    r.campaign ||
-    r.campaign_name ||
-    r.campaignName
-  ))]
-);
-
     let rows = [...(rawTrends || [])];
-
-    if (filters.campaign !== "All") {
-      const before = rows.length;
-      rows = rows.filter(
-        r =>
-          String(
-  r.campaign ||
-  r.campaign_name ||
-  r.campaignName ||
-  ""
-)
-            .trim()
-            .toLowerCase() ===
-          String(filters.campaign || "")
-            .trim()
-            .toLowerCase()
-      );
-      console.log("Trend rows before campaign filter:", before, "after:", rows.length);
-    }
 
     if (filters.year !== "All") {
       rows = rows.filter(
@@ -492,9 +461,8 @@ console.log(
       );
     }
 
-    console.log("Final filteredTrends length:", rows.length);
     return rows;
-  }, [rawTrends, filters.campaign, filters.year, filters.month]);
+  }, [rawTrends, filters.year, filters.month]);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // EXECUTIVE METRICS

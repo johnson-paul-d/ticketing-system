@@ -22,18 +22,17 @@ export default function ForecastChart({
       Number(t.conversions || 0)
     );
 
-  const forecast =
-    movingAverageForecast(
-      conversions,
-      7
-    );
+const forecastValue =
+  movingAverageForecast(conversions,7);
 
-  const data = (trends || []).map((t) => ({
-    date: t.report_date,
-    actual:
-      Number(t.conversions || 0),
-    forecast,
-  }));
+const data = trends.map((t,index) => ({
+  date: t.report_date,
+  actual: Number(t.conversions || 0),
+  forecast:
+    index >= trends.length - 7
+      ? forecastValue
+      : null,
+}));  
 
   return (
 
