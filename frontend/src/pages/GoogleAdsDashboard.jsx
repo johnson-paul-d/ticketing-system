@@ -149,7 +149,7 @@ function HealthDonut({ elite, strong, average, weak, noConv, total }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DIRECTOR FILTER STRIP (unchanged)
+// DIRECTOR FILTER STRIP
 // ─────────────────────────────────────────────────────────────────────────────
 function DirectorFilterStrip({ filters, setFilters, onClear, hasActiveFilters }) {
   const sel = "bg-transparent text-xs text-white border-none outline-none cursor-pointer appearance-none";
@@ -301,8 +301,8 @@ export default function GoogleAdsDashboard() {
   // ═══════════════════════════════════════════════════════════════════════════
   const DEFAULT_FILTERS = {
     campaign:        "All",
-    year:            "All",     // NEW
-    month:           "All",     // NEW
+    year:            "All",
+    month:           "All",
     matchType:       "All",
     performanceTier: "All",
     keywordSearch:   "",
@@ -338,7 +338,7 @@ export default function GoogleAdsDashboard() {
   }, [rawCampaigns]);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // NEW: AVAILABLE YEARS (Step 2)
+  // AVAILABLE YEARS
   // ═══════════════════════════════════════════════════════════════════════════
   const availableYears = useMemo(() => {
     const years = new Set();
@@ -350,7 +350,7 @@ export default function GoogleAdsDashboard() {
   }, [rawCampaigns]);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // NEW: MONTHS CONSTANT (Step 3)
+  // MONTHS CONSTANT
   // ═══════════════════════════════════════════════════════════════════════════
   const MONTHS = [
     "January", "February", "March", "April", "May", "June",
@@ -358,7 +358,7 @@ export default function GoogleAdsDashboard() {
   ];
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // DATE FILTERING (replaced with year + month only) - Step 4
+  // DATE FILTERING (year + month)
   // ═══════════════════════════════════════════════════════════════════════════
   const dateFilteredRows = useMemo(() => {
     let rows = [...rawCampaigns];
@@ -379,11 +379,23 @@ export default function GoogleAdsDashboard() {
   }, [rawCampaigns, filters.year, filters.month]);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // CAMPAIGN FILTERING
+  // CAMPAIGN FILTERING (NORMALIZED)
   // ═══════════════════════════════════════════════════════════════════════════
   const campaignFilteredRows = useMemo(() => {
-    if (filters.campaign === "All") return dateFilteredRows;
-    return dateFilteredRows.filter((r) => r.campaign === filters.campaign);
+    if (filters.campaign === "All") {
+      return dateFilteredRows;
+    }
+
+    const normalizedFilterCampaign = String(filters.campaign || "")
+      .trim()
+      .toLowerCase();
+
+    return dateFilteredRows.filter(
+      r =>
+        String(r.campaign || "")
+          .trim()
+          .toLowerCase() === normalizedFilterCampaign
+    );
   }, [dateFilteredRows, filters.campaign]);
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -427,58 +439,41 @@ export default function GoogleAdsDashboard() {
   }, [campaignFilteredRows]);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // FILTERED TRENDS (now respects campaign, year, month) - Problem 2 solved
+  // FILTERED TRENDS (normalized + year/month)
   // ═══════════════════════════════════════════════════════════════════════════
   const filteredTrends = useMemo(() => {
+    console.log("Selected Campaign:", filters.campaign);
+    console.log("First Trend Row:", rawTrends?.[0]);
 
-  console.log("Selected Campaign:", filters.campaign);
-
-  console.log(
-    "First Trend Row:",
-    rawTrends?.[0]
-  );
-
-  let rows = [...(rawTrends || [])];
-
-  if (filters.campaign !== "All") {
-
-    const before = rows.length;
-
-    rows = rows.filter(
-      r =>
-        String(r.campaign || "")
-          .trim()
-          .toLowerCase() ===
-        String(filters.campaign || "")
-          .trim()
-          .toLowerCase()
-    );
-
-    console.log(
-      "Trend rows before:",
-      before,
-      "after:",
-      rows.length
-    );
-  }
-
-  return rows;
-
-}, [rawTrends, filters.campaign]);
-    let rows = [...rawTrends];
+    let rows = [...(rawTrends || [])];
 
     if (filters.campaign !== "All") {
-      rows = rows.filter(r => r.campaign === filters.campaign);
+      const before = rows.length;
+      rows = rows.filter(
+        r =>
+          String(r.campaign || "")
+            .trim()
+            .toLowerCase() ===
+          String(filters.campaign || "")
+            .trim()
+            .toLowerCase()
+      );
+      console.log("Trend rows before campaign filter:", before, "after:", rows.length);
     }
 
     if (filters.year !== "All") {
-      rows = rows.filter(r => new Date(r.report_date).getFullYear().toString() === filters.year);
+      rows = rows.filter(
+        r => new Date(r.report_date).getFullYear().toString() === filters.year
+      );
     }
 
     if (filters.month !== "All") {
-      rows = rows.filter(r => new Date(r.report_date).getMonth() === Number(filters.month));
+      rows = rows.filter(
+        r => new Date(r.report_date).getMonth() === Number(filters.month)
+      );
     }
 
+    console.log("Final filteredTrends length:", rows.length);
     return rows;
   }, [rawTrends, filters.campaign, filters.year, filters.month]);
 
@@ -497,7 +492,7 @@ export default function GoogleAdsDashboard() {
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // KEYWORD FILTERING (now includes campaign filter) - Problem 3 solved
+  // KEYWORD FILTERING (normalized campaign matching)
   // ═══════════════════════════════════════════════════════════════════════════
   const filteredKeywords = useMemo(() => {
     let filtered = [...keywords];
@@ -508,7 +503,15 @@ export default function GoogleAdsDashboard() {
       filtered = filtered.filter(kw => kw.keyword?.toLowerCase().includes(filters.keywordSearch.toLowerCase()));
     }
     if (filters.campaign !== "All") {
-      filtered = filtered.filter(kw => kw.campaign === filters.campaign);
+      filtered = filtered.filter(
+        kw =>
+          String(kw.campaign || "")
+            .trim()
+            .toLowerCase() ===
+          String(filters.campaign || "")
+            .trim()
+            .toLowerCase()
+      );
     }
     return filtered;
   }, [keywords, filters.matchType, filters.keywordSearch, filters.campaign]);
@@ -1070,7 +1073,7 @@ export default function GoogleAdsDashboard() {
                   <th className="text-right px-4 py-3 font-semibold">Spend Share</th>
                   <th className="text-right px-4 py-3 font-semibold">Conv Share</th>
                   <th className="px-5 py-3 font-semibold">Efficiency Gap</th>
-                </tr>
+                \).
               </thead>
               <tbody>
                 {budgetAllocationData.slice(0, 10).map((c) => {
