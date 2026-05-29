@@ -1,4 +1,3 @@
-
 import {
   calculateCPA,
   calculateEfficiencyScore,
@@ -12,6 +11,22 @@ import {
 export default function CampaignIntelligenceTable({
   campaigns = [],
 }) {
+
+  // =====================================================
+  // DERIVED METRICS (AVG SPEND & ACCOUNT CPA)
+  // =====================================================
+
+  const avgCampaignSpend = campaigns.length
+    ? campaigns.reduce((sum, c) => sum + (Number(c?.cost) || 0), 0) / campaigns.length
+    : 0;
+
+  let totalCost = 0;
+  let totalConversions = 0;
+  campaigns.forEach(c => {
+    totalCost += Number(c?.cost) || 0;
+    totalConversions += Number(c?.conversions) || 0;
+  });
+  const accountAvgCPA = totalConversions > 0 ? totalCost / totalConversions : Infinity;
 
   // =====================================================
   // SAFE DATA FORMAT
@@ -68,42 +83,22 @@ export default function CampaignIntelligenceTable({
         );
 
       // =====================================================
-      // EXECUTIVE STATUS
+      // EXECUTIVE STATUS (NEW LOGIC)
       // =====================================================
 
       let status = "Monitor";
 
-      // HIGH SPEND NO CONVERSIONS
-
-      if (
-        conversions === 0 &&
-        cost > 1000
-      ) {
-
+      // PAUSE: high spend, no conversions
+      if (cost > avgCampaignSpend && conversions === 0) {
         status = "Pause";
-
       }
-
-      // HIGH PERFORMANCE
-
-      else if (
-        efficiency > 1.5 &&
-        conversions > 0
-      ) {
-
+      // SCALE: high conversion rate and CPA below account average
+      else if (conversionRate > 5 && cpa < accountAvgCPA) {
         status = "Scale";
-
       }
-
-      // HIGH CTR LOW CONVERSIONS
-
-      else if (
-        ctr > 5 &&
-        conversions === 0
-      ) {
-
+      // OPTIMIZE: high CTR but very low conversion rate
+      else if (ctr > 5 && conversionRate < 1) {
         status = "Optimize";
-
       }
 
       return {

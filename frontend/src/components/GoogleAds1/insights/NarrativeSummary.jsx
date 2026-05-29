@@ -85,7 +85,7 @@ export default function NarrativeSummary({
             {" "}
             {(
               Number(
-                overview?.averageCTR || 0
+                overview.ctr || 0
               ) * 100
             ).toFixed(2)}%
           </span>.

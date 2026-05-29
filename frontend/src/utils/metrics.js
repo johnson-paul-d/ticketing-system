@@ -45,13 +45,23 @@ export const calculateWasteSpend = (
 ) => {
 
   return campaigns
-    .filter(
-      (c) =>
-        Number(c.conversions || 0) === 0
-    )
+    .filter((c) => {
+
+      const cpa =
+        c.conversions > 0
+          ? c.cost / c.conversions
+          : Infinity;
+
+      return (
+        c.conversions === 0 ||
+        cpa > 2000
+      );
+
+    })
     .reduce(
       (sum, c) =>
         sum + Number(c.cost || 0),
       0
     );
+
 };

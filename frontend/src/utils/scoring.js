@@ -3,31 +3,32 @@ export const calculatePerformanceScore = (
 ) => {
 
   const ctr =
-    Number(campaign.ctr || 0) * 100;
+    Number(campaign.ctr || 0);
 
   const conversionRate =
-    Number(
-      campaign.conversion_rate || 0
-    );
+    Number(campaign.conversion_rate || 0);
 
-  const conversions =
-    Number(campaign.conversions || 0);
+  const cpa =
+    Number(campaign.cpa || 0);
 
-  const avgCpc =
-    Number(campaign.avg_cpc || 0);
+  let score = 0;
 
-  let score =
-    ctr * 0.25 +
-    conversionRate * 0.35 +
-    conversions * 0.25 -
-    avgCpc * 0.15;
+  score += Math.min(ctr * 4, 30);
 
-  score = Math.max(
+  score += Math.min(conversionRate * 5, 40);
+
+  score += Math.max(
     0,
-    Math.min(100, score)
+    30 - cpa / 50
   );
 
-  return Math.round(score);
+  return Math.round(
+    Math.max(
+      0,
+      Math.min(score, 100)
+    )
+  );
+
 };
 
 export const calculateOpportunityScore = (
@@ -43,10 +44,14 @@ export const calculateOpportunityScore = (
   const avgCpc =
     Number(campaign.avg_cpc || 1);
 
-  return Math.round(
-    (ctr * conversions) /
-      Math.max(avgCpc, 1)
-  );
+  const conversionRate =
+    Number(campaign.conversion_rate || 0);
+
+  // New formula: (ctr * 3 + conversion_rate * 5 + conversions) - avg_cpc
+  const score =
+    (ctr * 3 + conversionRate * 5 + conversions) - avgCpc;
+
+  return Math.round(score);
 };
 
 export const calculateMomentumScore = (
