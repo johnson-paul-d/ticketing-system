@@ -392,7 +392,12 @@ export default function GoogleAdsDashboard() {
 
     return dateFilteredRows.filter(
       r =>
-        String(r.campaign || "")
+        String(
+  r.campaign ||
+  r.campaign_name ||
+  r.campaignName ||
+  ""
+)
           .trim()
           .toLowerCase() === normalizedFilterCampaign
     );
@@ -445,13 +450,27 @@ export default function GoogleAdsDashboard() {
     console.log("Selected Campaign:", filters.campaign);
     console.log("First Trend Row:", rawTrends?.[0]);
 
+console.log(
+  "Trend Campaign Values:",
+  [...new Set(rawTrends.map(r =>
+    r.campaign ||
+    r.campaign_name ||
+    r.campaignName
+  ))]
+);
+
     let rows = [...(rawTrends || [])];
 
     if (filters.campaign !== "All") {
       const before = rows.length;
       rows = rows.filter(
         r =>
-          String(r.campaign || "")
+          String(
+  r.campaign ||
+  r.campaign_name ||
+  r.campaignName ||
+  ""
+)
             .trim()
             .toLowerCase() ===
           String(filters.campaign || "")
