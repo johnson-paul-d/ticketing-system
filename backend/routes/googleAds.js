@@ -80,7 +80,7 @@ router.get("/overview", async (req, res) => {
 });
 
 // =====================================================
-// TRENDS API - returns report_date and cost (grouped by date)
+// TRENDS API - returns campaign and report_date grouped
 // =====================================================
 
 router.get("/trends", async (req, res) => {
@@ -100,20 +100,26 @@ router.get("/trends", async (req, res) => {
     const grouped = {};
 
     data.forEach((row) => {
-      const date = row.report_date;
 
-      if (!grouped[date]) {
-        grouped[date] = {
-          report_date: date,
+      const key =
+        `${row.campaign}_${row.report_date}`;
+
+      if (!grouped[key]) {
+
+        grouped[key] = {
+          campaign: row.campaign,
+          report_date: row.report_date,
           cost: 0,
           conversions: 0,
           clicks: 0,
+          impressions: 0,
         };
       }
 
-      grouped[date].cost += Number(row.cost || 0);
-      grouped[date].conversions += Number(row.conversions || 0);
-      grouped[date].clicks += Number(row.clicks || 0);
+      grouped[key].cost += Number(row.cost || 0);
+      grouped[key].clicks += Number(row.clicks || 0);
+      grouped[key].impressions += Number(row.impressions || 0);
+      grouped[key].conversions += Number(row.conversions || 0);
     });
 
     res.json(Object.values(grouped));

@@ -43,20 +43,46 @@ export const calculateEfficiencyScore = (
   );
 
 };
-
 export const calculateWasteSpend = (
   rows = []
 ) => {
 
-  return rows
+  const dailyTotals = {};
+
+  rows.forEach((row) => {
+
+    const date = row.report_date;
+
+    if (!date) return;
+
+    if (!dailyTotals[date]) {
+
+      dailyTotals[date] = {
+        cost: 0,
+        conversions: 0,
+      };
+
+    }
+
+    dailyTotals[date].cost += Number(
+      row.cost || 0
+    );
+
+    dailyTotals[date].conversions += Number(
+      row.conversions || 0
+    );
+
+  });
+
+  return Object.values(dailyTotals)
     .filter(
-      row =>
-        Number(row.cost || 0) > 0 &&
-        Number(row.conversions || 0) === 0
+      day =>
+        day.cost > 0 &&
+        day.conversions === 0
     )
     .reduce(
-      (sum, row) =>
-        sum + Number(row.cost || 0),
+      (sum, day) =>
+        sum + day.cost,
       0
     );
 
@@ -66,10 +92,39 @@ export const calculateZeroConversionDays = (
   rows = []
 ) => {
 
-  return rows.filter(
-    row =>
-      Number(row.cost || 0) > 0 &&
-      Number(row.conversions || 0) === 0
-  ).length;
+  const dailyTotals = {};
+
+  rows.forEach((row) => {
+
+    const date = row.report_date;
+
+    if (!date) return;
+
+    if (!dailyTotals[date]) {
+
+      dailyTotals[date] = {
+        cost: 0,
+        conversions: 0,
+      };
+
+    }
+
+    dailyTotals[date].cost += Number(
+      row.cost || 0
+    );
+
+    dailyTotals[date].conversions += Number(
+      row.conversions || 0
+    );
+
+  });
+
+  return Object.values(dailyTotals)
+    .filter(
+      day =>
+        day.cost > 0 &&
+        day.conversions === 0
+    )
+    .length;
 
 };

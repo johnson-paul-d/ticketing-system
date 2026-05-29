@@ -444,10 +444,22 @@ export default function GoogleAdsDashboard() {
   }, [campaignFilteredRows]);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // FILTERED TRENDS (only year/month, no campaign filter – trend table may not contain campaign info)
+  // FILTERED TRENDS (year + month + campaign)
   // ═══════════════════════════════════════════════════════════════════════════
   const filteredTrends = useMemo(() => {
     let rows = [...(rawTrends || [])];
+
+    if (filters.campaign !== "All") {
+      rows = rows.filter(
+        (r) =>
+          String(r.campaign || "")
+            .trim()
+            .toLowerCase() ===
+          String(filters.campaign || "")
+            .trim()
+            .toLowerCase()
+      );
+    }
 
     if (filters.year !== "All") {
       rows = rows.filter(
@@ -462,7 +474,7 @@ export default function GoogleAdsDashboard() {
     }
 
     return rows;
-  }, [rawTrends, filters.year, filters.month]);
+  }, [rawTrends, filters.campaign, filters.year, filters.month]);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // EXECUTIVE METRICS
@@ -1009,7 +1021,7 @@ export default function GoogleAdsDashboard() {
                   <th className="text-right px-4 py-3 font-semibold">CPC</th>
                   <th className="px-5 py-3 font-semibold">Spend</th>
                   <th className="text-center px-4 py-3 font-semibold">Health</th>
-                </tr>
+                 </tr>
               </thead>
               <tbody>
                 {directorCampaigns.length === 0 ? (
@@ -1076,7 +1088,7 @@ export default function GoogleAdsDashboard() {
                   <th className="text-right px-4 py-3 font-semibold">Spend Share</th>
                   <th className="text-right px-4 py-3 font-semibold">Conv Share</th>
                   <th className="px-5 py-3 font-semibold">Efficiency Gap</th>
-                </tr>
+                 </tr>
               </thead>
               <tbody>
                 {budgetAllocationData.slice(0, 10).map((c) => {
