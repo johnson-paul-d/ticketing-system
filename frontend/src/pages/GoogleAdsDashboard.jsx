@@ -430,6 +430,41 @@ export default function GoogleAdsDashboard() {
   // FILTERED TRENDS (now respects campaign, year, month) - Problem 2 solved
   // ═══════════════════════════════════════════════════════════════════════════
   const filteredTrends = useMemo(() => {
+
+  console.log("Selected Campaign:", filters.campaign);
+
+  console.log(
+    "First Trend Row:",
+    rawTrends?.[0]
+  );
+
+  let rows = [...(rawTrends || [])];
+
+  if (filters.campaign !== "All") {
+
+    const before = rows.length;
+
+    rows = rows.filter(
+      r =>
+        String(r.campaign || "")
+          .trim()
+          .toLowerCase() ===
+        String(filters.campaign || "")
+          .trim()
+          .toLowerCase()
+    );
+
+    console.log(
+      "Trend rows before:",
+      before,
+      "after:",
+      rows.length
+    );
+  }
+
+  return rows;
+
+}, [rawTrends, filters.campaign]);
     let rows = [...rawTrends];
 
     if (filters.campaign !== "All") {
