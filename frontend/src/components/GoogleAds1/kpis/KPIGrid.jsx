@@ -3,6 +3,7 @@ import {
   MousePointerClick,
   Eye,
   Target,
+  AlertTriangle,
 } from "lucide-react";
 
 const Card = ({
@@ -13,27 +14,22 @@ const Card = ({
 }) => {
 
   return (
-
     <div className="
       bg-slate-900
       border border-slate-800
       rounded-2xl
       p-5
     ">
-
       <div className="
         flex items-center justify-between
       ">
-
         <div>
-
           <p className="
             text-slate-400
             text-sm
           ">
             {label}
           </p>
-
           <h2 className="
             text-3xl
             font-bold
@@ -42,9 +38,7 @@ const Card = ({
           ">
             {value}
           </h2>
-
         </div>
-
         <div className={`
           w-12 h-12 rounded-xl
           flex items-center justify-center
@@ -52,9 +46,7 @@ const Card = ({
         `}>
           {icon}
         </div>
-
       </div>
-
     </div>
   );
 };
@@ -62,17 +54,16 @@ const Card = ({
 export default function KPIGrid({
   overview,
   wasteSpend,
+  zeroConversionDays,
 }) {
 
   return (
-
     <div className="
       grid grid-cols-1
       md:grid-cols-2
-      xl:grid-cols-5
+      xl:grid-cols-3
       gap-5 mb-6
     ">
-
       <Card
         label="Total Spend"
         value={`₹${Number(
@@ -111,11 +102,21 @@ export default function KPIGrid({
 
       <Card
         label="Waste Spend"
-        value={`₹${wasteSpend.toLocaleString()}`}
+        value={`₹${Number(
+          wasteSpend || 0
+        ).toLocaleString()}`}
         icon={<Target />}
         color="bg-orange-500/20 text-orange-400"
       />
 
+      <Card
+        label="Zero Conv Days"
+        value={Number(
+          zeroConversionDays || 0
+        ).toLocaleString()}
+        icon={<AlertTriangle />}
+        color="bg-red-500/20 text-red-400"
+      />
     </div>
   );
 }

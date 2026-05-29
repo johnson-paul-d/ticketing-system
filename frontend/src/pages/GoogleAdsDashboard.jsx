@@ -19,7 +19,7 @@ import NarrativeSummary from "../components/GoogleAds1/insights/NarrativeSummary
 // ─────────────────────────────────────────────────────────────────────────────
 // FORMATTING HELPERS (USD → INR)
 // ─────────────────────────────────────────────────────────────────────────────
-const USD_TO_INR = 83;
+const USD_TO_INR = 1;
 
 const fmt = {
   currency: (v) => {
@@ -725,7 +725,7 @@ export default function GoogleAdsDashboard() {
         />
 
         {/* Original KPI Grid */}
-        <KPIGrid overview={dashboardOverview} wasteSpend={wasteSpend} />
+        <KPIGrid overview={dashboardOverview} wasteSpend={wasteSpend} zeroConversionDays={zeroConversionDays} />
 
         {/* Director Insights Row - responsive grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
