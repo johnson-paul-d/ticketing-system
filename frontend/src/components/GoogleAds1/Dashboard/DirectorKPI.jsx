@@ -28,3 +28,4 @@ function DirectorKPI({ label, value, subValue, accent = "blue", delta, className
     </div>
   );
 }
+export default DirectorKPI;
