@@ -501,7 +501,7 @@ export default function GoogleAdsDashboard() {
         </div>
 
         {/* AI Insights Panel */}
-        <AIInsightsPanel
+        <AIInsightPanel
           campaigns={filteredCampaigns}
           topCampaign={advMetrics.topCampaign}
           worstCampaign={advMetrics.worstCampaign}
