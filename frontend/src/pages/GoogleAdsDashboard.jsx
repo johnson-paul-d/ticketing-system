@@ -19,11 +19,11 @@ import RecommendationPanel from "../components/GoogleAds1/insights/Recommendatio
 import NarrativeSummary from "../components/GoogleAds1/insights/NarrativeSummary";
 import {fmt,normalizeCampaign,computeExecutiveScore,} from "../utils/googleAdsMetrics";
 
-import SkeletonCard from "../components/GoogleAds1/Dashboard/SkeletonCard";
-import ExecutiveSummaryCard from "../components/GoogleAds1/Dashboard/ExecutiveSummaryCard";
-import AIInsightPanel from "../components/GoogleAds1/Dashboard/AIInsightPanel";
-import DirectorKPI from "../components/GoogleAds1/Dashboard/DirectorKPI";
-import DirectorFilterStrip from "../components/GoogleAds1/Dashboard/DirectorFilterStrip";
+import SkeletonCard from "../components/GoogleAds1/dashboard/SkeletonCard";
+import ExecutiveSummaryCard from "../components/GoogleAds1/dashboard/ExecutiveSummaryCard";
+import AIInsightPanel from "../components/GoogleAds1/dashboard/AIInsightPanel";
+import DirectorKPI from "../components/GoogleAds1/dashboard/DirectorKPI";
+import DirectorFilterStrip from "../components/GoogleAds1/dashboard/DirectorFilterStrip";
 
 // -----------------------------------------------------------------------------
 // MAIN DASHBOARD
