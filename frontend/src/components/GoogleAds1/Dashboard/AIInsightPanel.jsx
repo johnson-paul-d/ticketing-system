@@ -1,5 +1,5 @@
 // AI Insights Panel (Phase 4 – uses real campaign names)
-const AIInsightsPanel = ({ campaigns, topCampaign, worstCampaign, highestCPA, wasteSpend }) => {
+const AIInsightPanel = ({ campaigns, topCampaign, worstCampaign, highestCPA, wasteSpend }) => {
   const insights = [];
 
   if (topCampaign) {
