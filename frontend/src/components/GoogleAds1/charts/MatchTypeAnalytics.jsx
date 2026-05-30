@@ -22,10 +22,15 @@ export default function MatchTypeAnalytics({
 
   (keywords || []).forEach((keyword) => {
 
-    const matchType =
-      (keyword.match_type || "UNKNOWN")
-        .toUpperCase()
-        .trim();
+const matchType = String(
+  keyword.match_type ||
+  keyword.keyword_match_type ||
+  keyword.matchType ||
+  keyword.matchtype ||
+  "UNKNOWN"
+)
+  .toUpperCase()
+  .trim();
 
     if (!grouped[matchType]) {
 
