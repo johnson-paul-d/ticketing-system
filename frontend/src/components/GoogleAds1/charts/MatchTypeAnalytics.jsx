@@ -17,7 +17,8 @@ export default function MatchTypeAnalytics({
   // =====================================================
   // GROUP MATCH TYPES (NORMALIZED)
   // =====================================================
-
+console.log("Keywords Count:", keywords.length);
+console.log("First Keyword:", keywords[0]);
   const grouped = {};
 
   (keywords || []).forEach((keyword) => {
@@ -52,11 +53,20 @@ const matchType = String(
     grouped[matchType].impressions +=
       Number(keyword.impressions || 0);
 
-    grouped[matchType].cost +=
-      Number(keyword.cost || 0);
+grouped[matchType].cost += Number(
+  keyword.cost ||
+  keyword.spend ||
+  keyword.amount_spent ||
+  0
+);
 
-    grouped[matchType].conversions +=
-      Number(keyword.conversions || 0);
+grouped[matchType].conversions += Number(
+  keyword.conversions ||
+  keyword.all_conversions ||
+  keyword.conversion ||
+  keyword.total_conversions ||
+  0
+);
 
   });
 
