@@ -20,39 +20,50 @@ export default function useExecutiveMetrics({
 }) {
 
   const wasteSpend = useMemo(() => {
-
-    return calculateWasteSpend(rows);
-
+    return calculateWasteSpend(rows || []);
   }, [rows]);
 
   const zeroConversionDays = useMemo(() => {
-
-    return calculateZeroConversionDays(rows);
-
+    return calculateZeroConversionDays(rows || []);
   }, [rows]);
 
   const performanceScore = useMemo(() => {
 
-    if (!campaigns?.length) return 0;
+    if (!campaigns?.length) {
+      return 0;
+    }
+
+    const validScores = campaigns
+      .map((campaign) =>
+        Number(
+          calculatePerformanceScore(campaign)
+        )
+      )
+      .filter(
+        (score) =>
+          !Number.isNaN(score) &&
+          Number.isFinite(score)
+      );
+
+    if (!validScores.length) {
+      return 0;
+    }
 
     const avg =
-      campaigns.reduce(
-        (sum, campaign) =>
-          sum +
-          calculatePerformanceScore(campaign),
+      validScores.reduce(
+        (sum, score) =>
+          sum + score,
         0
-      ) / campaigns.length;
+      ) / validScores.length;
 
     return Math.round(avg);
 
   }, [campaigns]);
 
   const recommendations = useMemo(() => {
-
     return generateRecommendations(
       campaigns || []
     );
-
   }, [campaigns]);
 
   return {
@@ -61,4 +72,5 @@ export default function useExecutiveMetrics({
     performanceScore,
     recommendations,
   };
+
 }

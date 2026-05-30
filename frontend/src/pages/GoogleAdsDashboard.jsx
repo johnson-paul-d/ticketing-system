@@ -499,13 +499,16 @@ export default function GoogleAdsDashboard() {
     totalCampaigns > 0
       ? (activeCampaigns / totalCampaigns) * 100
       : 0;
-  const conversionEfficiency =
-    Number(dashboardOverview?.totalSpend || 0) > 0
-      ? (
-          Number(dashboardOverview?.totalConversions || 0) /
-          Number(dashboardOverview?.totalSpend || 0)
-        ) * 1000
-      : 0;
+const totalSpend =
+  Number(dashboardOverview?.totalSpendRaw || dashboardOverview?.totalSpend || 0);
+
+const totalConversions =
+  Number(dashboardOverview?.totalConversionsRaw || dashboardOverview?.totalConversions || 0);
+
+const conversionEfficiency =
+  totalSpend > 0
+    ? (totalConversions / totalSpend) * 1000
+    : 0;
   const campaignHealth = performanceScore;
 
   // ═══════════════════════════════════════════════════════════════════════════

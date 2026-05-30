@@ -111,7 +111,7 @@ export default function KPIGrid({
       />
       <Card
         label="Efficiency Index"
-        value={conversionEfficiency.toFixed(1)}
+        value={Number(conversionEfficiency || 0).toFixed(2)}
         icon={<BarChart3 />}
         color="bg-indigo-500/20 text-indigo-400"
         subtext="Conversions per ₹1000 spent"
