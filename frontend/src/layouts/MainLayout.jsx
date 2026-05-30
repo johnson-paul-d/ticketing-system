@@ -19,8 +19,13 @@ export default function MainLayout({ children }) {
     navigate("/");
   };
 
-  const canAccessGoogleAds =
-    user?.role === "Admin" && user?.name?.toLowerCase().includes("kavin");
+const allowedUsers = ["kavin", "rameenathan"];
+
+const canAccessGoogleAds =
+  user?.role === "Admin" &&
+  allowedUsers.some(name =>
+    (user?.name || "").toLowerCase().includes(name)
+  );
 
   const menuItems = [
     { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
