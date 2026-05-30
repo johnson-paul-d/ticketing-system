@@ -2,7 +2,6 @@ import { useState, useMemo } from "react";
 import MainLayout from "../layouts/MainLayout";
 import useGoogleAdsData from "../hooks/useGoogleAdsData";
 import useExecutiveMetrics from "../hooks/useExecutiveMetrics";
-import ExecutiveFilters from "../components/GoogleAds1/filters/ExecutiveFilters";
 import KPIGrid from "../components/GoogleAds1/kpis/KPIGrid";
 import ExecutiveScoreCard from "../components/GoogleAds1/kpis/ExecutiveScoreCard";
 import CampaignEfficiencyMatrix from "../components/GoogleAds1/charts/CampaignEfficiencyMatrix";
@@ -16,9 +15,9 @@ import CampaignIntelligenceTable from "../components/GoogleAds1/tables/CampaignI
 import RecommendationPanel from "../components/GoogleAds1/insights/RecommendationPanel";
 import NarrativeSummary from "../components/GoogleAds1/insights/NarrativeSummary";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FORMATTING HELPERS (USD → INR) 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
+// FORMATTING HELPERS (USD → INR)
+// -----------------------------------------------------------------------------
 const USD_TO_INR = 1;
 
 const fmt = {
@@ -38,9 +37,9 @@ const fmt = {
       : Number(v).toLocaleString(),
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// NORMALIZATION & VALIDATION
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
+// NORMALIZATION & VALIDATION (Phase 1)
+// -----------------------------------------------------------------------------
 const normalizeCampaign = (raw) => {
   const cost = Number(raw.cost) || 0;
   const clicks = Number(raw.clicks) || 0;
@@ -67,14 +66,14 @@ const normalizeCampaign = (raw) => {
   };
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// EXECUTIVE SCORE (new weighted formula)
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
+// EXECUTIVE SCORE (new weighted formula – Phase 3)
+// -----------------------------------------------------------------------------
 const computeExecutiveScore = (ctr, cvr, cpa, wasteSpend, totalSpend) => {
   const ctrScore = Math.min(100, (ctr / 5) * 100);      // target 5% CTR
   const cvrScore = Math.min(100, (cvr / 10) * 100);     // target 10% CVR
   const cpaScore = Math.max(0, 100 - (cpa / 1000) * 10); // lower CPA better
-  const wasteScore = totalSpend > 0 
+  const wasteScore = totalSpend > 0
     ? Math.max(0, 100 - (wasteSpend / totalSpend) * 100)
     : 100;
 
@@ -83,75 +82,11 @@ const computeExecutiveScore = (ctr, cvr, cpa, wasteSpend, totalSpend) => {
   );
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DATE RANGE FILTER
-// ─────────────────────────────────────────────────────────────────────────────
-const DateRangeFilter = ({ value, onChange }) => {
-  const ranges = [
-    { label: "Last 7 days", days: 7 },
-    { label: "Last 30 days", days: 30 },
-    { label: "Last 90 days", days: 90 },
-  ];
-  const [customStart, setCustomStart] = useState("");
-  const [customEnd, setCustomEnd] = useState("");
+// -----------------------------------------------------------------------------
+// COMPONENTS: Executive Summary, AI Insights, Loading Skeletons, etc.
+// -----------------------------------------------------------------------------
 
-  const handleRange = (days) => {
-    const end = new Date();
-    const start = new Date();
-    start.setDate(end.getDate() - days);
-    onChange({ start, end, label: ranges.find(r => r.days === days)?.label });
-  };
-
-  const handleCustom = () => {
-    if (customStart && customEnd) {
-      onChange({ start: new Date(customStart), end: new Date(customEnd), label: "Custom" });
-    }
-  };
-
-  return (
-    <div className="flex flex-wrap items-center gap-2 bg-[#0c1425] border border-slate-800/60 rounded-xl p-3">
-      <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">Date Range</span>
-      {ranges.map(({ label, days }) => (
-        <button
-          key={label}
-          onClick={() => handleRange(days)}
-          className={`px-3 py-1.5 rounded-lg text-xs transition ${
-            value?.label === label
-              ? "bg-blue-600 text-white"
-              : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-          }`}
-        >
-          {label}
-        </button>
-      ))}
-      <div className="flex items-center gap-1">
-        <input
-          type="date"
-          value={customStart}
-          onChange={(e) => setCustomStart(e.target.value)}
-          className="bg-slate-800 text-white text-xs rounded-lg px-2 py-1.5 border border-slate-700"
-        />
-        <span className="text-slate-500">to</span>
-        <input
-          type="date"
-          value={customEnd}
-          onChange={(e) => setCustomEnd(e.target.value)}
-          className="bg-slate-800 text-white text-xs rounded-lg px-2 py-1.5 border border-slate-700"
-        />
-        <button
-          onClick={handleCustom}
-          className="bg-slate-700 text-white text-xs px-3 py-1.5 rounded-lg"
-        >
-          Apply
-        </button>
-      </div>
-    </div>
-  );
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// EXECUTIVE SUMMARY CARD
-// ─────────────────────────────────────────────────────────────────────────────
+// Executive Summary Card (Phase 4)
 const ExecutiveSummaryCard = ({ spend, conversions, cpa, bestCampaign, wasteSpend, recommendedAction }) => (
   <div className="bg-gradient-to-r from-[#0c1425] to-[#0f172a] border border-slate-800 rounded-2xl p-5 mb-5">
     <h2 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
@@ -187,9 +122,7 @@ const ExecutiveSummaryCard = ({ spend, conversions, cpa, bestCampaign, wasteSpen
   </div>
 );
 
-// ─────────────────────────────────────────────────────────────────────────────
-// AI INSIGHTS PANEL (dynamic, campaign-specific)
-// ─────────────────────────────────────────────────────────────────────────────
+// AI Insights Panel (Phase 4 – uses real campaign names)
 const AIInsightsPanel = ({ campaigns, topCampaign, worstCampaign, highestCPA, wasteSpend }) => {
   const insights = [];
 
@@ -247,9 +180,7 @@ const AIInsightsPanel = ({ campaigns, topCampaign, worstCampaign, highestCPA, wa
   );
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// LOADING SKELETONS
-// ─────────────────────────────────────────────────────────────────────────────
+// Loading skeletons (Phase 6)
 const SkeletonCard = () => (
   <div className="bg-[#0c1425] border border-slate-800 rounded-2xl p-5 animate-pulse">
     <div className="h-4 bg-slate-800 rounded w-1/3 mb-3" />
@@ -258,9 +189,7 @@ const SkeletonCard = () => (
   </div>
 );
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DIRECTOR KPI CARD (unchanged)
-// ─────────────────────────────────────────────────────────────────────────────
+// Director KPI Card (unchanged)
 const ACCENT = {
   blue:   { ring: "ring-blue-500/20",   text: "text-blue-400",   glow: "from-blue-900/30",   dot: "bg-blue-500"   },
   violet: { ring: "ring-violet-500/20", text: "text-violet-400", glow: "from-violet-900/30", dot: "bg-violet-500" },
@@ -291,9 +220,7 @@ function DirectorKPI({ label, value, subValue, accent = "blue", delta, className
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HEALTH BADGE (updated thresholds)
-// ─────────────────────────────────────────────────────────────────────────────
+// Health Badge (updated thresholds – Phase 3)
 function HealthBadge({ cvr, spend }) {
   if (!spend) return <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-600">Inactive</span>;
   if (cvr >= 0.08) return <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-950/80 text-emerald-400 ring-1 ring-emerald-600/40">Elite</span>;
@@ -303,9 +230,7 @@ function HealthBadge({ cvr, spend }) {
   return              <span className="px-2 py-0.5 rounded-full text-[10px] bg-red-950/80 text-red-400 ring-1 ring-red-600/40">No Conv</span>;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MINI SPEND BAR
-// ─────────────────────────────────────────────────────────────────────────────
+// Mini bar for spend
 function MiniBar({ value, max, color = "emerald" }) {
   const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
   const bg = { emerald: "bg-emerald-500", blue: "bg-blue-500", amber: "bg-amber-400", red: "bg-red-500", violet: "bg-violet-500" };
@@ -316,9 +241,7 @@ function MiniBar({ value, max, color = "emerald" }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TIER ROW
-// ─────────────────────────────────────────────────────────────────────────────
+// Tier row for health donut
 function TierRow({ label, count, total, dotColor }) {
   const pct = total > 0 ? Math.round((count / total) * 100) : 0;
   return (
@@ -331,9 +254,7 @@ function TierRow({ label, count, total, dotColor }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DONUT CHART
-// ─────────────────────────────────────────────────────────────────────────────
+// Health donut chart
 function HealthDonut({ elite, strong, average, weak, noConv, total }) {
   const elitePct = total > 0 ? (elite / total) * 100 : 0;
   const strongPct = total > 0 ? (strong / total) * 100 : 0;
@@ -368,9 +289,7 @@ function HealthDonut({ elite, strong, average, weak, noConv, total }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DIRECTOR FILTER STRIP (unchanged)
-// ─────────────────────────────────────────────────────────────────────────────
+// Director Filter Strip (Phase 5 – affects everything)
 function DirectorFilterStrip({ filters, setFilters, onClear, hasActiveFilters }) {
   const sel = "bg-transparent text-xs text-white border-none outline-none cursor-pointer appearance-none";
   const inp = "bg-transparent text-xs text-white border-none outline-none w-16 placeholder:text-slate-700";
@@ -449,17 +368,17 @@ function DirectorFilterStrip({ filters, setFilters, onClear, hasActiveFilters })
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // MAIN DASHBOARD
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 export default function GoogleAdsDashboard() {
   // Data from hooks
   const { campaigns: rawCampaigns, keywords, trends: rawTrends, loading } = useGoogleAdsData();
-  const { wasteSpend, zeroConversionDays, recommendations: hookRecommendations } = useExecutiveMetrics({}); // we'll override
+  const { wasteSpend, zeroConversionDays, recommendations: hookRecommendations } = useExecutiveMetrics({});
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // FILTERS STATE (includes date range)
-  // ───────────────────────────────────────────────────────────────────────────
+  // ---------------------------------------------------------------------------
+  // FILTERS STATE (includes date range and campaign dropdown)
+  // ---------------------------------------------------------------------------
   const DEFAULT_FILTERS = {
     sortBy: "cost",
     minSpend: "",
@@ -472,14 +391,24 @@ export default function GoogleAdsDashboard() {
     dateRange: { label: "Last 30 days", start: new Date(Date.now() - 30 * 86400000), end: new Date() },
   };
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
-  const clearFilters = () => setFilters(DEFAULT_FILTERS);
-  const hasActiveDirectorFilters = Object.keys(DEFAULT_FILTERS).some(
-    key => key !== "dateRange" && filters[key] !== DEFAULT_FILTERS[key]
-  );
+  const [selectedCampaign, setSelectedCampaign] = useState("All");
+  const clearFilters = () => {
+    setFilters(DEFAULT_FILTERS);
+    setSelectedCampaign("All");
+  };
+  const hasActiveDirectorFilters =
+    filters.sortBy !== "cost" ||
+    filters.minSpend ||
+    filters.conversionMin ||
+    filters.cpaMax ||
+    filters.ctrMin ||
+    filters.impressionMin ||
+    filters.campaignStatus !== "All" ||
+    filters.metricFocus !== "All";
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // 1. NORMALIZE RAW CAMPAIGNS (single source)
-  // ───────────────────────────────────────────────────────────────────────────
+  // ---------------------------------------------------------------------------
+  // 1. NORMALIZE ALL CAMPAIGNS (single source)
+  // ---------------------------------------------------------------------------
   const allNormalizedCampaigns = useMemo(() => {
     const campaignMap = new Map();
     rawCampaigns.forEach(row => {
@@ -497,17 +426,17 @@ export default function GoogleAdsDashboard() {
     return Array.from(campaignMap.values()).map(normalizeCampaign);
   }, [rawCampaigns]);
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // 2. APPLY DATE RANGE + DIRECTOR FILTERS (single source of truth)
-  // ───────────────────────────────────────────────────────────────────────────
-  const filteredCampaigns = useMemo(() => {
-    let result = [...allNormalizedCampaigns];
+  // Unique campaigns for dropdown
+  const uniqueCampaigns = useMemo(() => 
+    allNormalizedCampaigns.map(c => ({ campaign: c.campaign })), 
+    [allNormalizedCampaigns]
+  );
 
-    // Date range filtering (if trends data available, but we filter aggregated campaigns by spend date? 
-    // Since aggregated campaigns lose daily granularity, we apply date filter at row level before aggregation.
-    // We'll re-aggregate with date filter.
-    // To keep it correct, we need to filter raw rows by date, then re-aggregate.
-    // Let's do that:
+  // ---------------------------------------------------------------------------
+  // 2. APPLY DATE RANGE + CAMPAIGN + DIRECTOR FILTERS (single source of truth)
+  // ---------------------------------------------------------------------------
+  const filteredCampaigns = useMemo(() => {
+    // Step 1: Date filtering (re‑aggregate raw rows by date)
     const { start, end } = filters.dateRange;
     let dateFilteredRows = rawCampaigns;
     if (start && end) {
@@ -516,7 +445,8 @@ export default function GoogleAdsDashboard() {
         return d >= start && d <= end;
       });
     }
-    // Re-aggregate after date filter
+
+    // Step 2: Aggregate after date filter
     const dateAggMap = new Map();
     dateFilteredRows.forEach(row => {
       const name = row.campaign;
@@ -530,9 +460,14 @@ export default function GoogleAdsDashboard() {
       agg.impressions += Number(row.impressions) || 0;
       agg.conversions += Number(row.conversions) || 0;
     });
-    result = Array.from(dateAggMap.values()).map(normalizeCampaign);
+    let result = Array.from(dateAggMap.values()).map(normalizeCampaign);
 
-    // Apply director numeric filters
+    // Step 3: Campaign filter (dropdown)
+    if (selectedCampaign !== "All") {
+      result = result.filter(c => c.campaign === selectedCampaign);
+    }
+
+    // Step 4: Director numeric filters
     const minSpendVal = parseFloat(filters.minSpend) || 0;
     const convMinVal = parseFloat(filters.conversionMin) || 0;
     const cpaMaxVal = parseFloat(filters.cpaMax) || 0;
@@ -545,7 +480,7 @@ export default function GoogleAdsDashboard() {
     if (cpaMaxVal) result = result.filter(c => c.conversions > 0 && c.cpa <= cpaMaxVal);
     if (ctrMinVal) result = result.filter(c => c.ctr >= ctrMinVal);
 
-    // Status filters
+    // Step 5: Status filters
     if (filters.campaignStatus === "Active") {
       result = result.filter(c => c.cost > 0);
     } else if (filters.campaignStatus === "Top Performer") {
@@ -559,7 +494,7 @@ export default function GoogleAdsDashboard() {
       result = result.filter(c => c.cost > 0 && c.conversions === 0);
     }
 
-    // Metric focus
+    // Step 6: Metric focus
     if (filters.metricFocus === "Spend") {
       result = result.filter(c => c.cost > 0);
     } else if (filters.metricFocus === "Conversion") {
@@ -568,7 +503,7 @@ export default function GoogleAdsDashboard() {
       result = result.filter(c => c.conversion_rate >= 3);
     }
 
-    // Sorting
+    // Step 7: Sorting
     result.sort((a, b) => {
       switch (filters.sortBy) {
         case "clicks": return b.clicks - a.clicks;
@@ -582,11 +517,11 @@ export default function GoogleAdsDashboard() {
     });
 
     return result;
-  }, [allNormalizedCampaigns, rawCampaigns, filters]);
+  }, [rawCampaigns, filters, selectedCampaign]);
 
-  // ───────────────────────────────────────────────────────────────────────────
+  // ---------------------------------------------------------------------------
   // 3. DERIVED METRICS (all based on filteredCampaigns)
-  // ───────────────────────────────────────────────────────────────────────────
+  // ---------------------------------------------------------------------------
   const overview = useMemo(() => {
     let totalSpend = 0, totalClicks = 0, totalImpressions = 0, totalConversions = 0;
     filteredCampaigns.forEach(c => {
@@ -620,15 +555,16 @@ export default function GoogleAdsDashboard() {
                          [...filteredCampaigns].filter(c => c.conversions > 0).sort((a, b) => a.cpa - b.cpa)[0];
     const highestCPA = [...filteredCampaigns].filter(c => c.conversions > 0).sort((a, b) => b.cpa - a.cpa)[0];
 
-    return { ctr, cpc, cpa, cvr, efficiencyIndex, activeCampaigns, totalCampaigns, elite, strong, average, weak, noConv, topCampaign, highestSpend, worstCampaign, highestCPA };
+    return { ctr, cpc, cpa, cvr, efficiencyIndex, activeCampaigns, totalCampaigns,
+             elite, strong, average, weak, noConv, topCampaign, highestSpend, worstCampaign, highestCPA };
   }, [filteredCampaigns, overview]);
 
-  // Executive score using new weights
+  // Executive score using new weights (Phase 3)
   const executiveScore = useMemo(() => {
     return computeExecutiveScore(advMetrics.ctr, advMetrics.cvr, advMetrics.cpa, wasteSpend, overview.totalSpend);
   }, [advMetrics, wasteSpend, overview.totalSpend]);
 
-  // Filtered trends (for charts)
+  // Filtered trends for charts (same date range)
   const filteredTrends = useMemo(() => {
     let trends = [...(rawTrends || [])];
     const { start, end } = filters.dateRange;
@@ -642,12 +578,9 @@ export default function GoogleAdsDashboard() {
   }, [rawTrends, filters.dateRange]);
 
   // Filtered keywords (for match type)
-  const filteredKeywords = useMemo(() => {
-    // For simplicity, return all keywords. In a real app apply date/campaign filters.
-    return keywords;
-  }, [keywords]);
+  const filteredKeywords = useMemo(() => keywords, [keywords]);
 
-  // Recommendations (combine hook + derived)
+  // Combine recommendations
   const recommendations = useMemo(() => {
     const recs = [...hookRecommendations];
     if (advMetrics.topCampaign && advMetrics.topCampaign.conversion_rate > 8) {
@@ -680,9 +613,9 @@ export default function GoogleAdsDashboard() {
     };
   }, [overview, advMetrics, wasteSpend]);
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // LOADING SKELETONS
-  // ───────────────────────────────────────────────────────────────────────────
+  // ---------------------------------------------------------------------------
+  // RENDER
+  // ---------------------------------------------------------------------------
   if (loading) {
     return (
       <MainLayout>
@@ -697,9 +630,6 @@ export default function GoogleAdsDashboard() {
     );
   }
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // RENDER
-  // ───────────────────────────────────────────────────────────────────────────
   return (
     <MainLayout>
       <div className="min-h-screen bg-[#020617] px-4 py-3 sm:px-6 sm:py-5">
@@ -737,8 +667,75 @@ export default function GoogleAdsDashboard() {
           </div>
         </div>
 
-        {/* Date Range Filter */}
-        <DateRangeFilter value={filters.dateRange} onChange={(range) => setFilters(f => ({ ...f, dateRange: range }))} />
+        {/* Time & Campaign Filter (Phase 5 – restored campaign dropdown) */}
+        <div className="flex flex-wrap items-center gap-3 mb-5 bg-[#0c1425] border border-slate-800/60 rounded-xl p-3">
+          <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">Time & Campaign</span>
+
+          {/* Date range buttons */}
+          {[
+            { label: "Last 7 days", days: 7 },
+            { label: "Last 30 days", days: 30 },
+            { label: "Last 90 days", days: 90 },
+          ].map(({ label, days }) => (
+            <button
+              key={label}
+              onClick={() => {
+                const end = new Date();
+                const start = new Date();
+                start.setDate(end.getDate() - days);
+                setFilters(f => ({ ...f, dateRange: { start, end, label } }));
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs transition ${
+                filters.dateRange?.label === label
+                  ? "bg-blue-600 text-white"
+                  : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+
+          {/* Custom date inputs */}
+          <div className="flex items-center gap-1">
+            <input
+              type="date"
+              id="customStart"
+              className="bg-slate-800 text-white text-xs rounded-lg px-2 py-1.5 border border-slate-700"
+              onChange={(e) => {
+                const start = e.target.value ? new Date(e.target.value) : null;
+                const end = filters.dateRange?.end;
+                if (start && end) {
+                  setFilters(f => ({ ...f, dateRange: { start, end, label: "Custom" } }));
+                }
+              }}
+            />
+            <span className="text-slate-500">to</span>
+            <input
+              type="date"
+              id="customEnd"
+              className="bg-slate-800 text-white text-xs rounded-lg px-2 py-1.5 border border-slate-700"
+              onChange={(e) => {
+                const end = e.target.value ? new Date(e.target.value) : null;
+                const start = filters.dateRange?.start;
+                if (start && end) {
+                  setFilters(f => ({ ...f, dateRange: { start, end, label: "Custom" } }));
+                }
+              }}
+            />
+          </div>
+
+          {/* Campaign dropdown (restored) */}
+          <select
+            value={selectedCampaign}
+            onChange={(e) => setSelectedCampaign(e.target.value)}
+            className="bg-slate-800 text-white text-xs rounded-lg px-3 py-2 outline-none border border-slate-700 min-w-[200px]"
+          >
+            <option value="All">All Campaigns</option>
+            {uniqueCampaigns.map((c) => (
+              <option key={c.campaign} value={c.campaign}>{c.campaign}</option>
+            ))}
+          </select>
+        </div>
 
         {/* Director Filter Strip */}
         <DirectorFilterStrip
@@ -773,7 +770,7 @@ export default function GoogleAdsDashboard() {
           <CampaignEfficiencyMatrix campaigns={filteredCampaigns} />
         </div>
 
-        {/* Row 5: Campaign Health */}
+        {/* Row 5: Campaign Health + Executive Score Card */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
           <div className="bg-[#0c1425] border border-slate-800 rounded-2xl p-5">
             <div className="flex items-center justify-between mb-4">
@@ -817,7 +814,7 @@ export default function GoogleAdsDashboard() {
           <RecommendationPanel recommendations={recommendations} />
         </div>
 
-        {/* AI Insights Panel (dynamic) */}
+        {/* AI Insights Panel */}
         <AIInsightsPanel
           campaigns={filteredCampaigns}
           topCampaign={advMetrics.topCampaign}
@@ -826,7 +823,7 @@ export default function GoogleAdsDashboard() {
           wasteSpend={wasteSpend}
         />
 
-        {/* Additional tables (optional) */}
+        {/* Additional tables */}
         <div className="mb-5">
           <CampaignIntelligenceTable campaigns={filteredCampaigns} />
         </div>
