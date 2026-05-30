@@ -42,10 +42,6 @@ export default function KPIGrid({
   const activeCampaignRate =
     totalCampaigns > 0 ? (activeCampaigns / totalCampaigns) * 100 : 0;
 
-  // Compute Conversion Efficiency (conversions per ₹1000 spend)
-  const conversionEfficiency =
-    totalSpend > 0 ? (totalConversions / totalSpend) * 1000 : 0;
-
   // Determine color for Campaign Health based on score
   let healthColor = "bg-red-500/20 text-red-400";
   let healthSubtext = "Needs Attention";
@@ -58,8 +54,24 @@ export default function KPIGrid({
   }
 
   // Use overview data (fallback)
-  const spend = totalSpend ?? overview?.totalSpend ?? 0;
-  const conversions = totalConversions ?? overview?.totalConversions ?? 0;
+const spend =
+  Number(
+    totalSpend ??
+    overview?.totalSpend ??
+    0
+  );
+
+const conversions =
+  Number(
+    totalConversions ??
+    overview?.totalConversions ??
+    0
+  );
+
+const conversionEfficiency =
+  spend > 0
+    ? (conversions / spend) * 1000
+    : 0;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 mb-6">
@@ -118,7 +130,9 @@ export default function KPIGrid({
       />
       <Card
         label="Campaign Health"
-        value={Math.round(performanceScore)}
+        value={Math.round(
+  Number(performanceScore || 0)
+)}
         icon={<Heart />}
         color={healthColor}
         subtext={healthSubtext}

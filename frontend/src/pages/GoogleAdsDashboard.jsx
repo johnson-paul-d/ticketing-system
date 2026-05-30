@@ -929,6 +929,9 @@ const conversionEfficiency =
           campaignHealth={campaignHealth}
           activeCampaigns={activeCampaigns}
           totalCampaigns={totalCampaigns}
+          performanceScore={performanceScore}
+          totalSpend={dashboardOverview.totalSpend}
+          totalConversions={dashboardOverview.totalConversions}
         />
 
         {/* Director Insights Row - responsive grid */}
