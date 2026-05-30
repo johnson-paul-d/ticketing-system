@@ -6,6 +6,7 @@ import ExecutiveFilters from "../components/GoogleAds1/filters/ExecutiveFilters"
 import KPIGrid from "../components/GoogleAds1/kpis/KPIGrid";
 import ExecutiveScoreCard from "../components/GoogleAds1/kpis/ExecutiveScoreCard";
 import CampaignEfficiencyMatrix from "../components/GoogleAds1/charts/CampaignEfficiencyMatrix";
+import MatchTypeAnalytics from "../components/GoogleAds1/charts/MatchTypeAnalytics";
 import SpendTrendChart from "../components/GoogleAds1/charts/SpendTrendChart";
 import WasteSpendTrend from "../components/GoogleAds1/charts/WasteSpendTrend";
 import ForecastChart from "../components/GoogleAds1/charts/ForecastChart";
@@ -14,18 +15,6 @@ import OpportunityTable from "../components/GoogleAds1/tables/OpportunityTable";
 import CampaignIntelligenceTable from "../components/GoogleAds1/tables/CampaignIntelligenceTable";
 import RecommendationPanel from "../components/GoogleAds1/insights/RecommendationPanel";
 import NarrativeSummary from "../components/GoogleAds1/insights/NarrativeSummary";
-
-// Recharts imports for the new match type chart
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-  CartesianGrid,
-  ResponsiveContainer,
-} from "recharts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FORMATTING HELPERS (USD → INR) 
@@ -293,140 +282,6 @@ function ExecutiveWaterfall({ totalSpend, wasteSpend, totalConversions }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// NEW: MATCH TYPE PERFORMANCE (Two Bars + Efficiency)
-// ─────────────────────────────────────────────────────────────────────────────
-function MatchTypePerformanceBars({ keywords }) {
-  // Group by match_type and aggregate metrics
-  const matchTypeData = useMemo(() => {
-    const groups = new Map();
-
-    keywords.forEach((kw) => {
-      const type = kw.match_type || "other";
-      if (!groups.has(type)) {
-        groups.set(type, {
-          matchType: type,
-          cost: 0,
-          conversions: 0,
-          clicks: 0,
-          impressions: 0,
-        });
-      }
-      const entry = groups.get(type);
-      entry.cost += Number(kw.cost) || 0;
-      entry.conversions += Number(kw.conversions) || 0;
-      entry.clicks += Number(kw.clicks) || 0;
-      entry.impressions += Number(kw.impressions) || 0;
-    });
-
-    // Convert to array and compute derived metrics
-    return Array.from(groups.values())
-      .map((g) => {
-        const spendLakhs = g.cost / 100000; // spend in ₹L for better axis scaling
-        const efficiency = g.cost > 0 ? (g.conversions / g.cost) * 1000 : 0; // conversions per ₹1K spend
-        return {
-          matchType: g.matchType.toUpperCase(),
-          spendLakhs,
-          conversions: g.conversions,
-          efficiency: parseFloat(efficiency.toFixed(2)),
-        };
-      })
-      .sort((a, b) => b.spendLakhs - a.spendLakhs);
-  }, [keywords]);
-
-  if (matchTypeData.length === 0) {
-    return (
-      <div className="bg-[#0c1425] border border-slate-800 rounded-2xl p-5 text-center text-slate-500 text-sm">
-        No keyword data available for match type analysis.
-      </div>
-    );
-  }
-
-  return (
-    <div className="bg-[#0c1425] border border-slate-800 rounded-2xl p-5">
-      <h3 className="text-sm font-bold text-white mb-2">
-        Match Type Performance – Spend, Conversions & Efficiency
-      </h3>
-      <p className="text-[11px] text-slate-600 mb-4">
-        Two bars show spend (₹L) and conversions; efficiency = conversions per ₹1,000 spend.
-      </p>
-      <ResponsiveContainer width="100%" height={350}>
-        <BarChart
-          data={matchTypeData}
-          margin={{ top: 20, right: 30, left: 0, bottom: 5 }}
-          barGap={0}
-          barCategoryGap={20}
-        >
-          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-          <XAxis dataKey="matchType" tick={{ fill: "#94a3b8", fontSize: 12 }} />
-          <YAxis
-            yAxisId="left"
-            orientation="left"
-            tick={{ fill: "#94a3b8", fontSize: 12 }}
-            label={{
-              value: "Spend (₹L)",
-              angle: -90,
-              position: "insideLeft",
-              fill: "#94a3b8",
-              fontSize: 10,
-            }}
-          />
-          <YAxis
-            yAxisId="right"
-            orientation="right"
-            tick={{ fill: "#94a3b8", fontSize: 12 }}
-            label={{
-              value: "Conversions / Efficiency",
-              angle: 90,
-              position: "insideRight",
-              fill: "#94a3b8",
-              fontSize: 10,
-            }}
-          />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: "#0f172a",
-              borderColor: "#334155",
-              borderRadius: "12px",
-              color: "#f1f5f9",
-            }}
-            formatter={(value, name) => {
-              if (name === "Spend (₹L)") return [`₹${value.toFixed(2)}L`, name];
-              if (name === "Efficiency") return [`${value} conv/₹1K`, name];
-              return [value, name];
-            }}
-          />
-          <Legend wrapperStyle={{ color: "#94a3b8", fontSize: 12 }} />
-          <Bar
-            yAxisId="left"
-            dataKey="spendLakhs"
-            name="Spend (₹L)"
-            fill="#3b82f6"
-            radius={[4, 4, 0, 0]}
-          />
-          <Bar
-            yAxisId="right"
-            dataKey="conversions"
-            name="Conversions"
-            fill="#10b981"
-            radius={[4, 4, 0, 0]}
-          />
-          <Bar
-            yAxisId="right"
-            dataKey="efficiency"
-            name="Efficiency (conv/₹1K)"
-            fill="#f59e0b"
-            radius={[4, 4, 0, 0]}
-          />
-        </BarChart>
-      </ResponsiveContainer>
-      <div className="mt-3 text-[10px] text-slate-600 text-center">
-        Efficiency = conversions per ₹1,000 spend. Higher is better.
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // MAIN DASHBOARD
 // ─────────────────────────────────────────────────────────────────────────────
 export default function GoogleAdsDashboard() {
@@ -538,11 +393,11 @@ export default function GoogleAdsDashboard() {
     return dateFilteredRows.filter(
       r =>
         String(
-          r.campaign ||
-          r.campaign_name ||
-          r.campaignName ||
-          ""
-        )
+  r.campaign ||
+  r.campaign_name ||
+  r.campaignName ||
+  ""
+)
           .trim()
           .toLowerCase() === normalizedFilterCampaign
     );
@@ -644,16 +499,16 @@ export default function GoogleAdsDashboard() {
     totalCampaigns > 0
       ? (activeCampaigns / totalCampaigns) * 100
       : 0;
-  const totalSpend =
-    Number(dashboardOverview?.totalSpendRaw || dashboardOverview?.totalSpend || 0);
+const totalSpend =
+  Number(dashboardOverview?.totalSpendRaw || dashboardOverview?.totalSpend || 0);
 
-  const totalConversions =
-    Number(dashboardOverview?.totalConversionsRaw || dashboardOverview?.totalConversions || 0);
+const totalConversions =
+  Number(dashboardOverview?.totalConversionsRaw || dashboardOverview?.totalConversions || 0);
 
-  const conversionEfficiency =
-    totalSpend > 0
-      ? (totalConversions / totalSpend) * 1000
-      : 0;
+const conversionEfficiency =
+  totalSpend > 0
+    ? (totalConversions / totalSpend) * 1000
+    : 0;
   const campaignHealth = performanceScore;
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1007,6 +862,7 @@ export default function GoogleAdsDashboard() {
           />
         </div>
 
+
         {/* NEW: Year + Month Filters (Step 4 - UI addition) */}
         <div className="flex flex-wrap items-center gap-3 mb-5 bg-[#0c1425] border border-slate-800/60 rounded-xl p-3">
           <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">Time Period</span>
@@ -1021,28 +877,28 @@ export default function GoogleAdsDashboard() {
             ))}
           </select>
           <select
-            value={filters.campaign}
-            onChange={(e) =>
-              setFilters((f) => ({
-                ...f,
-                campaign: e.target.value,
-              }))
-            }
-            className="bg-transparent text-xs text-white border border-slate-700 rounded-lg px-3 py-2 outline-none min-w-[260px]"
-          >
-            <option value="All">
-              All Campaigns
-            </option>
+  value={filters.campaign}
+  onChange={(e) =>
+    setFilters((f) => ({
+      ...f,
+      campaign: e.target.value,
+    }))
+  }
+  className="bg-transparent text-xs text-white border border-slate-700 rounded-lg px-3 py-2 outline-none min-w-[260px]"
+>
+  <option value="All">
+    All Campaigns
+  </option>
 
-            {uniqueCampaignsForFilter.map((c) => (
-              <option
-                key={c.campaign}
-                value={c.campaign}
-              >
-                {c.campaign}
-              </option>
-            ))}
-          </select>
+  {uniqueCampaignsForFilter.map((c) => (
+    <option
+      key={c.campaign}
+      value={c.campaign}
+    >
+      {c.campaign}
+    </option>
+  ))}
+</select>
           <select
             value={filters.month}
             onChange={(e) => setFilters(f => ({ ...f, month: e.target.value }))}
@@ -1346,9 +1202,9 @@ export default function GoogleAdsDashboard() {
           <CampaignEfficiencyMatrix campaigns={directorCampaigns} />
         </div>
 
-        {/* NEW: Match Type Performance (two bars + efficiency) + Waste Spend Trend - responsive */}
+        {/* Match Type + Waste Spend - responsive */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-          <MatchTypePerformanceBars keywords={filteredKeywords} />
+          <MatchTypeAnalytics keywords={filteredKeywords} />
           <WasteSpendTrend trends={filteredTrends} />
         </div>
 
