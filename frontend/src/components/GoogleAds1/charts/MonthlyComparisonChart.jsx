@@ -13,14 +13,6 @@ import {
 } from "recharts";
 import { fmt } from "../../utils/googleAdsMetrics";
 
-interface TrendRow {
-  report_date: string;
-  cost: number;
-  conversions: number;
-  clicks: number;
-  impressions: number;
-}
-
 interface MonthlyComparisonChartProps {
   trends: TrendRow[];
 }
