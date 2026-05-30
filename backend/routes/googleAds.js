@@ -89,7 +89,7 @@ router.get("/trends", async (req, res) => {
       .from("google_ads_campaign_analysis")
       .select("*")
       .order("report_date", { ascending: true })
-      .range(0, 5000);
+      .range(0, 50000);
 
     console.log("Trend rows returned:", data?.length);
 

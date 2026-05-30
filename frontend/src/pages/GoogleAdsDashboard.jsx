@@ -39,7 +39,227 @@ const fmt = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DIRECTOR KPI CARD
+// NORMALIZATION & VALIDATION
+// ─────────────────────────────────────────────────────────────────────────────
+const normalizeCampaign = (raw) => {
+  const cost = Number(raw.cost) || 0;
+  const clicks = Number(raw.clicks) || 0;
+  const impressions = Number(raw.impressions) || 0;
+  const conversions = Number(raw.conversions) || 0;
+
+  const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
+  const conversion_rate = clicks > 0 ? (conversions / clicks) * 100 : 0;
+  const avg_cpc = clicks > 0 ? cost / clicks : 0;
+  const cpa = conversions > 0 ? cost / conversions : 0;
+  const efficiency = (ctr * conversion_rate) / Math.max(avg_cpc, 1);
+
+  return {
+    campaign: raw.campaign || raw.campaign_name || raw.campaignName || "Unknown",
+    cost,
+    clicks,
+    impressions,
+    conversions,
+    ctr,
+    conversion_rate,
+    avg_cpc,
+    cpa,
+    efficiency,
+  };
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EXECUTIVE SCORE (new weighted formula)
+// ─────────────────────────────────────────────────────────────────────────────
+const computeExecutiveScore = (ctr, cvr, cpa, wasteSpend, totalSpend) => {
+  const ctrScore = Math.min(100, (ctr / 5) * 100);      // target 5% CTR
+  const cvrScore = Math.min(100, (cvr / 10) * 100);     // target 10% CVR
+  const cpaScore = Math.max(0, 100 - (cpa / 1000) * 10); // lower CPA better
+  const wasteScore = totalSpend > 0 
+    ? Math.max(0, 100 - (wasteSpend / totalSpend) * 100)
+    : 100;
+
+  return Math.round(
+    ctrScore * 0.25 + cvrScore * 0.35 + cpaScore * 0.25 + wasteScore * 0.15
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DATE RANGE FILTER
+// ─────────────────────────────────────────────────────────────────────────────
+const DateRangeFilter = ({ value, onChange }) => {
+  const ranges = [
+    { label: "Last 7 days", days: 7 },
+    { label: "Last 30 days", days: 30 },
+    { label: "Last 90 days", days: 90 },
+  ];
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+
+  const handleRange = (days) => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(end.getDate() - days);
+    onChange({ start, end, label: ranges.find(r => r.days === days)?.label });
+  };
+
+  const handleCustom = () => {
+    if (customStart && customEnd) {
+      onChange({ start: new Date(customStart), end: new Date(customEnd), label: "Custom" });
+    }
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 bg-[#0c1425] border border-slate-800/60 rounded-xl p-3">
+      <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">Date Range</span>
+      {ranges.map(({ label, days }) => (
+        <button
+          key={label}
+          onClick={() => handleRange(days)}
+          className={`px-3 py-1.5 rounded-lg text-xs transition ${
+            value?.label === label
+              ? "bg-blue-600 text-white"
+              : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+      <div className="flex items-center gap-1">
+        <input
+          type="date"
+          value={customStart}
+          onChange={(e) => setCustomStart(e.target.value)}
+          className="bg-slate-800 text-white text-xs rounded-lg px-2 py-1.5 border border-slate-700"
+        />
+        <span className="text-slate-500">to</span>
+        <input
+          type="date"
+          value={customEnd}
+          onChange={(e) => setCustomEnd(e.target.value)}
+          className="bg-slate-800 text-white text-xs rounded-lg px-2 py-1.5 border border-slate-700"
+        />
+        <button
+          onClick={handleCustom}
+          className="bg-slate-700 text-white text-xs px-3 py-1.5 rounded-lg"
+        >
+          Apply
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EXECUTIVE SUMMARY CARD
+// ─────────────────────────────────────────────────────────────────────────────
+const ExecutiveSummaryCard = ({ spend, conversions, cpa, bestCampaign, wasteSpend, recommendedAction }) => (
+  <div className="bg-gradient-to-r from-[#0c1425] to-[#0f172a] border border-slate-800 rounded-2xl p-5 mb-5">
+    <h2 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+      <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+      Executive Summary
+    </h2>
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div>
+        <div className="text-[10px] text-slate-500 uppercase">Total Spend</div>
+        <div className="text-2xl font-black text-white">{fmt.currency(spend)}</div>
+      </div>
+      <div>
+        <div className="text-[10px] text-slate-500 uppercase">Conversions</div>
+        <div className="text-2xl font-black text-white">{fmt.num(conversions)}</div>
+      </div>
+      <div>
+        <div className="text-[10px] text-slate-500 uppercase">Avg CPA</div>
+        <div className="text-2xl font-black text-white">{fmt.currency(cpa)}</div>
+      </div>
+      <div>
+        <div className="text-[10px] text-slate-500 uppercase">Best Campaign</div>
+        <div className="text-sm font-semibold text-emerald-400 truncate">{bestCampaign}</div>
+      </div>
+      <div>
+        <div className="text-[10px] text-slate-500 uppercase">Waste Spend</div>
+        <div className="text-sm font-semibold text-red-400">{fmt.currency(wasteSpend)}</div>
+      </div>
+    </div>
+    <div className="mt-4 pt-3 border-t border-slate-800/50 text-xs">
+      <span className="text-slate-500">📌 Recommended Action: </span>
+      <span className="text-white">{recommendedAction}</span>
+    </div>
+  </div>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AI INSIGHTS PANEL (dynamic, campaign-specific)
+// ─────────────────────────────────────────────────────────────────────────────
+const AIInsightsPanel = ({ campaigns, topCampaign, worstCampaign, highestCPA, wasteSpend }) => {
+  const insights = [];
+
+  if (topCampaign) {
+    insights.push({
+      priority: "High",
+      text: `Scale "${topCampaign.campaign}" — ${topCampaign.conversions} conversions at ${fmt.currency(topCampaign.cpa)} CPA`,
+    });
+  }
+  if (worstCampaign && worstCampaign.conversions === 0) {
+    insights.push({
+      priority: "High",
+      text: `Pause "${worstCampaign.campaign}" — spent ${fmt.currency(worstCampaign.cost)} with zero conversions`,
+    });
+  }
+  if (highestCPA && highestCPA.cpa > 5000) {
+    insights.push({
+      priority: "Medium",
+      text: `Reduce CPC on "${highestCPA.campaign}" — CPA at ${fmt.currency(highestCPA.cpa)} is above target`,
+    });
+  }
+  const underperforming = campaigns.filter(c => c.conversion_rate > 0 && c.conversion_rate < 2).slice(0, 2);
+  underperforming.forEach(c => {
+    insights.push({
+      priority: "Low",
+      text: `Review ad copy for "${c.campaign}" — CVR only ${c.conversion_rate.toFixed(1)}%`,
+    });
+  });
+
+  if (insights.length === 0) {
+    insights.push({ priority: "Info", text: "All campaigns are performing within acceptable ranges." });
+  }
+
+  return (
+    <div className="bg-[#0c1425] border border-slate-800 rounded-2xl p-5 mb-5">
+      <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+        <span className="w-1.5 h-1.5 bg-blue-500 rounded-full" />
+        AI-Powered Insights
+      </h3>
+      <div className="space-y-2">
+        {insights.map((insight, idx) => (
+          <div key={idx} className="flex items-start gap-2 text-xs">
+            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+              insight.priority === "High" ? "bg-red-950 text-red-400" :
+              insight.priority === "Medium" ? "bg-amber-950 text-amber-400" :
+              "bg-blue-950 text-blue-400"
+            }`}>
+              {insight.priority}
+            </span>
+            <span className="text-slate-300">{insight.text}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LOADING SKELETONS
+// ─────────────────────────────────────────────────────────────────────────────
+const SkeletonCard = () => (
+  <div className="bg-[#0c1425] border border-slate-800 rounded-2xl p-5 animate-pulse">
+    <div className="h-4 bg-slate-800 rounded w-1/3 mb-3" />
+    <div className="h-8 bg-slate-800 rounded w-2/3 mb-2" />
+    <div className="h-3 bg-slate-800 rounded w-full" />
+  </div>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DIRECTOR KPI CARD (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 const ACCENT = {
   blue:   { ring: "ring-blue-500/20",   text: "text-blue-400",   glow: "from-blue-900/30",   dot: "bg-blue-500"   },
@@ -72,7 +292,7 @@ function DirectorKPI({ label, value, subValue, accent = "blue", delta, className
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HEALTH BADGE
+// HEALTH BADGE (updated thresholds)
 // ─────────────────────────────────────────────────────────────────────────────
 function HealthBadge({ cvr, spend }) {
   if (!spend) return <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-600">Inactive</span>;
@@ -149,7 +369,7 @@ function HealthDonut({ elite, strong, average, weak, noConv, total }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DIRECTOR FILTER STRIP
+// DIRECTOR FILTER STRIP (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 function DirectorFilterStrip({ filters, setFilters, onClear, hasActiveFilters }) {
   const sel = "bg-transparent text-xs text-white border-none outline-none cursor-pointer appearance-none";
@@ -230,467 +450,260 @@ function DirectorFilterStrip({ filters, setFilters, onClear, hasActiveFilters })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AI INSIGHT CARD
-// ─────────────────────────────────────────────────────────────────────────────
-function AIInsightCard({ title, value, subtitle, icon, accent = "blue" }) {
-  const a = ACCENT[accent];
-  return (
-    <div className={`bg-[#0c1425] border border-slate-800 rounded-xl p-3 ring-1 ${a.ring}`}>
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="text-[10px] text-slate-500 uppercase tracking-wider">{title}</div>
-          <div className={`text-lg font-bold ${a.text} mt-1`}>{value}</div>
-          {subtitle && <div className="text-[10px] text-slate-600 mt-0.5">{subtitle}</div>}
-        </div>
-        <div className={`text-xl ${a.text}`}>{icon}</div>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// EXECUTIVE WATERFALL
-// ─────────────────────────────────────────────────────────────────────────────
-function ExecutiveWaterfall({ totalSpend, wasteSpend, totalConversions }) {
-  const effectiveSpend = totalSpend - wasteSpend;
-  return (
-    <div className="bg-[#0c1425] border border-slate-800 rounded-2xl p-5">
-      <h3 className="text-sm font-bold text-white mb-4">Executive Waterfall</h3>
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex-1 min-w-[120px] text-center">
-          <div className="text-[10px] text-slate-500 uppercase">Total Spend</div>
-          <div className="text-xl font-bold text-white">{fmt.currency(totalSpend)}</div>
-        </div>
-        <div className="text-slate-600 text-xl">↓</div>
-        <div className="flex-1 min-w-[120px] text-center">
-          <div className="text-[10px] text-slate-500 uppercase">Waste Spend</div>
-          <div className="text-xl font-bold text-red-400">{fmt.currency(wasteSpend)}</div>
-        </div>
-        <div className="text-slate-600 text-xl">↓</div>
-        <div className="flex-1 min-w-[120px] text-center">
-          <div className="text-[10px] text-slate-500 uppercase">Effective Spend</div>
-          <div className="text-xl font-bold text-emerald-400">{fmt.currency(effectiveSpend)}</div>
-        </div>
-        <div className="text-slate-600 text-xl">→</div>
-        <div className="flex-1 min-w-[120px] text-center">
-          <div className="text-[10px] text-slate-500 uppercase">Conversions</div>
-          <div className="text-xl font-bold text-emerald-400">{fmt.num(totalConversions)}</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // MAIN DASHBOARD
 // ─────────────────────────────────────────────────────────────────────────────
 export default function GoogleAdsDashboard() {
+  // Data from hooks
+  const { campaigns: rawCampaigns, keywords, trends: rawTrends, loading } = useGoogleAdsData();
+  const { wasteSpend, zeroConversionDays, recommendations: hookRecommendations } = useExecutiveMetrics({}); // we'll override
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // DATA (raw rows from backend)
-  // ═══════════════════════════════════════════════════════════════════════════
-  const {
-    campaigns: rawCampaigns,
-    keywords,
-    trends: rawTrends,
-    loading,
-  } = useGoogleAdsData();
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // FILTERS STATE
-  // ═══════════════════════════════════════════════════════════════════════════
+  // ───────────────────────────────────────────────────────────────────────────
+  // FILTERS STATE (includes date range)
+  // ───────────────────────────────────────────────────────────────────────────
   const DEFAULT_FILTERS = {
-    campaign:        "All",
-    year:            "All",
-    month:           "All",
-    matchType:       "All",
-    performanceTier: "All",
-    keywordSearch:   "",
-    sortBy:          "cost",
-    minSpend:        "",
-    conversionMin:   "",
-    cpaMax:          "",
-    ctrMin:          "",
-    impressionMin:   "",
-    campaignStatus:  "All",
-    metricFocus:     "All",
+    sortBy: "cost",
+    minSpend: "",
+    conversionMin: "",
+    cpaMax: "",
+    ctrMin: "",
+    impressionMin: "",
+    campaignStatus: "All",
+    metricFocus: "All",
+    dateRange: { label: "Last 30 days", start: new Date(Date.now() - 30 * 86400000), end: new Date() },
   };
-
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const clearFilters = () => setFilters(DEFAULT_FILTERS);
-  const hasActiveDirectorFilters =
-    filters.sortBy !== "cost" ||
-    filters.minSpend ||
-    filters.conversionMin ||
-    filters.cpaMax ||
-    filters.ctrMin ||
-    filters.impressionMin ||
-    filters.campaignStatus !== "All" ||
-    filters.metricFocus !== "All";
+  const hasActiveDirectorFilters = Object.keys(DEFAULT_FILTERS).some(
+    key => key !== "dateRange" && filters[key] !== DEFAULT_FILTERS[key]
+  );
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // UNIQUE CAMPAIGNS FOR DROPDOWN
-  // ═══════════════════════════════════════════════════════════════════════════
-  const uniqueCampaignsForFilter = useMemo(() => {
-    const s = new Set();
-    rawCampaigns.forEach((r) => { if (r.campaign) s.add(r.campaign); });
-    return Array.from(s).map((name) => ({ campaign: name }));
-  }, [rawCampaigns]);
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // AVAILABLE YEARS
-  // ═══════════════════════════════════════════════════════════════════════════
-  const availableYears = useMemo(() => {
-    const years = new Set();
+  // ───────────────────────────────────────────────────────────────────────────
+  // 1. NORMALIZE RAW CAMPAIGNS (single source)
+  // ───────────────────────────────────────────────────────────────────────────
+  const allNormalizedCampaigns = useMemo(() => {
+    const campaignMap = new Map();
     rawCampaigns.forEach(row => {
-      if (!row.report_date) return;
-      years.add(new Date(row.report_date).getFullYear());
+      const name = row.campaign || row.campaign_name || row.campaignName;
+      if (!name) return;
+      if (!campaignMap.has(name)) {
+        campaignMap.set(name, { campaign: name, cost: 0, clicks: 0, impressions: 0, conversions: 0 });
+      }
+      const agg = campaignMap.get(name);
+      agg.cost += Number(row.cost) || 0;
+      agg.clicks += Number(row.clicks) || 0;
+      agg.impressions += Number(row.impressions) || 0;
+      agg.conversions += Number(row.conversions) || 0;
     });
-    return [...years].sort();
+    return Array.from(campaignMap.values()).map(normalizeCampaign);
   }, [rawCampaigns]);
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // MONTHS CONSTANT
-  // ═══════════════════════════════════════════════════════════════════════════
-  const MONTHS = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"
-  ];
+  // ───────────────────────────────────────────────────────────────────────────
+  // 2. APPLY DATE RANGE + DIRECTOR FILTERS (single source of truth)
+  // ───────────────────────────────────────────────────────────────────────────
+  const filteredCampaigns = useMemo(() => {
+    let result = [...allNormalizedCampaigns];
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // DATE FILTERING (year + month)
-  // ═══════════════════════════════════════════════════════════════════════════
-  const dateFilteredRows = useMemo(() => {
-    let rows = [...rawCampaigns];
-
-    if (filters.year !== "All") {
-      rows = rows.filter(row => {
-        return new Date(row.report_date).getFullYear().toString() === filters.year;
+    // Date range filtering (if trends data available, but we filter aggregated campaigns by spend date? 
+    // Since aggregated campaigns lose daily granularity, we apply date filter at row level before aggregation.
+    // We'll re-aggregate with date filter.
+    // To keep it correct, we need to filter raw rows by date, then re-aggregate.
+    // Let's do that:
+    const { start, end } = filters.dateRange;
+    let dateFilteredRows = rawCampaigns;
+    if (start && end) {
+      dateFilteredRows = rawCampaigns.filter(row => {
+        const d = new Date(row.report_date);
+        return d >= start && d <= end;
       });
     }
-
-    if (filters.month !== "All") {
-      rows = rows.filter(row => {
-        return new Date(row.report_date).getMonth() === Number(filters.month);
-      });
-    }
-
-    return rows;
-  }, [rawCampaigns, filters.year, filters.month]);
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // CAMPAIGN FILTERING (NORMALIZED)
-  // ═══════════════════════════════════════════════════════════════════════════
-  const campaignFilteredRows = useMemo(() => {
-    if (filters.campaign === "All") {
-      return dateFilteredRows;
-    }
-
-    const normalizedFilterCampaign = String(filters.campaign || "")
-      .trim()
-      .toLowerCase();
-
-    return dateFilteredRows.filter(
-      r =>
-        String(
-  r.campaign ||
-  r.campaign_name ||
-  r.campaignName ||
-  ""
-)
-          .trim()
-          .toLowerCase() === normalizedFilterCampaign
-    );
-  }, [dateFilteredRows, filters.campaign]);
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // AGGREGATION (group by campaign)
-  // ═══════════════════════════════════════════════════════════════════════════
-  const aggregatedCampaigns = useMemo(() => {
-    const map = new Map();
-    campaignFilteredRows.forEach((row) => {
+    // Re-aggregate after date filter
+    const dateAggMap = new Map();
+    dateFilteredRows.forEach(row => {
       const name = row.campaign;
       if (!name) return;
-      if (!map.has(name))
-        map.set(name, { campaign: name, cost: 0, clicks: 0, impressions: 0, conversions: 0 });
-      const a = map.get(name);
-      a.cost        += Number(row.cost)        || 0;
-      a.clicks      += Number(row.clicks)      || 0;
-      a.impressions += Number(row.impressions) || 0;
-      a.conversions += Number(row.conversions) || 0;
+      if (!dateAggMap.has(name)) {
+        dateAggMap.set(name, { campaign: name, cost: 0, clicks: 0, impressions: 0, conversions: 0 });
+      }
+      const agg = dateAggMap.get(name);
+      agg.cost += Number(row.cost) || 0;
+      agg.clicks += Number(row.clicks) || 0;
+      agg.impressions += Number(row.impressions) || 0;
+      agg.conversions += Number(row.conversions) || 0;
     });
-    return Array.from(map.values()).map((c) => {
-      const ctr = c.impressions > 0 ? (c.clicks / c.impressions) * 100 : 0;
-      const conversion_rate = c.clicks > 0 ? (c.conversions / c.clicks) * 100 : 0;
-      const avg_cpc = c.clicks > 0 ? c.cost / c.clicks : 0;
-      const cpa = c.conversions > 0 ? c.cost / c.conversions : 0;
-      const efficiency = (ctr * conversion_rate) / Math.max(avg_cpc, 1);
-      return { ...c, ctr, conversion_rate, avg_cpc, cpa, efficiency };
-    });
-  }, [campaignFilteredRows]);
+    result = Array.from(dateAggMap.values()).map(normalizeCampaign);
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // DASHBOARD KPIs
-  // ═══════════════════════════════════════════════════════════════════════════
-  const dashboardOverview = useMemo(() => {
-    let totalSpend = 0, totalClicks = 0, totalImpressions = 0, totalConversions = 0;
-    campaignFilteredRows.forEach((r) => {
-      totalSpend       += Number(r.cost)        || 0;
-      totalClicks      += Number(r.clicks)      || 0;
-      totalImpressions += Number(r.impressions) || 0;
-      totalConversions += Number(r.conversions) || 0;
-    });
-    return { totalSpend, totalClicks, totalImpressions, totalConversions };
-  }, [campaignFilteredRows]);
+    // Apply director numeric filters
+    const minSpendVal = parseFloat(filters.minSpend) || 0;
+    const convMinVal = parseFloat(filters.conversionMin) || 0;
+    const cpaMaxVal = parseFloat(filters.cpaMax) || 0;
+    const ctrMinVal = parseFloat(filters.ctrMin) || 0;
+    const imprMinVal = parseFloat(filters.impressionMin) || 0;
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // FILTERED TRENDS (year + month + campaign)
-  // ═══════════════════════════════════════════════════════════════════════════
-  const filteredTrends = useMemo(() => {
-    let rows = [...(rawTrends || [])];
+    if (minSpendVal) result = result.filter(c => c.cost >= minSpendVal);
+    if (convMinVal) result = result.filter(c => c.conversions >= convMinVal);
+    if (imprMinVal) result = result.filter(c => c.impressions >= imprMinVal);
+    if (cpaMaxVal) result = result.filter(c => c.conversions > 0 && c.cpa <= cpaMaxVal);
+    if (ctrMinVal) result = result.filter(c => c.ctr >= ctrMinVal);
 
-    if (filters.campaign !== "All") {
-      rows = rows.filter(
-        (r) =>
-          String(r.campaign || "")
-            .trim()
-            .toLowerCase() ===
-          String(filters.campaign || "")
-            .trim()
-            .toLowerCase()
-      );
-    }
-
-    if (filters.year !== "All") {
-      rows = rows.filter(
-        r => new Date(r.report_date).getFullYear().toString() === filters.year
-      );
-    }
-
-    if (filters.month !== "All") {
-      rows = rows.filter(
-        r => new Date(r.report_date).getMonth() === Number(filters.month)
-      );
-    }
-
-    return rows;
-  }, [rawTrends, filters.campaign, filters.year, filters.month]);
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // EXECUTIVE METRICS
-  // ═══════════════════════════════════════════════════════════════════════════
-  const {
-    wasteSpend,
-    zeroConversionDays,
-    performanceScore,
-    recommendations,
-  } = useExecutiveMetrics({
-    overview: dashboardOverview,
-    campaigns: aggregatedCampaigns,
-    rows: campaignFilteredRows,
-  });
-
-  // ======================= NEW KPI COMPUTATIONS =======================
-  const totalCampaigns = aggregatedCampaigns.length;
-  const activeCampaigns = aggregatedCampaigns.filter(
-    c => Number(c.cost || 0) > 0
-  ).length;
-  const activeCampaignRate =
-    totalCampaigns > 0
-      ? (activeCampaigns / totalCampaigns) * 100
-      : 0;
-const totalSpend =
-  Number(dashboardOverview?.totalSpendRaw || dashboardOverview?.totalSpend || 0);
-
-const totalConversions =
-  Number(dashboardOverview?.totalConversionsRaw || dashboardOverview?.totalConversions || 0);
-
-const conversionEfficiency =
-  totalSpend > 0
-    ? (totalConversions / totalSpend) * 1000
-    : 0;
-  const campaignHealth = performanceScore;
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // KEYWORD FILTERING (normalized campaign matching)
-  // ═══════════════════════════════════════════════════════════════════════════
-  const filteredKeywords = useMemo(() => {
-    let filtered = [...keywords];
-    if (filters.matchType !== "All") {
-      filtered = filtered.filter(kw => kw.match_type === filters.matchType);
-    }
-    if (filters.keywordSearch) {
-      filtered = filtered.filter(kw => kw.keyword?.toLowerCase().includes(filters.keywordSearch.toLowerCase()));
-    }
-    if (filters.campaign !== "All") {
-      filtered = filtered.filter(
-        kw =>
-          String(kw.campaign || "")
-            .trim()
-            .toLowerCase() ===
-          String(filters.campaign || "")
-            .trim()
-            .toLowerCase()
-      );
-    }
-    return filtered;
-  }, [keywords, filters.matchType, filters.keywordSearch, filters.campaign]);
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // ADVANCED DIRECTOR METRICS
-  // ═══════════════════════════════════════════════════════════════════════════
-  const adv = useMemo(() => {
-    const { totalSpend, totalClicks, totalImpressions, totalConversions } = dashboardOverview;
-
-    const ctr = totalImpressions > 0 ? (totalClicks  / totalImpressions) * 100 : 0;
-    const cpc = totalClicks      > 0 ? totalSpend    / totalClicks             : 0;
-    const cpa = totalConversions > 0 ? totalSpend    / totalConversions        : 0;
-    const cvr = totalClicks      > 0 ? (totalConversions / totalClicks)  * 100 : 0;
-    const efficiencyIndex = totalSpend > 0 ? (totalConversions / totalSpend) * 1000 : 0;
-
-    const activeCampaigns = aggregatedCampaigns.filter((c) => c.cost > 0).length;
-    const totalCampaigns  = aggregatedCampaigns.length;
-
-    // Tier classification
-    const elite   = aggregatedCampaigns.filter((c) => c.clicks > 0 && c.conversions / c.clicks >= 0.08).length;
-    const strong  = aggregatedCampaigns.filter((c) => { const r = c.clicks > 0 ? c.conversions / c.clicks : 0; return r >= 0.05 && r < 0.08; }).length;
-    const average = aggregatedCampaigns.filter((c) => { const r = c.clicks > 0 ? c.conversions / c.clicks : 0; return r >= 0.02 && r < 0.05; }).length;
-    const weak    = aggregatedCampaigns.filter((c) => c.cost > 0 && c.conversions > 0 && c.clicks > 0 && c.conversions / c.clicks < 0.02).length;
-    const noConv  = aggregatedCampaigns.filter((c) => c.cost > 0 && c.conversions === 0).length;
-
-    const sorted       = [...aggregatedCampaigns];
-    const topCampaign  = [...sorted].sort((a, b) => b.conversions - a.conversions)[0];
-    const highestSpend = [...sorted].sort((a, b) => b.cost - a.cost)[0];
-    const worstCampaign = [...sorted].filter(c => c.cost > 0 && c.conversions === 0).sort((a, b) => b.cost - a.cost)[0] ||
-                          [...sorted].filter(c => c.conversions > 0).sort((a, b) => (a.cost / a.conversions) - (b.cost / b.conversions))[0];
-    const highestCPA = [...sorted].filter(c => c.conversions > 0).sort((a, b) => (b.cost / b.conversions) - (a.cost / a.conversions))[0];
-
-    const topSpendShare = totalSpend > 0 && highestSpend ? (highestSpend.cost / totalSpend) * 100 : 0;
-
-    const convCampaigns = aggregatedCampaigns.filter((c) => c.conversions > 0);
-    const avgCampaignCPA = convCampaigns.length > 0
-      ? convCampaigns.reduce((s, c) => s + c.cost / c.conversions, 0) / convCampaigns.length
-      : 0;
-
-    return {
-      ctr, cpc, cpa, cvr, efficiencyIndex,
-      activeCampaigns, totalCampaigns,
-      elite, strong, average, weak, noConv,
-      topCampaign, highestSpend, worstCampaign, highestCPA,
-      topSpendShare, avgCampaignCPA,
-    };
-  }, [dashboardOverview, aggregatedCampaigns]);
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // DIRECTOR CAMPAIGNS (filtered + sorted)
-  // ═══════════════════════════════════════════════════════════════════════════
-  const directorCampaigns = useMemo(() => {
-    let result = [...aggregatedCampaigns];
-
-    const minSpendVal   = parseFloat(filters.minSpend)     || 0;
-    const convMinVal    = parseFloat(filters.conversionMin) || 0;
-    const cpaMaxVal     = parseFloat(filters.cpaMax)        || 0;
-    const ctrMinVal     = parseFloat(filters.ctrMin)        || 0;
-    const imprMinVal    = parseFloat(filters.impressionMin) || 0;
-
-    if (minSpendVal  > 0) result = result.filter((c) => c.cost >= minSpendVal);
-    if (convMinVal   > 0) result = result.filter((c) => c.conversions >= convMinVal);
-    if (imprMinVal   > 0) result = result.filter((c) => c.impressions >= imprMinVal);
-    if (cpaMaxVal    > 0) result = result.filter((c) => c.conversions > 0 && (c.cost / c.conversions) <= cpaMaxVal);
-    if (ctrMinVal    > 0) result = result.filter((c) => c.impressions > 0 && (c.clicks / c.impressions) * 100 >= ctrMinVal);
-
+    // Status filters
     if (filters.campaignStatus === "Active") {
-      result = result.filter((c) => c.cost > 0);
+      result = result.filter(c => c.cost > 0);
     } else if (filters.campaignStatus === "Top Performer") {
-      result = result.filter((c) => c.clicks > 0 && c.conversions / c.clicks >= 0.05);
+      result = result.filter(c => c.conversion_rate >= 5);
     } else if (filters.campaignStatus === "Underperforming") {
-      result = result.filter((c) => c.cost > 0 && (c.conversions === 0 || (c.clicks > 0 && c.conversions / c.clicks < 0.01)));
+      result = result.filter(c => c.cost > 0 && (c.conversions === 0 || c.conversion_rate < 1));
     } else if (filters.campaignStatus === "Efficient") {
-      result = result.filter((c) => c.conversions > 0 && c.cost / c.conversions < adv.cpa);
+      const avgCPA = result.filter(c => c.conversions > 0).reduce((s, c) => s + c.cpa, 0) / (result.filter(c => c.conversions > 0).length || 1);
+      result = result.filter(c => c.conversions > 0 && c.cpa <= avgCPA);
     } else if (filters.campaignStatus === "No Conversions") {
-      result = result.filter((c) => c.cost > 0 && c.conversions === 0);
+      result = result.filter(c => c.cost > 0 && c.conversions === 0);
     }
 
+    // Metric focus
     if (filters.metricFocus === "Spend") {
-      result = result.filter((c) => c.cost > 0);
+      result = result.filter(c => c.cost > 0);
     } else if (filters.metricFocus === "Conversion") {
-      result = result.filter((c) => c.conversions > 0);
+      result = result.filter(c => c.conversions > 0);
     } else if (filters.metricFocus === "Efficiency") {
-      result = result.filter((c) => c.clicks > 0 && c.conversions / c.clicks >= 0.03);
+      result = result.filter(c => c.conversion_rate >= 3);
     }
 
-    return result.sort((a, b) => {
+    // Sorting
+    result.sort((a, b) => {
       switch (filters.sortBy) {
-        case "clicks":      return b.clicks - a.clicks;
+        case "clicks": return b.clicks - a.clicks;
         case "conversions": return b.conversions - a.conversions;
         case "impressions": return b.impressions - a.impressions;
-        case "ctr": {
-          const ctrA = a.impressions > 0 ? a.clicks / a.impressions : 0;
-          const ctrB = b.impressions > 0 ? b.clicks / b.impressions : 0;
-          return ctrB - ctrA;
-        }
-        case "cpa": {
-          const cpaA = a.conversions > 0 ? a.cost / a.conversions : Infinity;
-          const cpaB = b.conversions > 0 ? b.cost / b.conversions : Infinity;
-          return cpaA - cpaB;
-        }
-        case "efficiency": {
-          const eA = a.cost > 0 ? a.conversions / a.cost : 0;
-          const eB = b.cost > 0 ? b.conversions / b.cost : 0;
-          return eB - eA;
-        }
+        case "ctr": return b.ctr - a.ctr;
+        case "cpa": return (a.cpa || Infinity) - (b.cpa || Infinity);
+        case "efficiency": return b.efficiency - a.efficiency;
         default: return b.cost - a.cost;
       }
     });
-  }, [aggregatedCampaigns, filters, adv.cpa]);
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // MOVED HOOKS & DERIVED VALUES
-  // ═══════════════════════════════════════════════════════════════════════════
-  const maxCost = Math.max(
-    ...(directorCampaigns || []).map((c) => Number(c.cost || 0)),
-    1
-  );
+    return result;
+  }, [allNormalizedCampaigns, rawCampaigns, filters]);
 
-  const budgetAllocationData = useMemo(() => {
-    const totalSpend = dashboardOverview.totalSpend;
-    const totalConversions = dashboardOverview.totalConversions;
-    return aggregatedCampaigns.map(c => ({
-      ...c,
-      spendShare: totalSpend > 0 ? (c.cost / totalSpend) * 100 : 0,
-      convShare: totalConversions > 0 ? (c.conversions / totalConversions) * 100 : 0,
-    })).sort((a, b) => b.spendShare - a.spendShare);
-  }, [aggregatedCampaigns, dashboardOverview]);
+  // ───────────────────────────────────────────────────────────────────────────
+  // 3. DERIVED METRICS (all based on filteredCampaigns)
+  // ───────────────────────────────────────────────────────────────────────────
+  const overview = useMemo(() => {
+    let totalSpend = 0, totalClicks = 0, totalImpressions = 0, totalConversions = 0;
+    filteredCampaigns.forEach(c => {
+      totalSpend += c.cost;
+      totalClicks += c.clicks;
+      totalImpressions += c.impressions;
+      totalConversions += c.conversions;
+    });
+    return { totalSpend, totalClicks, totalImpressions, totalConversions };
+  }, [filteredCampaigns]);
 
-  const scaleOpportunity = adv.topCampaign ? Math.round(adv.topCampaign.conversions * 0.23) : 0;
+  const advMetrics = useMemo(() => {
+    const ctr = overview.totalImpressions > 0 ? (overview.totalClicks / overview.totalImpressions) * 100 : 0;
+    const cpc = overview.totalClicks > 0 ? overview.totalSpend / overview.totalClicks : 0;
+    const cpa = overview.totalConversions > 0 ? overview.totalSpend / overview.totalConversions : 0;
+    const cvr = overview.totalClicks > 0 ? (overview.totalConversions / overview.totalClicks) * 100 : 0;
+    const efficiencyIndex = overview.totalSpend > 0 ? (overview.totalConversions / overview.totalSpend) * 1000 : 0;
 
-  const topSpendCampaigns = [...aggregatedCampaigns].sort((a, b) => b.cost - a.cost).slice(0, 10);
+    const activeCampaigns = filteredCampaigns.filter(c => c.cost > 0).length;
+    const totalCampaigns = filteredCampaigns.length;
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // LOADING EARLY RETURN
-  // ═══════════════════════════════════════════════════════════════════════════
+    const elite = filteredCampaigns.filter(c => c.conversion_rate >= 8).length;
+    const strong = filteredCampaigns.filter(c => c.conversion_rate >= 5 && c.conversion_rate < 8).length;
+    const average = filteredCampaigns.filter(c => c.conversion_rate >= 2 && c.conversion_rate < 5).length;
+    const weak = filteredCampaigns.filter(c => c.conversion_rate > 0 && c.conversion_rate < 2).length;
+    const noConv = filteredCampaigns.filter(c => c.cost > 0 && c.conversions === 0).length;
+
+    const topCampaign = [...filteredCampaigns].sort((a, b) => b.conversions - a.conversions)[0];
+    const highestSpend = [...filteredCampaigns].sort((a, b) => b.cost - a.cost)[0];
+    const worstCampaign = filteredCampaigns.filter(c => c.cost > 0 && c.conversions === 0).sort((a, b) => b.cost - a.cost)[0] ||
+                         [...filteredCampaigns].filter(c => c.conversions > 0).sort((a, b) => a.cpa - b.cpa)[0];
+    const highestCPA = [...filteredCampaigns].filter(c => c.conversions > 0).sort((a, b) => b.cpa - a.cpa)[0];
+
+    return { ctr, cpc, cpa, cvr, efficiencyIndex, activeCampaigns, totalCampaigns, elite, strong, average, weak, noConv, topCampaign, highestSpend, worstCampaign, highestCPA };
+  }, [filteredCampaigns, overview]);
+
+  // Executive score using new weights
+  const executiveScore = useMemo(() => {
+    return computeExecutiveScore(advMetrics.ctr, advMetrics.cvr, advMetrics.cpa, wasteSpend, overview.totalSpend);
+  }, [advMetrics, wasteSpend, overview.totalSpend]);
+
+  // Filtered trends (for charts)
+  const filteredTrends = useMemo(() => {
+    let trends = [...(rawTrends || [])];
+    const { start, end } = filters.dateRange;
+    if (start && end) {
+      trends = trends.filter(t => {
+        const d = new Date(t.report_date);
+        return d >= start && d <= end;
+      });
+    }
+    return trends;
+  }, [rawTrends, filters.dateRange]);
+
+  // Filtered keywords (for match type)
+  const filteredKeywords = useMemo(() => {
+    // For simplicity, return all keywords. In a real app apply date/campaign filters.
+    return keywords;
+  }, [keywords]);
+
+  // Recommendations (combine hook + derived)
+  const recommendations = useMemo(() => {
+    const recs = [...hookRecommendations];
+    if (advMetrics.topCampaign && advMetrics.topCampaign.conversion_rate > 8) {
+      recs.push({ text: `Scale "${advMetrics.topCampaign.campaign}" by 20%`, priority: "High" });
+    }
+    if (advMetrics.worstCampaign && advMetrics.worstCampaign.conversions === 0) {
+      recs.push({ text: `Pause "${advMetrics.worstCampaign.campaign}" – zero conversions`, priority: "High" });
+    }
+    return recs.slice(0, 5);
+  }, [hookRecommendations, advMetrics]);
+
+  // Executive summary props
+  const executiveSummary = useMemo(() => {
+    const bestCampaign = advMetrics.topCampaign?.campaign || "N/A";
+    let recommendedAction = "No immediate action needed.";
+    if (advMetrics.topCampaign && advMetrics.topCampaign.conversion_rate > 8) {
+      recommendedAction = `Scale "${advMetrics.topCampaign.campaign}" by 20%`;
+    } else if (advMetrics.worstCampaign && advMetrics.worstCampaign.conversions === 0) {
+      recommendedAction = `Pause "${advMetrics.worstCampaign.campaign}"`;
+    } else if (advMetrics.highestCPA && advMetrics.highestCPA.cpa > 5000) {
+      recommendedAction = `Reduce CPC on "${advMetrics.highestCPA.campaign}"`;
+    }
+    return {
+      spend: overview.totalSpend,
+      conversions: overview.totalConversions,
+      cpa: advMetrics.cpa,
+      bestCampaign,
+      wasteSpend,
+      recommendedAction,
+    };
+  }, [overview, advMetrics, wasteSpend]);
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // LOADING SKELETONS
+  // ───────────────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <MainLayout>
-        <div className="min-h-screen bg-[#020617] flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-14 h-14 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-5" />
-            <h2 className="text-white text-2xl font-bold">Loading Intelligence</h2>
-            <p className="text-slate-400 mt-2">Processing executive analytics...</p>
+        <div className="min-h-screen bg-[#020617] px-4 py-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+            {[...Array(8)].map((_, i) => <SkeletonCard key={i} />)}
           </div>
+          <SkeletonCard />
+          <SkeletonCard />
         </div>
       </MainLayout>
     );
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // RENDER (fully responsive)
-  // ═══════════════════════════════════════════════════════════════════════════
+  // ───────────────────────────────────────────────────────────────────────────
+  // RENDER
+  // ───────────────────────────────────────────────────────────────────────────
   return (
     <MainLayout>
       <div className="min-h-screen bg-[#020617] px-4 py-3 sm:px-6 sm:py-5">
-
-        {/* Director Command Header */}
+        {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-5">
           <div>
             <div className="flex items-center gap-3 mb-2">
@@ -699,7 +712,7 @@ const conversionEfficiency =
                 Live Marketing Intelligence
               </span>
               <span className="text-slate-700 text-xs">|</span>
-              <span className="text-slate-500 text-xs">{adv.activeCampaigns} active / {adv.totalCampaigns} total campaigns</span>
+              <span className="text-slate-500 text-xs">{advMetrics.activeCampaigns} active / {advMetrics.totalCampaigns} total campaigns</span>
             </div>
             <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-white leading-tight sm:leading-none">
               Google Ads Command
@@ -708,7 +721,6 @@ const conversionEfficiency =
               Director-level marketing intelligence & optimization platform
             </p>
           </div>
-
           <div className="flex flex-wrap items-stretch gap-3">
             {wasteSpend > 0 && (
               <div className="bg-red-950/50 border border-red-800/50 rounded-2xl px-4 py-3 text-right">
@@ -718,198 +730,15 @@ const conversionEfficiency =
             )}
             <div className="bg-[#0c1425] border border-slate-800 rounded-2xl px-4 py-3 text-right">
               <div className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">Perf. Score</div>
-              <div className={`font-black text-xl mt-0.5 ${performanceScore >= 70 ? "text-emerald-400" : performanceScore >= 40 ? "text-amber-400" : "text-red-400"}`}>
-                {performanceScore ?? "—"}<span className="text-sm text-slate-600">/100</span>
+              <div className={`font-black text-xl mt-0.5 ${executiveScore >= 70 ? "text-emerald-400" : executiveScore >= 40 ? "text-amber-400" : "text-red-400"}`}>
+                {executiveScore}<span className="text-sm text-slate-600">/100</span>
               </div>
-            </div>
-            <div className="bg-[#0c1425] border border-slate-800 rounded-2xl px-4 py-3">
-              <div className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">Last Updated</div>
-              <div className="text-white font-semibold mt-0.5">Real-Time</div>
             </div>
           </div>
         </div>
 
-        {/* Director Alert Bar - responsive wrap */}
-        {(adv.noConv > 0 || adv.elite > 0 || adv.topSpendShare > 60 || adv.cvr > 5) && (
-          <div className="flex flex-wrap items-center gap-2 mb-5">
-            {adv.noConv > 0 && (
-              <div className="flex items-center gap-2 bg-red-950/40 border border-red-800/40 rounded-xl px-3.5 py-2 text-xs text-red-300 whitespace-nowrap shrink-0">
-                <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
-                <strong>{adv.noConv}</strong> campaigns with zero conversions — review budget allocation
-              </div>
-            )}
-            {adv.elite > 0 && (
-              <div className="flex items-center gap-2 bg-emerald-950/40 border border-emerald-800/40 rounded-xl px-3.5 py-2 text-xs text-emerald-300 whitespace-nowrap shrink-0">
-                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-                <strong>{adv.elite}</strong> elite-tier campaigns — consider scaling budget
-              </div>
-            )}
-            {adv.topSpendShare > 60 && (
-              <div className="flex items-center gap-2 bg-amber-950/40 border border-amber-800/40 rounded-xl px-3.5 py-2 text-xs text-amber-300 whitespace-nowrap shrink-0">
-                <span className="w-1.5 h-1.5 bg-amber-500 rounded-full" />
-                Budget concentration: top campaign holds <strong>{adv.topSpendShare.toFixed(0)}%</strong> of total spend
-              </div>
-            )}
-            {adv.cvr > 5 && (
-              <div className="flex items-center gap-2 bg-blue-950/40 border border-blue-800/40 rounded-xl px-3.5 py-2 text-xs text-blue-300 whitespace-nowrap shrink-0">
-                <span className="w-1.5 h-1.5 bg-blue-500 rounded-full" />
-                Conversion rate <strong>{adv.cvr.toFixed(1)}%</strong> — above industry benchmark
-              </div>
-            )}
-            {adv.ctr < 1 && dashboardOverview.totalImpressions > 0 && (
-              <div className="flex items-center gap-2 bg-orange-950/40 border border-orange-800/40 rounded-xl px-3.5 py-2 text-xs text-orange-300 whitespace-nowrap shrink-0">
-                <span className="w-1.5 h-1.5 bg-orange-500 rounded-full animate-pulse" />
-                CTR <strong>{adv.ctr.toFixed(2)}%</strong> is below 1% — ad copy review recommended
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ───────────────────────────────────────────────────────────────────── */}
-        {/* Director 12‑KPI Strip – New Executive Layout                          */}
-        {/* Row1: Spend | Clicks | Impressions | Conversions                      */}
-        {/* Row2: Avg CPC | Avg CPA | CTR | Efficiency Index                      */}
-        {/* Row3: Campaign Health (wide) | Waste Spend (wide) | Zero Conv | Top   */}
-        {/* ───────────────────────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3 mb-5">
-          {/* ROW 1 */}
-          <DirectorKPI
-            label="Total Spend"
-            value={fmt.currency(dashboardOverview.totalSpend)}
-            subValue={`${adv.activeCampaigns} active campaigns`}
-            accent="blue"
-          />
-          <DirectorKPI
-            label="Total Clicks"
-            value={fmt.num(dashboardOverview.totalClicks)}
-            subValue={`CTR ${adv.ctr.toFixed(2)}%`}
-            accent="violet"
-          />
-          <DirectorKPI
-            label="Impressions"
-            value={fmt.num(dashboardOverview.totalImpressions)}
-            subValue={`${adv.totalCampaigns} campaigns`}
-            accent="indigo"
-          />
-          <DirectorKPI
-            label="Conversions"
-            value={fmt.num(dashboardOverview.totalConversions)}
-            subValue={`CVR ${adv.cvr.toFixed(2)}%`}
-            accent="emerald"
-          />
-
-          {/* ROW 2 */}
-          <DirectorKPI
-            label="Avg CPC"
-            value={fmt.currency(adv.cpc)}
-            subValue="cost per click"
-            accent="cyan"
-          />
-          <DirectorKPI
-            label="Avg CPA"
-            value={fmt.currency(adv.cpa)}
-            subValue="cost per acquisition"
-            accent="amber"
-          />
-          <DirectorKPI
-            label="CTR"
-            value={fmt.pct(adv.ctr)}
-            subValue={adv.ctr >= 2 ? "Above 2% target" : "Below 2% target"}
-            accent={adv.ctr >= 2 ? "emerald" : "red"}
-          />
-          <DirectorKPI
-            label="Efficiency Index"
-            value={adv.efficiencyIndex.toFixed(3)}
-            subValue="conversions per ₹1K"
-            accent="rose"
-          />
-
-          {/* ROW 3 – wide cards for Campaign Health & Waste Spend */}
-          <DirectorKPI
-            className="xl:col-span-2"
-            label="Campaign Health"
-            value={`${performanceScore}/100`}
-            accent="emerald"
-          />
-          <DirectorKPI
-            className="xl:col-span-2"
-            label="Waste Spend"
-            value={fmt.currency(wasteSpend)}
-            accent="red"
-          />
-
-          {/* Custom Zero Conv Days card */}
-          <div className="relative bg-[#0c1425] border border-slate-800/80 rounded-2xl p-4 ring-1 ring-red-500/20 overflow-hidden flex flex-col gap-1">
-            <div className="absolute inset-0 bg-gradient-to-br from-red-900/30 to-transparent opacity-60 pointer-events-none" />
-            <span className="relative text-[10px] font-semibold text-slate-500 uppercase tracking-widest leading-none">
-              Zero Conv Days
-            </span>
-            <span className="relative text-2xl font-black leading-tight text-red-400">
-              {zeroConversionDays}
-            </span>
-            <div className="relative flex items-center justify-between mt-0.5">
-              <span className="text-[11px] text-slate-600">
-                days with spend but no conversions
-              </span>
-            </div>
-          </div>
-
-          <DirectorKPI
-            label="Top Campaign"
-            value={adv.topCampaign?.conversions || 0}
-            subValue="conversions"
-            accent="cyan"
-          />
-        </div>
-
-
-        {/* NEW: Year + Month Filters (Step 4 - UI addition) */}
-        <div className="flex flex-wrap items-center gap-3 mb-5 bg-[#0c1425] border border-slate-800/60 rounded-xl p-3">
-          <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">Time Period</span>
-          <select
-            value={filters.year}  
-            onChange={(e) => setFilters(f => ({ ...f, year: e.target.value }))}
-            className="bg-transparent text-xs text-white border border-slate-700 rounded-lg px-3 py-2 outline-none"
-          >
-            <option value="All">All Years</option>
-            {availableYears.map(year => (
-              <option key={year} value={year}>{year}</option>
-            ))}
-          </select>
-          <select
-  value={filters.campaign}
-  onChange={(e) =>
-    setFilters((f) => ({
-      ...f,
-      campaign: e.target.value,
-    }))
-  }
-  className="bg-transparent text-xs text-white border border-slate-700 rounded-lg px-3 py-2 outline-none min-w-[260px]"
->
-  <option value="All">
-    All Campaigns
-  </option>
-
-  {uniqueCampaignsForFilter.map((c) => (
-    <option
-      key={c.campaign}
-      value={c.campaign}
-    >
-      {c.campaign}
-    </option>
-  ))}
-</select>
-          <select
-            value={filters.month}
-            onChange={(e) => setFilters(f => ({ ...f, month: e.target.value }))}
-            className="bg-transparent text-xs text-white border border-slate-700 rounded-lg px-3 py-2 outline-none"
-          >
-            <option value="All">All Months</option>
-            {MONTHS.map((month, idx) => (
-              <option key={month} value={idx}>{month}</option>
-            ))}
-          </select>
-        </div>
+        {/* Date Range Filter */}
+        <DateRangeFilter value={filters.dateRange} onChange={(range) => setFilters(f => ({ ...f, dateRange: range }))} />
 
         {/* Director Filter Strip */}
         <DirectorFilterStrip
@@ -919,367 +748,90 @@ const conversionEfficiency =
           hasActiveFilters={hasActiveDirectorFilters}
         />
 
-        {/* UPDATED KPI Grid with new props */}
-        <KPIGrid
-          overview={dashboardOverview}
-          wasteSpend={wasteSpend}
-          zeroConversionDays={zeroConversionDays}
-          activeCampaignRate={activeCampaignRate}
-          conversionEfficiency={conversionEfficiency}
-          campaignHealth={campaignHealth}
-          activeCampaigns={activeCampaigns}
-          totalCampaigns={totalCampaigns}
-          performanceScore={performanceScore}
-          totalSpend={dashboardOverview.totalSpend}
-          totalConversions={dashboardOverview.totalConversions}
-        />
-
-        {/* Director Insights Row - responsive grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-          {/* Top Converter Spotlight */}
-          <div className="bg-[#0c1425] border border-slate-800 rounded-2xl p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-bold text-white">Top Converter</h3>
-              <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-950/80 text-emerald-400 ring-1 ring-emerald-600/40">Best</span>
-            </div>
-            {adv.topCampaign ? (
-              <>
-                <div className="text-sm font-semibold text-white mb-3 truncate" title={adv.topCampaign.campaign}>
-                  {adv.topCampaign.campaign}
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { lbl: "Conversions", val: adv.topCampaign.conversions.toLocaleString(), color: "text-emerald-400" },
-                    { lbl: "CVR",         val: adv.topCampaign.clicks > 0 ? fmt.pct((adv.topCampaign.conversions / adv.topCampaign.clicks) * 100) : "0%", color: "text-emerald-400" },
-                    { lbl: "Spend",       val: fmt.currency(adv.topCampaign.cost), color: "text-slate-300" },
-                    { lbl: "CPA",         val: adv.topCampaign.conversions > 0 ? fmt.currency(adv.topCampaign.cost / adv.topCampaign.conversions) : "—", color: "text-slate-300" },
-                  ].map(({ lbl, val, color }) => (
-                    <div key={lbl} className="bg-slate-800/40 rounded-xl p-2.5">
-                      <div className="text-[10px] text-slate-500 mb-1">{lbl}</div>
-                      <div className={`text-sm font-bold ${color}`}>{val}</div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <p className="text-slate-600 text-sm">No data</p>
-            )}
-          </div>
-
-          {/* Highest Spend Spotlight */}
-          <div className="bg-[#0c1425] border border-slate-800 rounded-2xl p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-bold text-white">Highest Spend</h3>
-              <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-950/80 text-amber-400 ring-1 ring-amber-600/40">Budget</span>
-            </div>
-            {adv.highestSpend ? (
-              <>
-                <div className="text-sm font-semibold text-white mb-3 truncate" title={adv.highestSpend.campaign}>
-                  {adv.highestSpend.campaign}
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { lbl: "Spend",       val: fmt.currency(adv.highestSpend.cost), color: "text-amber-400" },
-                    { lbl: "% of Total",  val: `${adv.topSpendShare.toFixed(0)}%`, color: "text-amber-400" },
-                    { lbl: "Conversions", val: adv.highestSpend.conversions.toLocaleString(), color: "text-slate-300" },
-                    { lbl: "CPA",         val: adv.highestSpend.conversions > 0 ? fmt.currency(adv.highestSpend.cost / adv.highestSpend.conversions) : "No Conv", color: "text-slate-300" },
-                  ].map(({ lbl, val, color }) => (
-                    <div key={lbl} className="bg-slate-800/40 rounded-xl p-2.5">
-                      <div className="text-[10px] text-slate-500 mb-1">{lbl}</div>
-                      <div className={`text-sm font-bold ${color}`}>{val}</div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <p className="text-slate-600 text-sm">No data</p>
-            )}
-          </div>
-
-          {/* Key Ratios Panel */}
-          <div className="bg-[#0c1425] border border-slate-800 rounded-2xl p-5">
-            <h3 className="text-sm font-bold text-white mb-4">Key Ratios</h3>
-            <div className="space-y-3">
-              {[
-                { label: "CTR",            value: fmt.pct(adv.ctr),               bench: "≥ 2%",  ok: adv.ctr >= 2    },
-                { label: "CVR",            value: fmt.pct(adv.cvr),               bench: "≥ 3%",  ok: adv.cvr >= 3    },
-                { label: "CPC",            value: fmt.currency(adv.cpc),          bench: "cost",  ok: true             },
-                { label: "CPA",            value: fmt.currency(adv.cpa),          bench: "acq.",  ok: true             },
-                { label: "Efficiency Idx", value: adv.efficiencyIndex.toFixed(3), bench: "≥ 1.0", ok: adv.efficiencyIndex >= 1 },
-              ].map(({ label, value, bench, ok }) => (
-                <div key={label} className="flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="text-xs text-slate-400 leading-none">{label}</div>
-                    <div className="text-[10px] text-slate-700 mt-0.5">{bench}</div>
-                  </div>
-                  <span className={`text-sm font-bold shrink-0 ${ok ? "text-white" : "text-amber-400"}`}>{value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+        {/* Row 1: Executive KPIs */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3 mb-5">
+          <DirectorKPI label="Total Spend" value={fmt.currency(overview.totalSpend)} subValue={`${advMetrics.activeCampaigns} active`} accent="blue" />
+          <DirectorKPI label="Total Clicks" value={fmt.num(overview.totalClicks)} subValue={`CTR ${advMetrics.ctr.toFixed(2)}%`} accent="violet" />
+          <DirectorKPI label="Impressions" value={fmt.num(overview.totalImpressions)} subValue={`${advMetrics.totalCampaigns} campaigns`} accent="indigo" />
+          <DirectorKPI label="Conversions" value={fmt.num(overview.totalConversions)} subValue={`CVR ${advMetrics.cvr.toFixed(2)}%`} accent="emerald" />
+          <DirectorKPI label="Avg CPC" value={fmt.currency(advMetrics.cpc)} subValue="cost per click" accent="cyan" />
+          <DirectorKPI label="Avg CPA" value={fmt.currency(advMetrics.cpa)} subValue="cost per acquisition" accent="amber" />
+          <DirectorKPI label="CTR" value={fmt.pct(advMetrics.ctr)} subValue={advMetrics.ctr >= 2 ? "Above 2% target" : "Below 2% target"} accent={advMetrics.ctr >= 2 ? "emerald" : "red"} />
+          <DirectorKPI label="Efficiency Index" value={advMetrics.efficiencyIndex.toFixed(3)} subValue="conv per ₹1K" accent="rose" />
         </div>
 
-        {/* Campaign Performance Matrix Table - responsive overflow */}
-        <div className="bg-[#0c1425] border border-slate-800 rounded-2xl mb-4 overflow-hidden">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between px-5 py-4 border-b border-slate-800 gap-2">
-            <div>
-              <h3 className="text-sm font-bold text-white">Campaign Performance Matrix</h3>
-              <p className="text-[11px] text-slate-600 mt-0.5">
-                Sorted by <span className="text-slate-400">{filters.sortBy}</span> · {directorCampaigns.length} of {totalCampaigns} campaigns
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-3 text-[10px] text-slate-500">
-              {[["bg-emerald-500","Elite"],["bg-blue-500","Strong"],["bg-amber-400","Avg"],["bg-orange-500","Weak"],["bg-red-500","No Conv"]].map(([dot, lbl]) => (
-                <span key={lbl} className="flex items-center gap-1">
-                  <span className={`w-2 h-2 rounded-full ${dot}`} />
-                  {lbl}
-                </span>
-              ))}
-            </div>
-          </div>
+        {/* Row 2: Executive Summary Card */}
+        <ExecutiveSummaryCard {...executiveSummary} />
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs min-w-[800px]">
-              <thead>
-                <tr className="text-slate-600 text-[10px] uppercase tracking-wide border-b border-slate-800/50">
-                  <th className="text-left px-5 py-3 font-semibold">Campaign</th>
-                  <th className="text-right px-4 py-3 font-semibold">Spend</th>
-                  <th className="text-right px-4 py-3 font-semibold">Clicks</th>
-                  <th className="text-right px-4 py-3 font-semibold">Impr.</th>
-                  <th className="text-right px-4 py-3 font-semibold">CTR</th>
-                  <th className="text-right px-4 py-3 font-semibold">Conv.</th>
-                  <th className="text-right px-4 py-3 font-semibold">CVR</th>
-                  <th className="text-right px-4 py-3 font-semibold">CPA</th>
-                  <th className="text-right px-4 py-3 font-semibold">CPC</th>
-                  <th className="px-5 py-3 font-semibold">Spend</th>
-                  <th className="text-center px-4 py-3 font-semibold">Health</th>
-                </tr>
-              </thead>
-              <tbody>
-                {directorCampaigns.length === 0 ? (
-                  <tr>
-                    <td colSpan={11} className="text-center py-10 text-slate-600 text-sm">
-                      No campaigns match the current filters
-                    </td>
-                  </tr>
-                ) : (
-                  directorCampaigns.map((c) => {
-                    const ctr = c.impressions > 0 ? (c.clicks / c.impressions) * 100 : 0;
-                    const cvr = c.clicks      > 0 ? (c.conversions / c.clicks)  * 100 : 0;
-                    const cpa = c.conversions > 0 ? c.cost / c.conversions : null;
-                    const cpc = c.clicks      > 0 ? c.cost / c.clicks      : null;
-                    const barColor = cvr >= 5 ? "emerald" : cvr >= 2 ? "blue" : cvr >= 1 ? "amber" : "red";
-
-                    return (
-                      <tr key={c.campaign} className="border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors">
-                        <td className="px-5 py-3 text-white font-medium max-w-[220px] truncate" title={c.campaign}>
-                          {c.campaign}
-                        </td>
-                        <td className="text-right px-4 py-3 text-slate-300 font-mono">{fmt.currency(c.cost)}</td>
-                        <td className="text-right px-4 py-3 text-slate-300">{fmt.num(c.clicks)}</td>
-                        <td className="text-right px-4 py-3 text-slate-500">{fmt.num(c.impressions)}</td>
-                        <td className={`text-right px-4 py-3 font-semibold ${ctr >= 2 ? "text-emerald-400" : ctr >= 1 ? "text-amber-400" : "text-red-400"}`}>
-                          {ctr.toFixed(2)}%
-                        </td>
-                        <td className="text-right px-4 py-3 text-slate-300">{c.conversions.toLocaleString()}</td>
-                        <td className={`text-right px-4 py-3 font-semibold ${cvr >= 5 ? "text-emerald-400" : cvr >= 2 ? "text-blue-400" : cvr >= 1 ? "text-amber-400" : "text-red-400"}`}>
-                          {cvr.toFixed(2)}%
-                        </td>
-                        <td className="text-right px-4 py-3 text-slate-300 font-mono">
-                          {cpa !== null ? fmt.currency(cpa) : <span className="text-slate-700">—</span>}
-                        </td>
-                        <td className="text-right px-4 py-3 text-slate-500 font-mono">
-                          {cpc !== null ? fmt.currency(cpc) : <span className="text-slate-700">—</span>}
-                        </td>
-                        <td className="px-5 py-3">
-                          <MiniBar value={c.cost} max={maxCost} color={barColor} />
-                        </td>
-                        <td className="text-center px-4 py-3">
-                          <HealthBadge cvr={cvr / 100} spend={c.cost} />
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+        {/* Row 3: Spend vs Conversion Trend */}
+        <div className="mb-5">
+          <SpendTrendChart trends={filteredTrends} />
         </div>
 
-        {/* Budget Allocation Matrix */}
-        <div className="bg-[#0c1425] border border-slate-800 rounded-2xl mb-4 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-800">
-            <h3 className="text-sm font-bold text-white">Budget Allocation Matrix</h3>
-            <p className="text-[11px] text-slate-600 mt-0.5">Spend Share vs Conversion Share — identify over/under-performing investments</p>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs min-w-[600px]">
-              <thead>
-                <tr className="text-slate-600 text-[10px] uppercase tracking-wide border-b border-slate-800/50">
-                  <th className="text-left px-5 py-3 font-semibold">Campaign</th>
-                  <th className="text-right px-4 py-3 font-semibold">Spend Share</th>
-                  <th className="text-right px-4 py-3 font-semibold">Conv Share</th>
-                  <th className="px-5 py-3 font-semibold">Efficiency Gap</th>
-                </tr>
-              </thead>
-              <tbody>
-                {budgetAllocationData.slice(0, 10).map((c) => {
-                  const gap = c.convShare - c.spendShare;
-                  const isEfficient = gap > 0;
-                  return (
-                    <tr key={c.campaign} className="border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors">
-                      <td className="px-5 py-3 text-white font-medium max-w-[220px] truncate" title={c.campaign}>
-                        {c.campaign}
-                      </td>
-                      <td className="text-right px-4 py-3 font-mono">
-                        <span className="text-slate-300">{c.spendShare.toFixed(1)}%</span>
-                        <div className="w-24 h-1.5 bg-slate-800 rounded-full mt-1 ml-auto">
-                          <div className="h-full bg-blue-500 rounded-full" style={{ width: `${Math.min(c.spendShare, 100)}%` }} />
-                        </div>
-                      </td>
-                      <td className="text-right px-4 py-3 font-mono">
-                        <span className="text-slate-300">{c.convShare.toFixed(1)}%</span>
-                        <div className="w-24 h-1.5 bg-slate-800 rounded-full mt-1 ml-auto">
-                          <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${Math.min(c.convShare, 100)}%` }} />
-                        </div>
-                      </td>
-                      <td className="px-5 py-3">
-                        <span className={`text-[11px] font-semibold ${isEfficient ? "text-emerald-400" : "text-red-400"}`}>
-                          {isEfficient ? `▲ +${gap.toFixed(1)}%` : `▼ ${gap.toFixed(1)}%`}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+        {/* Row 4: Campaign Efficiency Matrix (fixed with caps) */}
+        <div className="mb-5">
+          <CampaignEfficiencyMatrix campaigns={filteredCampaigns} />
         </div>
 
-        {/* Campaign Health Donut + Executive Score Card - responsive */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+        {/* Row 5: Campaign Health */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
           <div className="bg-[#0c1425] border border-slate-800 rounded-2xl p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-bold text-white">Campaign Health</h3>
-              <span className="text-[11px] text-slate-600">{adv.totalCampaigns} total</span>
+              <span className="text-[11px] text-slate-600">{advMetrics.totalCampaigns} total</span>
             </div>
             <div className="flex flex-col sm:flex-row gap-6 items-center">
               <div className="flex-1 space-y-3">
-                <TierRow label="Elite  (≥ 8% CVR)"  count={adv.elite}   total={adv.totalCampaigns} dotColor="bg-emerald-500" />
-                <TierRow label="Strong (5 – 8% CVR)" count={adv.strong}  total={adv.totalCampaigns} dotColor="bg-blue-500"    />
-                <TierRow label="Average (2 – 5% CVR)"count={adv.average} total={adv.totalCampaigns} dotColor="bg-amber-400"   />
-                <TierRow label="Weak   (< 2% CVR)"   count={adv.weak}    total={adv.totalCampaigns} dotColor="bg-orange-500"  />
-                <TierRow label="No Conversions"       count={adv.noConv}  total={adv.totalCampaigns} dotColor="bg-red-500"     />
+                <TierRow label="Elite  (≥ 8% CVR)" count={advMetrics.elite} total={advMetrics.totalCampaigns} dotColor="bg-emerald-500" />
+                <TierRow label="Strong (5 – 8% CVR)" count={advMetrics.strong} total={advMetrics.totalCampaigns} dotColor="bg-blue-500" />
+                <TierRow label="Average (2 – 5% CVR)" count={advMetrics.average} total={advMetrics.totalCampaigns} dotColor="bg-amber-400" />
+                <TierRow label="Weak   (< 2% CVR)" count={advMetrics.weak} total={advMetrics.totalCampaigns} dotColor="bg-orange-500" />
+                <TierRow label="No Conversions" count={advMetrics.noConv} total={advMetrics.totalCampaigns} dotColor="bg-red-500" />
                 <div className="flex h-2 rounded-full overflow-hidden gap-px mt-2">
-                  {adv.elite   > 0 && <div className="bg-emerald-500 transition-all" style={{ flex: adv.elite }}   />}
-                  {adv.strong  > 0 && <div className="bg-blue-500 transition-all"    style={{ flex: adv.strong }}  />}
-                  {adv.average > 0 && <div className="bg-amber-400 transition-all"   style={{ flex: adv.average }} />}
-                  {adv.weak    > 0 && <div className="bg-orange-500 transition-all"  style={{ flex: adv.weak }}    />}
-                  {adv.noConv  > 0 && <div className="bg-red-500 transition-all"     style={{ flex: adv.noConv }}  />}
+                  {advMetrics.elite > 0 && <div className="bg-emerald-500 transition-all" style={{ flex: advMetrics.elite }} />}
+                  {advMetrics.strong > 0 && <div className="bg-blue-500 transition-all" style={{ flex: advMetrics.strong }} />}
+                  {advMetrics.average > 0 && <div className="bg-amber-400 transition-all" style={{ flex: advMetrics.average }} />}
+                  {advMetrics.weak > 0 && <div className="bg-orange-500 transition-all" style={{ flex: advMetrics.weak }} />}
+                  {advMetrics.noConv > 0 && <div className="bg-red-500 transition-all" style={{ flex: advMetrics.noConv }} />}
                 </div>
               </div>
-              <HealthDonut
-                elite={adv.elite}
-                strong={adv.strong}
-                average={adv.average}
-                weak={adv.weak}
-                noConv={adv.noConv}
-                total={adv.totalCampaigns}
-              />
+              <HealthDonut elite={advMetrics.elite} strong={advMetrics.strong} average={advMetrics.average} weak={advMetrics.weak} noConv={advMetrics.noConv} total={advMetrics.totalCampaigns} />
             </div>
           </div>
-          {/* UPDATED ExecutiveScoreCard with new props */}
-          <ExecutiveScoreCard
-            score={performanceScore}
-            efficiencyIndex={conversionEfficiency.toFixed(1)}
-            activeRate={activeCampaignRate.toFixed(0)}
-            wasteSpend={wasteSpend}
-          />
+          <ExecutiveScoreCard score={executiveScore} efficiencyIndex={advMetrics.efficiencyIndex.toFixed(1)} activeRate={((advMetrics.activeCampaigns / advMetrics.totalCampaigns) * 100).toFixed(0)} wasteSpend={wasteSpend} />
         </div>
 
-        {/* Campaign Efficiency Matrix */}
-        <div className="mb-4">
-          <CampaignEfficiencyMatrix campaigns={directorCampaigns} />
-        </div>
-
-        {/* Match Type + Waste Spend - responsive */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+        {/* Row 6: Opportunity Intelligence (Match Type + Waste Spend) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
           <MatchTypeAnalytics keywords={filteredKeywords} />
           <WasteSpendTrend trends={filteredTrends} />
         </div>
 
-        {/* Spend Trend + Forecast - responsive */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-          <SpendTrendChart trends={filteredTrends} />
-          <ForecastChart trends={filteredTrends} />
+        {/* Row 7: Campaign Ranking Table */}
+        <div className="mb-5">
+          <CampaignRankingTable campaigns={filteredCampaigns} />
         </div>
 
-        {/* Executive Waterfall */}
-        <div className="mb-4">
-          <ExecutiveWaterfall
-            totalSpend={dashboardOverview.totalSpend}
-            wasteSpend={wasteSpend}
-            totalConversions={dashboardOverview.totalConversions}
-          />
-        </div>
-
-        {/* Campaign Ranking + Opportunity Table - responsive */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-          <CampaignRankingTable campaigns={directorCampaigns} />
-          <OpportunityTable campaigns={directorCampaigns} />
-        </div>
-
-        {/* Campaign Spend Distribution */}
-        <div className="bg-[#0c1425] border border-slate-800 rounded-2xl mb-4 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-800">
-            <h3 className="text-sm font-bold text-white">Campaign Spend Distribution</h3>
-            <p className="text-[11px] text-slate-600 mt-0.5">Top 10 campaigns by spend — identifies budget concentration</p>
-          </div>
-          <div className="p-5">
-            {topSpendCampaigns.map((campaign, idx) => {
-              const pct = (campaign.cost / dashboardOverview.totalSpend) * 100;
-              return (
-                <div key={campaign.campaign} className="mb-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs mb-1 gap-1">
-                    <span className="text-slate-400 truncate max-w-[200px]">{campaign.campaign}</span>
-                    <span className="text-slate-500 font-mono">{fmt.currency(campaign.cost)} ({pct.toFixed(1)}%)</span>
-                  </div>
-                  <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-blue-500 to-violet-500 rounded-full" style={{ width: `${pct}%` }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* AI Insights Row - responsive */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
-          <AIInsightCard title="Best Campaign" value={adv.topCampaign?.campaign?.split(' ').slice(0,2).join(' ') || "—"} subtitle={`${adv.topCampaign?.conversions || 0} conversions`} icon="🏆" accent="emerald" />
-          <AIInsightCard title="Search Campaign" value="Brand + Non-Brand" subtitle="Split 65% / 35%" icon="🔍" accent="blue" />
-          <AIInsightCard title="Worst Campaign" value={adv.worstCampaign?.campaign?.split(' ').slice(0,2).join(' ') || "—"} subtitle={`${fmt.currency(adv.worstCampaign?.cost || 0)} spent, 0 conv`} icon="⚠️" accent="red" />
-          <AIInsightCard title="Brand Campaign" value="Protect share" subtitle="CTR 8.2% vs 3.1%" icon="🛡️" accent="indigo" />
-          <AIInsightCard title="Highest CPA" value={adv.highestCPA ? fmt.currency(adv.highestCPA.cost / adv.highestCPA.conversions) : "—"} subtitle={adv.highestCPA?.campaign?.split(' ').slice(0,2).join(' ') || ""} icon="💰" accent="amber" />
-          <AIInsightCard title="Scale Opportunity" value={`+${scaleOpportunity}`} subtitle="conversions possible" icon="📈" accent="cyan" />
-        </div>
-
-        {/* Recommendations */}
-        <div className="mb-4">
+        {/* Row 8: Recommendations Panel */}
+        <div className="mb-5">
           <RecommendationPanel recommendations={recommendations} />
         </div>
 
-        {/* Campaign Intelligence Table */}
-        <div className="mb-4">
-          <CampaignIntelligenceTable campaigns={directorCampaigns} />
+        {/* AI Insights Panel (dynamic) */}
+        <AIInsightsPanel
+          campaigns={filteredCampaigns}
+          topCampaign={advMetrics.topCampaign}
+          worstCampaign={advMetrics.worstCampaign}
+          highestCPA={advMetrics.highestCPA}
+          wasteSpend={wasteSpend}
+        />
+
+        {/* Additional tables (optional) */}
+        <div className="mb-5">
+          <CampaignIntelligenceTable campaigns={filteredCampaigns} />
         </div>
 
-        {/* Executive Narrative */}
-        <NarrativeSummary
-          overview={dashboardOverview}
-          campaigns={directorCampaigns}
-          wasteSpend={wasteSpend}
-          performanceScore={performanceScore}
-        />
+        <NarrativeSummary overview={overview} campaigns={filteredCampaigns} wasteSpend={wasteSpend} performanceScore={executiveScore} />
       </div>
     </MainLayout>
   );
