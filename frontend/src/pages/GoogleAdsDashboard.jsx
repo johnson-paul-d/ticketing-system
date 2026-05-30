@@ -25,7 +25,7 @@ import {
 
 import SkeletonCard from "../components/GoogleAds1/Dashboard/SkeletonCard";
 import ExecutiveSummaryCard from "../components/GoogleAds1/Dashboard/ExecutiveSummaryCard";
-import AIInsightsPanel from "../components/GoogleAds1/Dashboard/AIInsightPanel";
+import AIInsightPanel from "../components/GoogleAds1/Dashboard/AIInsightPanel";
 import DirectorKPI from "../components/GoogleAds1/Dashboard/DirectorKPI";
 import DirectorFilterStrip from "../components/GoogleAds1/Dashboard/DirectorFilterStrip";
 
