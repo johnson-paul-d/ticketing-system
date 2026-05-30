@@ -1,3 +1,5 @@
+import { fmt } from "../../utils/googleAdsMetrics";
+
 const ExecutiveSummaryCard = ({ spend, conversions, cpa, bestCampaign, wasteSpend, recommendedAction }) => (
   <div className="bg-gradient-to-r from-[#0c1425] to-[#0f172a] border border-slate-800 rounded-2xl p-5 mb-5">
     <h2 className="text-sm font-bold text-white mb-3 flex items-center gap-2">

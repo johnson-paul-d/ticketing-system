@@ -1,4 +1,6 @@
 // Director KPI Card (unchanged)
+import { fmt } from "../../utils/googleAdsMetrics";
+
 const ACCENT = {
   blue:   { ring: "ring-blue-500/20",   text: "text-blue-400",   glow: "from-blue-900/30",   dot: "bg-blue-500"   },
   violet: { ring: "ring-violet-500/20", text: "text-violet-400", glow: "from-violet-900/30", dot: "bg-violet-500" },

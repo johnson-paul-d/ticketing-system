@@ -1,4 +1,5 @@
-// AI Insights Panel (Phase 4 – uses real campaign names)
+// AI Insights Panel (Phase 4 – uses real campaign names)import { fmt } from "../../utils/googleAdsMetrics";
+import { fmt } from "../../utils/googleAdsMetrics";
 const AIInsightPanel = ({ campaigns, topCampaign, worstCampaign, highestCPA, wasteSpend }) => {
   const insights = [];
 

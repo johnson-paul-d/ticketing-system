@@ -17,11 +17,7 @@ import CampaignRankingTable from "../components/GoogleAds1/tables/CampaignRankin
 import CampaignIntelligenceTable from "../components/GoogleAds1/tables/CampaignIntelligenceTable";
 import RecommendationPanel from "../components/GoogleAds1/insights/RecommendationPanel";
 import NarrativeSummary from "../components/GoogleAds1/insights/NarrativeSummary";
-import {
-  fmt,
-  normalizeCampaign,
-  computeExecutiveScore,
-} from "../utils/googleAdsMetrics";
+import {fmt,normalizeCampaign,computeExecutiveScore,} from "../utils/googleAdsMetrics";
 
 import SkeletonCard from "../components/GoogleAds1/Dashboard/SkeletonCard";
 import ExecutiveSummaryCard from "../components/GoogleAds1/Dashboard/ExecutiveSummaryCard";

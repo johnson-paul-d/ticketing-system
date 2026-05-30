@@ -2,7 +2,7 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
-  XAxis,
+  XAxis,  
   YAxis,
   Tooltip,
   CartesianGrid,
