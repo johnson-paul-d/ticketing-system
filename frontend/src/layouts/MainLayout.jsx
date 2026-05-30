@@ -19,6 +19,9 @@ export default function MainLayout({ children }) {
     navigate("/");
   };
 
+  const canAccessGoogleAds =
+    user?.role === "Admin" && user?.name?.toLowerCase().includes("kavin");
+
   const menuItems = [
     { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
     { label: "Tickets", path: "/tickets", icon: Cpu },
@@ -31,11 +34,20 @@ export default function MainLayout({ children }) {
     ...(user?.role === "Admin"
       ? [{ label: "Admin Panel", path: "/admin", icon: Shield }]
       : []),
+    ...(canAccessGoogleAds
+      ? [
+          {
+            label: "Google Ads Dashboard",
+            path: "/google-ads",
+            icon: BarChart3,
+          },
+        ]
+      : []),
     {
-  label: "Reports",
-  path: "/admin-analytics",
-  icon: BarChart3,
-},
+      label: "Reports",
+      path: "/admin-analytics",
+      icon: BarChart3,
+    },
   ];
 
   return (

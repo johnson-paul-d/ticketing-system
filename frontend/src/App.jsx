@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/login";
 import Dashboard from "./pages/Dashboard";
 import Tickets from "./pages/Tickets";
@@ -13,8 +13,13 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import TicketTimeline from "./pages/TicketTimeTracker";
 import AdminAnalytics from "./pages/AdminAnalytics";
 import GoogleAdsDashboard from "./pages/GoogleAdsDashboard";
+import useAuthStore from "./store/authStore";
 
 function App() {
+  const user = useAuthStore((state) => state.user);
+  const canAccessGoogleAds =
+    user?.role === "Admin" && user?.name?.toLowerCase().includes("kavin");
+
   return (
     <BrowserRouter>
       <Routes>
@@ -85,7 +90,7 @@ function App() {
 
         <Route
           path="/admin"
-          element={ 
+          element={
             <ProtectedRoute allowedRoles={["Admin"]}>
               <AdminPanel />
             </ProtectedRoute>
@@ -101,15 +106,20 @@ function App() {
           }
         />
 
-        <Route
-  path="/admin-analytics"
-  element={<AdminAnalytics />}
-/>
+        <Route path="/admin-analytics" element={<AdminAnalytics />} />
 
-<Route
-  path="/google-ads"
-  element={<GoogleAdsDashboard />}
-/>
+        <Route
+          path="/google-ads"
+          element={
+            canAccessGoogleAds ? (
+              <ProtectedRoute allowedRoles={["Admin"]}>
+                <GoogleAdsDashboard />
+              </ProtectedRoute>
+            ) : (
+              <Navigate to="/dashboard" replace />
+            )
+          }
+        />
 
         <Route
           path="/timeline"
