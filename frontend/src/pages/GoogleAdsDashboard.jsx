@@ -23,11 +23,11 @@ import {
   computeExecutiveScore,
 } from "../utils/googleAdsMetrics";
 
-import SkeletonCard from "../components/GoogleAds1/dashboard/SkeletonCard";
-import ExecutiveSummaryCard from "../components/GoogleAds1/dashboard/ExecutiveSummaryCard";
-import AIInsightsPanel from "../components/GoogleAds1/dashboard/AIInsightPanel";
-import DirectorKPI from "../components/GoogleAds1/dashboard/DirectorKPI";
-import DirectorFilterStrip from "../components/GoogleAds1/dashboard/DirectorFilterStrip";
+import SkeletonCard from "../components/GoogleAds1/Dashboard/SkeletonCard";
+import ExecutiveSummaryCard from "../components/GoogleAds1/Dashboard/ExecutiveSummaryCard";
+import AIInsightsPanel from "../components/GoogleAds1/Dashboard/AIInsightPanel";
+import DirectorKPI from "../components/GoogleAds1/Dashboard/DirectorKPI";
+import DirectorFilterStrip from "../components/GoogleAds1/Dashboard/DirectorFilterStrip";
 
 // -----------------------------------------------------------------------------
 // MAIN DASHBOARD
