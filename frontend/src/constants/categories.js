@@ -12,4 +12,5 @@ export const TICKET_CATEGORIES = [
   "Branding",
   "Content",
   "Others",
+  "Animation"
 ];
