@@ -17,6 +17,12 @@ import useAuthStore from "./store/authStore";
 
 function App() {
   const user = useAuthStore((state) => state.user);
+  console.log("APP USER:", user);
+console.log(
+  "Google Ads Access:",
+  user?.role === "Admin" ||
+  user?.email?.toLowerCase() === "digitalmarketing@siegerglobal.net"
+);
 const canAccessGoogleAds =
   user?.role === "Admin" ||
   user?.email?.toLowerCase() === "digitalmarketing@siegerglobal.net";
