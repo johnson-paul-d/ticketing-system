@@ -4,7 +4,7 @@ import {
   ResponsiveContainer, ReferenceLine
 } from 'recharts';
 
-const USD_TO_INR = 83;
+const USD_TO_INR = 1;
 
 const SpendTrendChart = ({ trends }) => {
   // Aggregate spend & conversions by date

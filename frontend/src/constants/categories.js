@@ -1,16 +1,16 @@
 export const TICKET_CATEGORIES = [
-  "Exhibition",
-  "Social Media",
-  "Salesforce",
-  "Video",
-  "Strategy",
-  "Collateral",
-  "Campaign",
-  "Email Campaign",
-  "Reports",
-  "Website",
+  "Animation",
   "Branding",
+  "Campaign",
+  "Collateral",
   "Content",
+  "Email Campaign",
+  "Exhibition",
   "Others",
-  "Animation"
+  "Reports",
+  "Salesforce",
+  "Social Media",
+  "Strategy",
+  "Video",
+  "Website"
 ];
