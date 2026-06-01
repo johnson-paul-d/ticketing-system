@@ -115,18 +115,18 @@ const canAccessGoogleAds =
 
         <Route path="/admin-analytics" element={<AdminAnalytics />} />
 
-        <Route
-          path="/google-ads"
-          element={
-            canAccessGoogleAds ? (
-              <ProtectedRoute allowedRoles={["Admin"]}>
-                <GoogleAdsDashboard />
-              </ProtectedRoute>
-            ) : (
-              <Navigate to="/dashboard" replace />
-            )
-          }
-        />
+<Route
+  path="/google-ads"
+  element={
+    <ProtectedRoute>
+      {canAccessGoogleAds ? (
+        <GoogleAdsDashboard />
+      ) : (
+        <Navigate to="/dashboard" replace />
+      )}
+    </ProtectedRoute>
+  }
+/>
 
         <Route
           path="/timeline"
