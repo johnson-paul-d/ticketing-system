@@ -20,7 +20,8 @@ export default function MainLayout({ children }) {
   };
 
 const canAccessGoogleAds =
-  user?.role === "Admin";
+  user?.role === "Admin" ||
+  user?.email?.toLowerCase() === "digitalmarketing@siegerglobal.net";
 
   const menuItems = [
     { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
