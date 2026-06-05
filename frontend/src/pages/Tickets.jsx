@@ -12,7 +12,6 @@ const MultiSelect = ({ label, options, selectedValues, onChange, placeholder = "
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (containerRef.current && !containerRef.current.contains(event.target)) {
@@ -114,6 +113,7 @@ export default function Tickets() {
   const [selectedStatuses, setSelectedStatuses] = useState([]);
   const [selectedPriorities, setSelectedPriorities] = useState([]);
   const [selectedDivisions, setSelectedDivisions] = useState([]);
+  const [selectedUsers, setSelectedUsers] = useState([]);  // <-- ADDED for User filter
 
   // Single-select filters
   const [overdueFilter, setOverdueFilter] = useState("All");
@@ -168,6 +168,16 @@ export default function Tickets() {
     return Array.from(divisions).sort();
   }, [tickets]);
 
+  // ADDED: User options from assigned_to_name or assigned_to
+  const userOptions = useMemo(() => {
+    const users = new Set(
+      tickets
+        .map((t) => t.assigned_to_name || t.assigned_to)
+        .filter(Boolean)
+    );
+    return Array.from(users).sort();
+  }, [tickets]);
+
   const yearOptions = useMemo(() => {
     const years = new Set();
     tickets.forEach((ticket) => {
@@ -208,6 +218,11 @@ export default function Tickets() {
       const matchesDivision =
         selectedDivisions.length === 0 || selectedDivisions.includes(ticket.division);
 
+      // ADDED: User filter
+      const assignedUser = ticket.assigned_to_name || ticket.assigned_to;
+      const matchesUser =
+        selectedUsers.length === 0 || selectedUsers.includes(assignedUser);
+
       // Overdue filter
       const isOverdue =
         ticket.due_date &&
@@ -220,14 +235,14 @@ export default function Tickets() {
           ? isOverdue
           : !isOverdue;
 
-      // Year filter (based on due_date fallback to created_at)
+      // Year filter
       let ticketYear = null;
       if (ticket.due_date) ticketYear = new Date(ticket.due_date).getFullYear();
       else if (ticket.created_at) ticketYear = new Date(ticket.created_at).getFullYear();
       const matchesYear =
         yearFilter === "All" || (ticketYear !== null && ticketYear.toString() === yearFilter);
 
-      // Month filter (based on due_date fallback to created_at)
+      // Month filter
       let ticketMonth = null;
       if (ticket.due_date) ticketMonth = new Date(ticket.due_date).getMonth();
       else if (ticket.created_at) ticketMonth = new Date(ticket.created_at).getMonth();
@@ -240,6 +255,7 @@ export default function Tickets() {
         matchesStatus &&
         matchesPriority &&
         matchesDivision &&
+        matchesUser &&        // <-- ADDED
         matchesOverdue &&
         matchesYear &&
         matchesMonth
@@ -348,17 +364,17 @@ export default function Tickets() {
         <StatCard title="Completed" value={stats.completed} />
       </div>
 
-      {/* FILTERS - Google Ads style with labels & multi-selects */}
+      {/* FILTERS */}
       <div className="bg-white rounded-2xl shadow-sm p-5 mb-6">
         <div className="mb-3">
           <h2 className="text-xl font-bold">Filters</h2>
           <p className="text-gray-500 text-sm mt-1">
-            Filter tickets by status, priority, campaign, overdue period, year or month
+            Filter tickets by status, priority, campaign, user, overdue period, year or month
           </p>
         </div>
 
         <div className="flex flex-wrap gap-4 items-end">
-          {/* Search with label */}
+          {/* Search */}
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-400 uppercase whitespace-nowrap">Search</span>
             <input
@@ -395,6 +411,15 @@ export default function Tickets() {
             selectedValues={selectedDivisions}
             onChange={setSelectedDivisions}
             placeholder="All campaigns"
+          />
+
+          {/* ADDED: Multi-select: User */}
+          <MultiSelect
+            label="User"
+            options={userOptions}
+            selectedValues={selectedUsers}
+            onChange={setSelectedUsers}
+            placeholder="All users"
           />
 
           {/* Overdue filter */}
