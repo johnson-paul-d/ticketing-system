@@ -54,20 +54,9 @@ const MonthlyComparisonChart = ({ trends = [] }) => {
         impressions += Number(t.impressions || 0);
       });
 
-      const cpa =
-        conversions > 0
-          ? cost / conversions
-          : 0;
-
-      const ctr =
-        impressions > 0
-          ? (clicks / impressions) * 100
-          : 0;
-
-      const cvr =
-        clicks > 0
-          ? (conversions / clicks) * 100
-          : 0;
+      const cpa = conversions > 0 ? cost / conversions : 0;
+      const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
+      const cvr = clicks > 0 ? (conversions / clicks) * 100 : 0;
 
       return {
         cost,
@@ -133,79 +122,136 @@ const MonthlyComparisonChart = ({ trends = [] }) => {
         Monthly Comparison
       </h3>
 
-      <ResponsiveContainer width="100%" height={350}>
-        <BarChart
-          data={chartData}
-          layout="vertical"
-          margin={{
-            top: 20,
-            right: 30,
-            left: 20,
-            bottom: 5,
-          }}
-        >
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="#1e293b"
-          />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Financial Metrics */}
+        <ResponsiveContainer width="100%" height={320}>
+          <BarChart
+            data={chartData.filter(
+              (d) => d.metric === "Spend" || d.metric === "CPA"
+            )}
+            layout="vertical"
+            margin={{
+              top: 20,
+              right: 30,
+              left: 20,
+              bottom: 5,
+            }}
+          >
+            <CartesianGrid
+              strokeDasharray="3 3"
+              stroke="#1e293b"
+            />
 
-          <XAxis
-            type="number"
-            tick={{ fill: "#94a3b8" }}
-          />
+            <XAxis
+              type="number"
+              tick={{ fill: "#94a3b8" }}
+            />
 
-          <YAxis
-            dataKey="metric"
-            type="category"
-            width={100}
-            tick={{ fill: "#94a3b8" }}
-          />
+            <YAxis
+              dataKey="metric"
+              type="category"
+              width={90}
+              tick={{ fill: "#94a3b8" }}
+            />
 
-          <Tooltip
-            formatter={(value, name, item) => {
-              const format = item.payload.format;
+            <Tooltip
+              formatter={(value, name) => [
+                `₹${Number(value).toLocaleString("en-IN")}`,
+                name,
+              ]}
+              contentStyle={{
+                backgroundColor: "#0f172a",
+                borderColor: "#334155",
+                color: "#fff",
+              }}
+            />
 
-              if (format === "currency") {
-                return [
-                  `₹${Number(value).toLocaleString("en-IN")}`,
-                  name,
-                ];
-              }
+            <Legend />
 
-              if (format === "percent") {
+            <Bar
+              dataKey="Current"
+              fill="#3b82f6"
+              radius={[0, 4, 4, 0]}
+            />
+
+            <Bar
+              dataKey="Previous"
+              fill="#64748b"
+              radius={[0, 4, 4, 0]}
+            />
+          </BarChart>
+        </ResponsiveContainer>
+
+        {/* Performance Metrics */}
+        <ResponsiveContainer width="100%" height={320}>
+          <BarChart
+            data={chartData.filter(
+              (d) =>
+                d.metric === "Conversions" ||
+                d.metric === "CTR" ||
+                d.metric === "CVR"
+            )}
+            layout="vertical"
+            margin={{
+              top: 20,
+              right: 30,
+              left: 20,
+              bottom: 5,
+            }}
+          >
+            <CartesianGrid
+              strokeDasharray="3 3"
+              stroke="#1e293b"
+            />
+
+            <XAxis
+              type="number"
+              tick={{ fill: "#94a3b8" }}
+            />
+
+            <YAxis
+              dataKey="metric"
+              type="category"
+              width={90}
+              tick={{ fill: "#94a3b8" }}
+            />
+
+            <Tooltip
+              formatter={(value, name, item) => {
+                if (item.payload.metric === "Conversions") {
+                  return [
+                    Number(value).toLocaleString(),
+                    name,
+                  ];
+                }
                 return [
                   `${Number(value).toFixed(2)}%`,
                   name,
                 ];
-              }
+              }}
+              contentStyle={{
+                backgroundColor: "#0f172a",
+                borderColor: "#334155",
+                color: "#fff",
+              }}
+            />
 
-              return [
-                Number(value).toLocaleString(),
-                name,
-              ];
-            }}
-            contentStyle={{
-              backgroundColor: "#0f172a",
-              borderColor: "#334155",
-              color: "#fff",
-            }}
-          />
+            <Legend />
 
-          <Legend />
+            <Bar
+              dataKey="Current"
+              fill="#22c55e"
+              radius={[0, 4, 4, 0]}
+            />
 
-          <Bar
-            dataKey="Current"
-            fill="#3b82f6"
-            radius={[0, 4, 4, 0]}
-          />
-
-          <Bar
-            dataKey="Previous"
-            fill="#64748b"
-            radius={[0, 4, 4, 0]}
-          />
-        </BarChart>
-      </ResponsiveContainer>
+            <Bar
+              dataKey="Previous"
+              fill="#16a34a"
+              radius={[0, 4, 4, 0]}
+            />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
 
       <div className="mt-3 text-xs text-slate-500 text-center">
         Comparing latest 30-day period against the previous 30-day period

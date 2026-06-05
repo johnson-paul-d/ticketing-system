@@ -406,11 +406,11 @@ export default function Tickets() {
 
           {/* Multi-select: Campaign (Division) */}
           <MultiSelect
-            label="Campaign"
+            label="Division"
             options={divisionOptions}
             selectedValues={selectedDivisions}
             onChange={setSelectedDivisions}
-            placeholder="All campaigns"
+            placeholder="All divisions"
           />
 
           {/* ADDED: Multi-select: User */}
