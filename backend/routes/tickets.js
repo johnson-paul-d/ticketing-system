@@ -7,7 +7,6 @@ const getISTTime = require('../utils/time');
 
 const { Resend } = require('resend');
 
-
 // =====================================================
 // RESEND
 // =====================================================
@@ -18,7 +17,7 @@ if (!process.env.RESEND_API_KEY)
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // =====================================================
-// EMAIL
+// EMAIL FUNCTIONS
 // =====================================================
 
 const sendApprovalEmail = async (to, ticketTitle, requesterName, ticketId) => {
@@ -39,6 +38,40 @@ const sendApprovalEmail = async (to, ticketTitle, requesterName, ticketId) => {
     return true;
   } catch (err) {
     console.error('Email error:', err);
+    return false;
+  }
+};
+
+// NEW: Email for due date change requests
+const sendDueDateApprovalEmail = async (
+  to,
+  ticketTitle,
+  currentDueDate,
+  requestedDueDate,
+  requesterName,
+  ticketId
+) => {
+  try {
+    await resend.emails.send({
+      from: process.env.FROM_EMAIL,
+      to,
+      subject: `Due Date Change Approval Required`,
+      html: `
+        <div style="font-family:sans-serif;">
+          <h2>Due Date Change Request</h2>
+          <p><strong>Ticket:</strong> ${ticketTitle}</p>
+          <p><strong>Current Due Date:</strong> ${currentDueDate || 'Not Set'}</p>
+          <p><strong>Requested Due Date:</strong> ${requestedDueDate}</p>
+          <p><strong>Requested By:</strong> ${requesterName}</p>
+          <a href="${process.env.FRONTEND_URL}/tickets/${ticketId}" style="background:black;color:white;padding:10px 16px;border-radius:8px;text-decoration:none;display:inline-block;">
+            Review Request
+          </a>
+        </div>
+      `,
+    });
+    return true;
+  } catch (err) {
+    console.error('Due date approval email error:', err);
     return false;
   }
 };
@@ -214,7 +247,7 @@ router.post('/', auth, async (req, res) => {
 });
 
 // =====================================================
-// UPDATE TICKET (with given_by support + time log validation)
+// UPDATE TICKET (with full due date approval workflow)
 // =====================================================
 
 router.put('/:id', auth, async (req, res) => {
@@ -230,10 +263,20 @@ router.put('/:id', auth, async (req, res) => {
       division,
       comment,
       allotted_minutes,
-      given_by
+      given_by,
+      // Due date request fields
+      requested_due_date,
+      due_date_change_status,
+      due_date_change_requested_by,
+      due_date_change_requested_at,
     } = req.body;
 
-    const { data: existing, error: fetchError } = await supabase.from('tickets').select('*').eq('id', req.params.id).single();
+    const { data: existing, error: fetchError } = await supabase
+      .from('tickets')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+
     if (fetchError || !existing) {
       return res.status(404).json({ message: 'Ticket not found' });
     }
@@ -244,32 +287,104 @@ router.put('/:id', auth, async (req, res) => {
       }
     }
 
-    // =====================================================
-    // VALIDATE TIME LOG BEFORE APPROVAL STATUS
-    // =====================================================
-    const approvalTriggers = ['Completed', 'Waiting For Sources', 'Waiting For Resources'];
-    if (status && approvalTriggers.includes(status)) {
-      const { data: timeEntries, error: timeError } =
-        await supabase
-          .from('ticket_time_entries')
-          .select('id')
-          .eq('ticket_id', existing.id);
+    let timeline = existing.timeline || [];
+    const updateData = { updated_at: getISTTime(), timeline };
 
-      if (timeError) {
-        return res.status(500).json({
-          message: 'Failed to validate time logs',
-        });
+    // =====================================================
+    // 1. DUE DATE CHANGE APPROVAL / REJECTION (Admin only)
+    // =====================================================
+
+    // Approve
+    if (due_date_change_status === 'Approved' && existing.requested_due_date) {
+      if (req.user.role !== 'Admin' && req.user.role !== 'Super Admin') {
+        return res.status(403).json({ message: 'Only admin can approve due date changes' });
       }
+      updateData.due_date = existing.requested_due_date;
+      updateData.requested_due_date = null;
+      updateData.due_date_change_status = 'Approved';
+      updateData.due_date_change_requested_by = null;
+      updateData.due_date_change_requested_at = null;
 
-      if (!timeEntries || timeEntries.length === 0) {
-        return res.status(400).json({
-          message: 'Please log time before marking ticket as completed',
-        });
+      timeline.push({
+        type: 'due_date_approved',
+        action: `Due date changed from ${existing.due_date || 'Not set'} to ${existing.requested_due_date}`,
+        user: req.user.name,
+        created_at: getISTTime(),
+      });
+    }
+
+    // Reject
+    if (due_date_change_status === 'Rejected') {
+      if (req.user.role !== 'Admin' && req.user.role !== 'Super Admin') {
+        return res.status(403).json({ message: 'Only admin can reject due date changes' });
+      }
+      updateData.requested_due_date = null;
+      updateData.due_date_change_status = 'Rejected';
+      updateData.due_date_change_requested_by = null;
+      updateData.due_date_change_requested_at = null;
+
+      timeline.push({
+        type: 'due_date_rejected',
+        action: 'Due date change request rejected',
+        user: req.user.name,
+        created_at: getISTTime(),
+      });
+    }
+
+    // =====================================================
+    // 2. NEW DUE DATE CHANGE REQUEST (User)
+    // =====================================================
+    if (
+      requested_due_date &&
+      due_date_change_status === 'Pending' &&
+      existing.due_date_change_status !== 'Pending'
+    ) {
+      updateData.requested_due_date = requested_due_date;
+      updateData.due_date_change_status = 'Pending';
+      updateData.due_date_change_requested_by = due_date_change_requested_by || req.user.name;
+      updateData.due_date_change_requested_at = due_date_change_requested_at || getISTTime();
+
+      timeline.push({
+        type: 'due_date_request',
+        action: `Requested due date change from ${existing.due_date || 'Not set'} to ${requested_due_date}`,
+        user: req.user.name,
+        created_at: getISTTime(),
+      });
+
+      // Send email to admin
+      if (process.env.ADMIN_EMAIL) {
+        await sendDueDateApprovalEmail(
+          process.env.ADMIN_EMAIL,
+          existing.title,
+          existing.due_date,
+          requested_due_date,
+          req.user.name,
+          existing.id
+        );
       }
     }
 
-    let timeline = existing.timeline || [];
+    // =====================================================
+    // 3. VALIDATE TIME LOG BEFORE STATUS CHANGE
+    // =====================================================
+    const approvalTriggers = ['Completed', 'Waiting For Sources', 'Waiting For Resources'];
+    if (status && approvalTriggers.includes(status)) {
+      const { data: timeEntries, error: timeError } = await supabase
+        .from('ticket_time_entries')
+        .select('id')
+        .eq('ticket_id', existing.id);
 
+      if (timeError) {
+        return res.status(500).json({ message: 'Failed to validate time logs' });
+      }
+      if (!timeEntries || timeEntries.length === 0) {
+        return res.status(400).json({ message: 'Please log time before marking ticket as completed' });
+      }
+    }
+
+    // =====================================================
+    // 4. HANDLE COMMENT
+    // =====================================================
     if (comment) {
       timeline.push({
         type: 'comment_add',
@@ -280,15 +395,14 @@ router.put('/:id', auth, async (req, res) => {
       });
     }
 
-    const updateData = { updated_at: getISTTime(), timeline };
-
+    // =====================================================
+    // 5. OTHER UPDATE FIELDS
+    // =====================================================
     if (title !== undefined) updateData.title = title;
     if (description !== undefined) updateData.description = description;
     if (priority !== undefined) updateData.priority = priority;
     if (category !== undefined) updateData.category = category;
     if (division !== undefined) updateData.division = division;
-
-    // Handle given_by update
     if (given_by !== undefined) {
       updateData.given_by = given_by;
       timeline.push({
@@ -298,21 +412,6 @@ router.put('/:id', auth, async (req, res) => {
         created_at: getISTTime(),
       });
     }
-
-    if (due_date !== undefined && due_date !== '') {
-      const oldDate = existing.due_date;
-      const newDate = new Date(due_date).toISOString().split('T')[0];
-      updateData.due_date = newDate;
-      if (oldDate !== newDate) {
-        timeline.push({
-          type: 'due_date',
-          action: `Due date changed from ${oldDate || 'Not set'} to ${newDate}`,
-          user: req.user.name,
-          created_at: getISTTime(),
-        });
-      }
-    }
-
     if (allotted_minutes !== undefined && allotted_minutes !== existing.allotted_minutes) {
       timeline.push({
         type: 'allotted_time',
@@ -324,7 +423,7 @@ router.put('/:id', auth, async (req, res) => {
     }
 
     // =====================================================
-    // APPROVAL REQUEST LOGIC (unchanged)
+    // 6. STATUS & APPROVAL REQUEST FOR COMPLETION
     // =====================================================
     if (status && approvalTriggers.includes(status)) {
       updateData.status = 'Waiting For Approval';
@@ -344,15 +443,22 @@ router.put('/:id', auth, async (req, res) => {
         message: `${req.user.name} requested approval for "${existing.title}"`,
         ticket_id: existing.id,
       });
-      const adminEmail = process.env.ADMIN_EMAIL;
-      if (adminEmail) {
-        await sendApprovalEmail(adminEmail, existing.title, req.user.name, existing.id);
+      if (process.env.ADMIN_EMAIL) {
+        await sendApprovalEmail(process.env.ADMIN_EMAIL, existing.title, req.user.name, existing.id);
       }
     } else if (status !== undefined) {
       updateData.status = status;
     }
 
-    const { data, error } = await supabase.from('tickets').update(updateData).eq('id', id).select().single();
+    // =====================================================
+    // 7. EXECUTE UPDATE
+    // =====================================================
+    const { data, error } = await supabase
+      .from('tickets')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
 
     if (error) {
       console.error(error);
@@ -370,7 +476,7 @@ router.put('/:id', auth, async (req, res) => {
 });
 
 // =====================================================
-// APPROVE, REJECT, ASSIGN, DELETE
+// APPROVE TICKET (final approval for completion)
 // =====================================================
 
 router.put('/:id/approve', auth, async (req, res) => {
@@ -411,6 +517,10 @@ router.put('/:id/approve', auth, async (req, res) => {
   }
 });
 
+// =====================================================
+// REJECT TICKET (completion request)
+// =====================================================
+
 router.put('/:id/reject', auth, async (req, res) => {
   try {
     if (req.user.role !== 'Admin' && req.user.role !== 'Super Admin') {
@@ -447,6 +557,10 @@ router.put('/:id/reject', auth, async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
+
+// =====================================================
+// ASSIGN TICKET
+// =====================================================
 
 router.put('/:id/assign', auth, async (req, res) => {
   try {
@@ -496,6 +610,10 @@ router.put('/:id/assign', auth, async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
+
+// =====================================================
+// DELETE TICKET
+// =====================================================
 
 router.delete('/:id', auth, async (req, res) => {
   try {

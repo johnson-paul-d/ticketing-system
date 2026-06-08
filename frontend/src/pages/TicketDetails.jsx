@@ -36,6 +36,7 @@ export default function TicketDetails() {
   const [editNotes, setEditNotes] = useState("");
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState("");
+  const [requestDueDate, setRequestDueDate] = useState(""); // for the request input
 
   useEffect(() => {
     fetchTicket();
@@ -58,6 +59,8 @@ export default function TicketDetails() {
       setAllottedHours(Math.floor((mins % (60 * 24)) / 60));
       setAllottedMins(mins % 60);
       setTitleInput(res.data.title || "");
+      // Reset request due date field
+      setRequestDueDate("");
     } catch (err) {
       console.error(err);
     }
@@ -99,7 +102,7 @@ export default function TicketDetails() {
       await api.put(`/tickets/${ticket.id}/assign`, { assigned_to: selected.id, assigned_to_name: selected.name });
       alert("Ticket assigned");
       fetchTicket();
-      setSelectedUser(""); // reset selection after assignment
+      setSelectedUser("");
     } catch (err) {
       alert("Assignment failed");
     }
@@ -116,14 +119,57 @@ export default function TicketDetails() {
     }
   };
 
+  // MODIFIED: due date change request (no direct update)
   const updateDueDate = async () => {
+    if (!dueDate) {
+      alert("Please select a due date");
+      return;
+    }
     try {
-      await api.put(`/tickets/${ticket.id}`, { due_date: dueDate, comment });
+      await api.put(`/tickets/${ticket.id}`, {
+        requested_due_date: dueDate,
+        due_date_change_status: "Pending",
+        due_date_change_requested_by: user.name,
+        due_date_change_requested_at: new Date().toISOString(),
+        comment: comment || "Due date change request",
+      });
+      alert("Due date change request submitted for approval");
       fetchTicket();
       setComment("");
-      alert("Due date updated");
+      setDueDate(""); // clear the input
     } catch (err) {
-      alert("Failed to update due date");
+      alert("Failed to request due date change");
+    }
+  };
+
+  // Approve due date change
+  const approveDueDate = async () => {
+    try {
+      await api.put(`/tickets/${ticket.id}`, {
+        due_date: ticket.requested_due_date,
+        due_date_change_status: "Approved",
+        requested_due_date: null,
+      });
+      alert("Due date change approved");
+      fetchTicket();
+    } catch (err) {
+      console.error(err);
+      alert("Failed to approve due date change");
+    }
+  };
+
+  // Reject due date change
+  const rejectDueDate = async () => {
+    try {
+      await api.put(`/tickets/${ticket.id}`, {
+        due_date_change_status: "Rejected",
+        requested_due_date: null,
+      });
+      alert("Due date change rejected");
+      fetchTicket();
+    } catch (err) {
+      console.error(err);
+      alert("Failed to reject due date change");
     }
   };
 
@@ -298,6 +344,12 @@ export default function TicketDetails() {
             <div className="flex flex-wrap gap-3 mt-5">
               <span className="bg-gray-100 px-4 py-2 rounded-full text-sm font-medium">{ticket.status}</span>
               {ticket.approval_status && <span className="bg-yellow-100 text-yellow-700 px-4 py-2 rounded-full text-sm font-medium">Approval: {ticket.approval_status}</span>}
+              {/* NEW: Pending due date approval badge */}
+              {ticket.due_date_change_status === "Pending" && (
+                <span className="bg-orange-100 text-orange-700 px-4 py-2 rounded-full text-sm font-medium">
+                  Due Date Approval Pending
+                </span>
+              )}
             </div>
           </div>
           {user?.role === "Admin" && (
@@ -313,6 +365,47 @@ export default function TicketDetails() {
             <div className="flex gap-4 mt-6">
               <button onClick={approveTicket} className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-2xl">Approve</button>
               <button onClick={rejectTicket} className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-2xl">Reject</button>
+            </div>
+          </div>
+        )}
+
+        {/* NEW: Admin approval UI for due date change */}
+        {user?.role === "Admin" && ticket.due_date_change_status === "Pending" && (
+          <div className="mt-8 bg-orange-50 border border-orange-200 rounded-2xl p-5">
+            <h3 className="font-bold text-xl">Due Date Change Approval Required</h3>
+            <div className="mt-4 space-y-2">
+              <p>
+                <span className="font-semibold">Current Due Date:</span>{" "}
+                {ticket.due_date || "Not set"}
+              </p>
+              <p>
+                <span className="font-semibold">Requested Due Date:</span>{" "}
+                {ticket.requested_due_date || "Not provided"}
+              </p>
+              <p>
+                <span className="font-semibold">Requested By:</span>{" "}
+                {ticket.due_date_change_requested_by || "Unknown"}
+              </p>
+              <p>
+                <span className="font-semibold">Requested At:</span>{" "}
+                {ticket.due_date_change_requested_at
+                  ? new Date(ticket.due_date_change_requested_at).toLocaleString()
+                  : "Unknown"}
+              </p>
+            </div>
+            <div className="flex gap-4 mt-6">
+              <button
+                onClick={approveDueDate}
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl"
+              >
+                Approve
+              </button>
+              <button
+                onClick={rejectDueDate}
+                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl ml-3"
+              >
+                Reject
+              </button>
             </div>
           </div>
         )}
@@ -447,7 +540,18 @@ export default function TicketDetails() {
               )}
             </div>
 
-            <div><p className="font-semibold text-gray-500">Due Date</p><p className="text-lg font-medium mt-2">{ticket.due_date || "Not set"}</p></div>
+            {/* DUE DATE DISPLAY */}
+            <div>
+              <p className="font-semibold text-gray-500">Due Date</p>
+              <p className="text-lg font-medium mt-2">
+                {ticket.due_date || "Not set"}
+                {ticket.due_date_change_status === "Pending" && (
+                  <span className="ml-3 text-sm text-orange-600 bg-orange-100 px-2 py-1 rounded-full">
+                    Change requested to {ticket.requested_due_date}
+                  </span>
+                )}
+              </p>
+            </div>
 
             {/* DIVISION */}
             <div>
@@ -544,23 +648,52 @@ export default function TicketDetails() {
               </div>
             </div>
 
-            {/* Due Date */}
+            {/* Due Date Request (modified) */}
             <div>
-              <p className="font-semibold text-gray-500">Due Date</p>
+              <p className="font-semibold text-gray-500">Request Due Date Change</p>
               <div className="flex flex-col sm:flex-row gap-4 mt-3">
-                <input type="date" value={dueDate || ""} onChange={(e) => setDueDate(e.target.value)} className="border rounded-2xl px-4 py-3 w-full" />
-                <button onClick={updateDueDate} className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl whitespace-nowrap">Update</button>
+                <input
+                  type="date"
+                  value={dueDate || ""}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  className="border rounded-2xl px-4 py-3 w-full"
+                />
+                <button
+                  onClick={updateDueDate}
+                  className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl whitespace-nowrap"
+                  disabled={ticket.due_date_change_status === "Pending"}
+                >
+                  Request Change
+                </button>
               </div>
+              {ticket.due_date_change_status === "Pending" && (
+                <p className="text-sm text-orange-600 mt-2">
+                  A due date change request is pending approval.
+                </p>
+              )}
             </div>
 
             {/* Comment */}
             <div>
               <p className="font-semibold text-gray-500">Comment</p>
-              <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Add comment..." className="border rounded-2xl px-4 py-3 w-full h-32 mt-3" />
-              <button onClick={() => { if (comment) updateStatus(); else alert("Write a comment first"); }} className="mt-3 bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded-xl text-sm">Attach comment</button>
+              <textarea
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                placeholder="Add comment..."
+                className="border rounded-2xl px-4 py-3 w-full h-32 mt-3"
+              />
+              <button
+                onClick={() => {
+                  if (comment) updateStatus();
+                  else alert("Write a comment first");
+                }}
+                className="mt-3 bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded-xl text-sm"
+              >
+                Attach comment
+              </button>
             </div>
 
-            {/* Assigned To (moved below Comment and redesigned) */}
+            {/* Assigned To */}
             <div>
               <p className="font-semibold text-gray-500 mb-3">Assigned To</p>
               <div className="bg-gray-100 border rounded-2xl px-5 py-4 inline-flex items-center gap-3">
@@ -574,7 +707,7 @@ export default function TicketDetails() {
               </div>
             </div>
 
-            {/* ASSIGN TICKET (moved from bottom to below Comment, right column) */}
+            {/* ASSIGN TICKET */}
             {user?.role === "Admin" && (
               <div className="mt-8">
                 <p className="font-semibold text-gray-500 mb-3">Assign Team Member</p>
