@@ -386,12 +386,6 @@ export default function TicketDetails() {
                 <span className="font-semibold">Requested By:</span>{" "}
                 {ticket.due_date_change_requested_by || "Unknown"}
               </p>
-              <p>
-                <span className="font-semibold">Requested At:</span>{" "}
-                {ticket.due_date_change_requested_at
-                  ? new Date(ticket.due_date_change_requested_at).toLocaleString()
-                  : "Unknown"}
-              </p>
             </div>
             <div className="flex gap-4 mt-6">
               <button
