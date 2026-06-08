@@ -126,6 +126,8 @@ export default function TicketCalendar() {
                 entry,
                 assignedPerson,
                 duration: entry.duration_minutes,
+                // 👇 ADD NOTES (adjust field name if your API uses e.g., entry.work_notes)
+                notes: entry.notes || entry.work_notes || "",
               },
             });
           });
@@ -305,16 +307,23 @@ export default function TicketCalendar() {
       style.zIndex = 1;          // sits behind other events
     }
 
+    // 👇 Increase height for work logs to show notes
+    if (event.type === "work_log") {
+      style.minHeight = "60px";
+      style.height = "auto";
+      style.whiteSpace = "normal";
+    }
+
     return { style };
   };
 
   // =====================================================
-  // CUSTOM EVENT
+  // CUSTOM EVENT (with notes support in Week/Day view)
   // =====================================================
 
-  const CustomEvent = ({ event }) => (
+  const CustomEvent = ({ event, currentView }) => (
     <div className="overflow-hidden leading-tight">
-      <div className="font-semibold truncate text-[10px]">
+      <div className="font-semibold text-[10px]">
         {event.title}
       </div>
 
@@ -325,9 +334,25 @@ export default function TicketCalendar() {
       )}
 
       {event.type === "work_log" && (
-        <div className="text-[9px] opacity-80 truncate">
-          {moment(event.start).format("HH:mm")} - {moment(event.end).format("HH:mm")}
-        </div>
+        <>
+          <div className="text-[9px] opacity-80 truncate">
+            {moment(event.start).format("HH:mm")} - {moment(event.end).format("HH:mm")}
+          </div>
+
+          {/* 👇 Show notes only in Week/Day views (not Month) */}
+          {currentView !== "month" && event.resource?.notes && (
+            <div
+              className="text-[8px] mt-1 opacity-90"
+              style={{
+                whiteSpace: "normal",
+                wordBreak: "break-word",
+                lineHeight: "1.2",
+              }}
+            >
+              {event.resource.notes}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -397,7 +422,10 @@ export default function TicketCalendar() {
               min={new Date(2026, 1, 1, 8, 0, 0)}
               max={new Date(2026, 1, 1, 23, 0, 0)}
               eventPropGetter={eventStyleGetter}
-              components={{ event: CustomEvent }}
+              // 👇 Pass currentView to CustomEvent
+              components={{
+                event: (props) => <CustomEvent {...props} currentView={currentView} />
+              }}
               style={{ height: "100%" }}
             />
           </div>
