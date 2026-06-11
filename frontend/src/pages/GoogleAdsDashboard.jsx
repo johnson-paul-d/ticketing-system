@@ -28,7 +28,7 @@ import ExecutiveSummaryCard from "../components/GoogleAds1/Dashboard/ExecutiveSu
 import AIInsightPanel from "../components/GoogleAds1/Dashboard/AIInsightPanel";
 import DirectorKPI from "../components/GoogleAds1/Dashboard/DirectorKPI";
 import DirectorFilterStrip from "../components/GoogleAds1/Dashboard/DirectorFilterStrip";
-import SiegerLogo from "../assets/Sieger_logo.png";
+import SiegerLogo from "../assets/sieger white logo.png";
 
 /* ─────────────────────────────────────────────────────────────
    SIEGER BRAND TOKENS
