@@ -28,6 +28,7 @@ import ExecutiveSummaryCard from "../components/GoogleAds1/Dashboard/ExecutiveSu
 import AIInsightPanel from "../components/GoogleAds1/Dashboard/AIInsightPanel";
 import DirectorKPI from "../components/GoogleAds1/Dashboard/DirectorKPI";
 import DirectorFilterStrip from "../components/GoogleAds1/Dashboard/DirectorFilterStrip";
+import SiegerLogo from "../assets/Sieger_logo.png";
 
 /* ─────────────────────────────────────────────────────────────
    SIEGER BRAND TOKENS
@@ -468,39 +469,28 @@ export default function GoogleAdsDashboard() {
               </span>
             </div>
 
-            {/* SIEGER wordmark row */}
-            <div className="flex items-baseline gap-3 mb-1">
-              {/* Stylised brand mark */}
-              <div className="flex items-center gap-0.5">
-                {["S","I","E","G","E","R"].map((l, i) => (
-                  <span
-                    key={i}
-                    className="text-3xl sm:text-5xl font-black leading-none tracking-tight"
-                    style={{ color: i === 3 ? "#9B2423" : "#F3ECE0" }}
-                  >
-                    {l}
-                  </span>
-                ))}
-                {/* V-formation icon */}
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 20 20"
-                  className="ml-0.5 mb-1"
-                  style={{ flexShrink: 0 }}
+            {/* Premium Sieger logo + title block */}
+            <div className="flex items-center gap-4">
+              <img
+                src={SiegerLogo}
+                alt="Sieger"
+                className="h-14 sm:h-20 w-auto object-contain"
+              />
+              <div>
+                <h1
+                  className="text-xl sm:text-2xl font-bold"
+                  style={{ color: "#F3ECE0" }}
                 >
-                  <polygon points="0,0 10,12 20,0" fill="#9B2423" />
-                  <polygon points="4,0 10,8 16,0" fill="#6B0F0E" />
-                </svg>
+                  Google Ads Command Centre
+                </h1>
+                <p
+                  className="text-[10px] font-semibold tracking-[0.25em] uppercase"
+                  style={{ color: "#9B2423" }}
+                >
+                  PARTNERING PROGRESS
+                </p>
               </div>
             </div>
-
-            <p
-              className="text-[10px] font-semibold tracking-[0.25em] uppercase"
-              style={{ color: "#9B2423" }}
-            >
-              partnering progress
-            </p>
             <p className="text-xs mt-1" style={{ color: "#444" }}>
               Director-level marketing intelligence & optimisation platform
             </p>
