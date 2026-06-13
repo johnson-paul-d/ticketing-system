@@ -109,13 +109,27 @@ export default function GoogleAdsDashboard() {
   }, [rawCampaigns]);
 
   // ---------------------------------------------------------------------------
-  // 1b. UNIQUE STATUSES
+  // 1b. UNIQUE STATUSES — scoped to the active date range + account
+  //     so the dropdown only shows statuses that actually exist in the
+  //     current view (prevents selecting a status with zero matching rows).
   // ---------------------------------------------------------------------------
   const uniqueStatuses = useMemo(() => {
-    return [
-      ...new Set(rawCampaigns.map((r) => r.status).filter(Boolean)),
-    ].sort();
-  }, [rawCampaigns]);
+    const { start, end } = filters.dateRange;
+    let rows = rawCampaigns;
+
+    if (start && end) {
+      rows = rows.filter((r) => {
+        const d = new Date(r.report_date);
+        return d >= start && d <= end;
+      });
+    }
+
+    if (selectedAccount !== "All") {
+      rows = rows.filter((r) => r.account_id === selectedAccount);
+    }
+
+    return [...new Set(rows.map((r) => r.status).filter(Boolean))].sort();
+  }, [rawCampaigns, filters.dateRange, selectedAccount]);
 
   // ---------------------------------------------------------------------------
   // 2. NORMALIZE ALL CAMPAIGNS (single source)
@@ -145,27 +159,38 @@ export default function GoogleAdsDashboard() {
   }, [rawCampaigns]);
 
   // ---------------------------------------------------------------------------
-  // 3. UNIQUE CAMPAIGNS (cascading based on selected account_id)
+  // 3. UNIQUE CAMPAIGNS (cascading: account → status → date)
   // ---------------------------------------------------------------------------
   const uniqueCampaigns = useMemo(() => {
-    if (selectedAccount === "All") {
-      return allNormalizedCampaigns.map((c) => ({ campaign: c.campaign }));
+    const { start, end } = filters.dateRange;
+
+    let rows = rawCampaigns;
+
+    if (start && end) {
+      rows = rows.filter((r) => {
+        const d = new Date(r.report_date);
+        return d >= start && d <= end;
+      });
     }
 
-    const campaignsInAccount = new Set();
-    rawCampaigns.forEach((row) => {
-      if (row.account_id === selectedAccount) {
-        const campaignName = row.campaign || row.campaign_name || row.campaignName;
-        if (campaignName) campaignsInAccount.add(campaignName);
-      }
+    if (selectedAccount !== "All") {
+      rows = rows.filter((r) => r.account_id === selectedAccount);
+    }
+
+    if (selectedStatus !== "All") {
+      rows = rows.filter((r) => r.status === selectedStatus);
+    }
+
+    const seen = new Set();
+    rows.forEach((row) => {
+      const name = row.campaign || row.campaign_name || row.campaignName;
+      if (name) seen.add(name);
     });
 
-    return Array.from(campaignsInAccount)
-      .sort()
-      .map((campaign) => ({ campaign }));
-  }, [allNormalizedCampaigns, selectedAccount, rawCampaigns]);
+    return [...seen].sort().map((campaign) => ({ campaign }));
+  }, [rawCampaigns, filters.dateRange, selectedAccount, selectedStatus]);
 
-  // Reset selectedCampaign if the current one is no longer available after account change
+  // Reset selectedCampaign if it's no longer valid after account or status changes
   useEffect(() => {
     if (selectedCampaign !== "All") {
       const stillAvailable = uniqueCampaigns.some(
@@ -175,7 +200,7 @@ export default function GoogleAdsDashboard() {
         setSelectedCampaign("All");
       }
     }
-  }, [selectedAccount, uniqueCampaigns, selectedCampaign]);
+  }, [selectedAccount, selectedStatus, uniqueCampaigns, selectedCampaign]);
 
   // ---------------------------------------------------------------------------
   // 4. APPLY DATE RANGE + ACCOUNT_ID + CAMPAIGN + DIRECTOR FILTERS
