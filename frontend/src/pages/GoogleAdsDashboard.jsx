@@ -72,10 +72,12 @@ export default function GoogleAdsDashboard() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [selectedCampaign, setSelectedCampaign] = useState("All");
   const [selectedAccount, setSelectedAccount] = useState("All");
+  const [selectedStatus, setSelectedStatus] = useState("All");
   const clearFilters = () => {
     setFilters(DEFAULT_FILTERS);
     setSelectedCampaign("All");
     setSelectedAccount("All");
+    setSelectedStatus("All");
   };
   const hasActiveDirectorFilters =
     filters.sortBy !== "cost" ||
@@ -100,6 +102,15 @@ export default function GoogleAdsDashboard() {
     return [...seen.entries()]
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name));
+  }, [rawCampaigns]);
+
+  // ---------------------------------------------------------------------------
+  // 1b. UNIQUE STATUSES
+  // ---------------------------------------------------------------------------
+  const uniqueStatuses = useMemo(() => {
+    return [
+      ...new Set(rawCampaigns.map((r) => r.status).filter(Boolean)),
+    ].sort();
   }, [rawCampaigns]);
 
   // ---------------------------------------------------------------------------
@@ -179,6 +190,13 @@ export default function GoogleAdsDashboard() {
     if (selectedAccount !== "All") {
       dateFilteredRows = dateFilteredRows.filter(
         (row) => row.account_id === selectedAccount
+      );
+    }
+
+    // Apply status filter
+    if (selectedStatus !== "All") {
+      dateFilteredRows = dateFilteredRows.filter(
+        (row) => row.status === selectedStatus
       );
     }
 
@@ -269,7 +287,7 @@ export default function GoogleAdsDashboard() {
     });
 
     return result;
-  }, [rawCampaigns, filters, selectedCampaign, selectedAccount]);
+  }, [rawCampaigns, filters, selectedCampaign, selectedAccount, selectedStatus]);
 
   // ---------------------------------------------------------------------------
   // 5. DERIVED METRICS
@@ -384,11 +402,14 @@ export default function GoogleAdsDashboard() {
     if (selectedAccount !== "All") {
       trends = trends.filter((t) => t.account_id === selectedAccount);
     }
+    if (selectedStatus !== "All") {
+      trends = trends.filter((t) => t.status === selectedStatus);
+    }
     if (selectedCampaign !== "All") {
       trends = trends.filter((t) => t.campaign === selectedCampaign);
     }
     return trends;
-  }, [rawTrends, filters.dateRange, selectedCampaign, selectedAccount]);
+  }, [rawTrends, filters.dateRange, selectedCampaign, selectedAccount, selectedStatus]);
 
   const filteredKeywords = useMemo(() => {
     let keywords = [...(rawKeywords || [])];
@@ -402,11 +423,14 @@ export default function GoogleAdsDashboard() {
     if (selectedAccount !== "All") {
       keywords = keywords.filter((k) => k.account_id === selectedAccount);
     }
+    if (selectedStatus !== "All") {
+      keywords = keywords.filter((k) => k.status === selectedStatus);
+    }
     if (selectedCampaign !== "All") {
       keywords = keywords.filter((k) => k.campaign === selectedCampaign);
     }
     return keywords;
-  }, [rawKeywords, filters.dateRange, selectedCampaign, selectedAccount]);
+  }, [rawKeywords, filters.dateRange, selectedCampaign, selectedAccount, selectedStatus]);
 
   const recommendations = useMemo(() => {
     const recs = [...hookRecommendations];
@@ -682,6 +706,24 @@ export default function GoogleAdsDashboard() {
             {uniqueAccounts.map(({ id, name }) => (
               <option key={id} value={id}>
                 {name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={selectedStatus}
+            onChange={(e) => setSelectedStatus(e.target.value)}
+            className="text-xs rounded-lg px-3 py-2 outline-none min-w-[160px]"
+            style={{
+              background: "#1A1A1A",
+              color: "#F3ECE0",
+              border: "1px solid #2A2A2A",
+            }}
+          >
+            <option value="All">All Statuses</option>
+            {uniqueStatuses.map((status) => (
+              <option key={status} value={status}>
+                {status}
               </option>
             ))}
           </select>
