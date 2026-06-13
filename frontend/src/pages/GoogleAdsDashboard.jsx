@@ -53,7 +53,7 @@ export default function GoogleAdsDashboard() {
     loading,
   } = useGoogleAdsData();
   const { wasteSpend, recommendations: hookRecommendations } =
-    useExecutiveMetrics({});
+    useExecutiveMetrics({ rows: rawCampaigns });
 
   // ---------------------------------------------------------------------------
   // FILTERS STATE (includes date range, account and campaign dropdown)
