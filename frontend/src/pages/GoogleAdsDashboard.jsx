@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import MainLayout from "../layouts/MainLayout";
 import useGoogleAdsData from "../hooks/useGoogleAdsData";
 import useExecutiveMetrics from "../hooks/useExecutiveMetrics";
@@ -52,7 +52,7 @@ export default function GoogleAdsDashboard() {
     useExecutiveMetrics({});
 
   // ---------------------------------------------------------------------------
-  // FILTERS STATE (includes date range and campaign dropdown)
+  // FILTERS STATE (includes date range, account and campaign dropdown)
   // ---------------------------------------------------------------------------
   const DEFAULT_FILTERS = {
     sortBy: "cost",
@@ -71,9 +71,11 @@ export default function GoogleAdsDashboard() {
   };
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [selectedCampaign, setSelectedCampaign] = useState("All");
+  const [selectedAccount, setSelectedAccount] = useState("All");
   const clearFilters = () => {
     setFilters(DEFAULT_FILTERS);
     setSelectedCampaign("All");
+    setSelectedAccount("All");
   };
   const hasActiveDirectorFilters =
     filters.sortBy !== "cost" ||
@@ -86,7 +88,21 @@ export default function GoogleAdsDashboard() {
     filters.metricFocus !== "All";
 
   // ---------------------------------------------------------------------------
-  // 1. NORMALIZE ALL CAMPAIGNS (single source)
+  // 1. UNIQUE ACCOUNTS (for dropdown)
+  // ---------------------------------------------------------------------------
+  const uniqueAccounts = useMemo(() => {
+    const accounts = [
+      ...new Set(
+        rawCampaigns
+          .map((r) => r.account_name)
+          .filter(Boolean)
+      ),
+    ];
+    return accounts.sort();
+  }, [rawCampaigns]);
+
+  // ---------------------------------------------------------------------------
+  // 2. NORMALIZE ALL CAMPAIGNS (single source)
   // ---------------------------------------------------------------------------
   const allNormalizedCampaigns = useMemo(() => {
     const campaignMap = new Map();
@@ -112,13 +128,43 @@ export default function GoogleAdsDashboard() {
     return Array.from(campaignMap.values()).map(normalizeCampaign);
   }, [rawCampaigns]);
 
-  const uniqueCampaigns = useMemo(
-    () => allNormalizedCampaigns.map((c) => ({ campaign: c.campaign })),
-    [allNormalizedCampaigns]
-  );
+  // ---------------------------------------------------------------------------
+  // 3. UNIQUE CAMPAIGNS (cascading based on selected account)
+  // ---------------------------------------------------------------------------
+  const uniqueCampaigns = useMemo(() => {
+    // If no account selected or "All" → show all campaigns from all accounts
+    if (selectedAccount === "All") {
+      return allNormalizedCampaigns.map((c) => ({ campaign: c.campaign }));
+    }
+
+    // Otherwise, filter campaigns that exist in the selected account
+    const campaignsInAccount = new Set();
+    rawCampaigns.forEach((row) => {
+      if (row.account_name === selectedAccount) {
+        const campaignName = row.campaign || row.campaign_name || row.campaignName;
+        if (campaignName) campaignsInAccount.add(campaignName);
+      }
+    });
+
+    return Array.from(campaignsInAccount)
+      .sort()
+      .map((campaign) => ({ campaign }));
+  }, [allNormalizedCampaigns, selectedAccount, rawCampaigns]);
+
+  // Reset selectedCampaign if the current one is no longer available after account change
+  useEffect(() => {
+    if (selectedCampaign !== "All") {
+      const stillAvailable = uniqueCampaigns.some(
+        (c) => c.campaign === selectedCampaign
+      );
+      if (!stillAvailable) {
+        setSelectedCampaign("All");
+      }
+    }
+  }, [selectedAccount, uniqueCampaigns, selectedCampaign]);
 
   // ---------------------------------------------------------------------------
-  // 2. APPLY DATE RANGE + CAMPAIGN + DIRECTOR FILTERS
+  // 4. APPLY DATE RANGE + ACCOUNT + CAMPAIGN + DIRECTOR FILTERS
   // ---------------------------------------------------------------------------
   const filteredCampaigns = useMemo(() => {
     const { start, end } = filters.dateRange;
@@ -128,6 +174,13 @@ export default function GoogleAdsDashboard() {
         const d = new Date(row.report_date);
         return d >= start && d <= end;
       });
+    }
+
+    // Apply account filter
+    if (selectedAccount !== "All") {
+      dateFilteredRows = dateFilteredRows.filter(
+        (row) => row.account_name === selectedAccount
+      );
     }
 
     const dateAggMap = new Map();
@@ -217,10 +270,10 @@ export default function GoogleAdsDashboard() {
     });
 
     return result;
-  }, [rawCampaigns, filters, selectedCampaign]);
+  }, [rawCampaigns, filters, selectedCampaign, selectedAccount]);
 
   // ---------------------------------------------------------------------------
-  // 3. DERIVED METRICS
+  // 5. DERIVED METRICS
   // ---------------------------------------------------------------------------
   const overview = useMemo(() => {
     let totalSpend = 0,
@@ -329,11 +382,14 @@ export default function GoogleAdsDashboard() {
         return d >= start && d <= end;
       });
     }
+    if (selectedAccount !== "All") {
+      trends = trends.filter((t) => t.account_name === selectedAccount);
+    }
     if (selectedCampaign !== "All") {
       trends = trends.filter((t) => t.campaign === selectedCampaign);
     }
     return trends;
-  }, [rawTrends, filters.dateRange, selectedCampaign]);
+  }, [rawTrends, filters.dateRange, selectedCampaign, selectedAccount]);
 
   const filteredKeywords = useMemo(() => {
     let keywords = [...(rawKeywords || [])];
@@ -344,11 +400,14 @@ export default function GoogleAdsDashboard() {
         return d >= start && d <= end;
       });
     }
+    if (selectedAccount !== "All") {
+      keywords = keywords.filter((k) => k.account_name === selectedAccount);
+    }
     if (selectedCampaign !== "All") {
       keywords = keywords.filter((k) => k.campaign === selectedCampaign);
     }
     return keywords;
-  }, [rawKeywords, filters.dateRange, selectedCampaign]);
+  }, [rawKeywords, filters.dateRange, selectedCampaign, selectedAccount]);
 
   const recommendations = useMemo(() => {
     const recs = [...hookRecommendations];
@@ -547,7 +606,7 @@ export default function GoogleAdsDashboard() {
         </div>
 
         {/* ══════════════════════════════════════════
-            TIME & CAMPAIGN FILTER BAR
+            TIME, ACCOUNT & CAMPAIGN FILTER BAR
         ══════════════════════════════════════════ */}
         <div
           className="flex flex-wrap items-center gap-3 mb-5 rounded-xl p-3 border"
@@ -557,7 +616,7 @@ export default function GoogleAdsDashboard() {
             className="text-[9px] font-black uppercase tracking-[0.2em]"
             style={{ color: "#9B2423" }}
           >
-            Time &amp; Campaign
+            Time &amp; Filters
           </span>
 
           {/* Date range presets */}
@@ -635,7 +694,26 @@ export default function GoogleAdsDashboard() {
             />
           </div>
 
-          {/* Campaign dropdown */}
+          {/* Account dropdown */}
+          <select
+            value={selectedAccount}
+            onChange={(e) => setSelectedAccount(e.target.value)}
+            className="text-xs rounded-lg px-3 py-2 outline-none min-w-[220px]"
+            style={{
+              background: "#1A1A1A",
+              color: "#F3ECE0",
+              border: "1px solid #2A2A2A",
+            }}
+          >
+            <option value="All">All Accounts</option>
+            {uniqueAccounts.map((account) => (
+              <option key={account} value={account}>
+                {account}
+              </option>
+            ))}
+          </select>
+
+          {/* Campaign dropdown (cascading) */}
           <select
             value={selectedCampaign}
             onChange={(e) => setSelectedCampaign(e.target.value)}
