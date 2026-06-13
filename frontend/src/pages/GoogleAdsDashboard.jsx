@@ -896,12 +896,17 @@ export default function GoogleAdsDashboard() {
         <div className="mb-5">
           <ExecutiveScoreCard
             score={executiveScore}
-            efficiencyIndex={advMetrics.efficiencyIndex.toFixed(1)}
-            activeRate={(
-              (advMetrics.activeCampaigns / advMetrics.totalCampaigns) *
-              100
-            ).toFixed(0)}
+            efficiencyIndex={advMetrics.efficiencyIndex}
+            activeRate={
+              advMetrics.totalCampaigns > 0
+                ? Number(((advMetrics.activeCampaigns / advMetrics.totalCampaigns) * 100).toFixed(0))
+                : 0
+            }
             wasteSpend={wasteSpend}
+            ctr={advMetrics.ctr}
+            cvr={advMetrics.cvr}
+            cpa={advMetrics.cpa}
+            totalSpend={overview.totalSpend}
           />
         </div>
 
