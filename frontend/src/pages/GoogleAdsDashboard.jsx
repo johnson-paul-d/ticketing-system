@@ -91,13 +91,15 @@ export default function GoogleAdsDashboard() {
   // 1. UNIQUE ACCOUNTS (using account_id)
   // ---------------------------------------------------------------------------
   const uniqueAccounts = useMemo(() => {
-    return [
-      ...new Set(
-        rawCampaigns
-          .map((r) => r.account_id)
-          .filter(Boolean)
-      ),
-    ].sort();
+    const seen = new Map();
+    rawCampaigns.forEach((r) => {
+      if (r.account_id && !seen.has(r.account_id)) {
+        seen.set(r.account_id, r.account_name || r.account_id);
+      }
+    });
+    return [...seen.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [rawCampaigns]);
 
   // ---------------------------------------------------------------------------
@@ -677,9 +679,9 @@ export default function GoogleAdsDashboard() {
             }}
           >
             <option value="All">All Accounts</option>
-            {uniqueAccounts.map((accountId) => (
-              <option key={accountId} value={accountId}>
-                {accountId}
+            {uniqueAccounts.map(({ id, name }) => (
+              <option key={id} value={id}>
+                {name}
               </option>
             ))}
           </select>

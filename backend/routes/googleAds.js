@@ -102,13 +102,15 @@ router.get("/trends", async (req, res) => {
     data.forEach((row) => {
 
       const key =
-        `${row.campaign}_${row.report_date}`;
+        `${row.campaign}_${row.report_date}_${row.account_id || ""}`;
 
       if (!grouped[key]) {
 
         grouped[key] = {
           campaign: row.campaign,
           report_date: row.report_date,
+          account_id: row.account_id || null,
+          account_name: row.account_name || null,
           cost: 0,
           conversions: 0,
           clicks: 0,
@@ -152,16 +154,18 @@ router.get("/campaigns", async (req, res) => {
       });
     }
 
-    // Group by report_date + campaign
+    // Group by report_date + campaign + account_id
     const grouped = {};
 
     data.forEach((row) => {
-      const key = `${row.report_date}_${row.campaign}`;
+      const key = `${row.report_date}_${row.campaign}_${row.account_id || ""}`;
 
       if (!grouped[key]) {
         grouped[key] = {
           report_date: row.report_date,
           campaign: row.campaign,
+          account_id: row.account_id || null,
+          account_name: row.account_name || null,
           cost: 0,
           conversions: 0,
           clicks: 0,
