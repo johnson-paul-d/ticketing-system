@@ -88,17 +88,16 @@ export default function GoogleAdsDashboard() {
     filters.metricFocus !== "All";
 
   // ---------------------------------------------------------------------------
-  // 1. UNIQUE ACCOUNTS (for dropdown)
+  // 1. UNIQUE ACCOUNTS (using account_id)
   // ---------------------------------------------------------------------------
   const uniqueAccounts = useMemo(() => {
-    const accounts = [
+    return [
       ...new Set(
         rawCampaigns
-          .map((r) => r.account_name)
+          .map((r) => r.account_id)
           .filter(Boolean)
       ),
-    ];
-    return accounts.sort();
+    ].sort();
   }, [rawCampaigns]);
 
   // ---------------------------------------------------------------------------
@@ -129,18 +128,16 @@ export default function GoogleAdsDashboard() {
   }, [rawCampaigns]);
 
   // ---------------------------------------------------------------------------
-  // 3. UNIQUE CAMPAIGNS (cascading based on selected account)
+  // 3. UNIQUE CAMPAIGNS (cascading based on selected account_id)
   // ---------------------------------------------------------------------------
   const uniqueCampaigns = useMemo(() => {
-    // If no account selected or "All" → show all campaigns from all accounts
     if (selectedAccount === "All") {
       return allNormalizedCampaigns.map((c) => ({ campaign: c.campaign }));
     }
 
-    // Otherwise, filter campaigns that exist in the selected account
     const campaignsInAccount = new Set();
     rawCampaigns.forEach((row) => {
-      if (row.account_name === selectedAccount) {
+      if (row.account_id === selectedAccount) {
         const campaignName = row.campaign || row.campaign_name || row.campaignName;
         if (campaignName) campaignsInAccount.add(campaignName);
       }
@@ -164,7 +161,7 @@ export default function GoogleAdsDashboard() {
   }, [selectedAccount, uniqueCampaigns, selectedCampaign]);
 
   // ---------------------------------------------------------------------------
-  // 4. APPLY DATE RANGE + ACCOUNT + CAMPAIGN + DIRECTOR FILTERS
+  // 4. APPLY DATE RANGE + ACCOUNT_ID + CAMPAIGN + DIRECTOR FILTERS
   // ---------------------------------------------------------------------------
   const filteredCampaigns = useMemo(() => {
     const { start, end } = filters.dateRange;
@@ -176,10 +173,10 @@ export default function GoogleAdsDashboard() {
       });
     }
 
-    // Apply account filter
+    // Apply account filter using account_id
     if (selectedAccount !== "All") {
       dateFilteredRows = dateFilteredRows.filter(
-        (row) => row.account_name === selectedAccount
+        (row) => row.account_id === selectedAccount
       );
     }
 
@@ -383,7 +380,7 @@ export default function GoogleAdsDashboard() {
       });
     }
     if (selectedAccount !== "All") {
-      trends = trends.filter((t) => t.account_name === selectedAccount);
+      trends = trends.filter((t) => t.account_id === selectedAccount);
     }
     if (selectedCampaign !== "All") {
       trends = trends.filter((t) => t.campaign === selectedCampaign);
@@ -401,7 +398,7 @@ export default function GoogleAdsDashboard() {
       });
     }
     if (selectedAccount !== "All") {
-      keywords = keywords.filter((k) => k.account_name === selectedAccount);
+      keywords = keywords.filter((k) => k.account_id === selectedAccount);
     }
     if (selectedCampaign !== "All") {
       keywords = keywords.filter((k) => k.campaign === selectedCampaign);
@@ -461,7 +458,6 @@ export default function GoogleAdsDashboard() {
   if (loading) {
     return (
       <MainLayout>
-        {/* ── SIEGER loading state: deep black + red shimmer ── */}
         <div className="min-h-screen px-4 py-3" style={{ background: "#0A0A0A" }}>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
             {[...Array(8)].map((_, i) => (
@@ -475,41 +471,26 @@ export default function GoogleAdsDashboard() {
     );
   }
 
-  /* ── Score colour helper using Sieger palette ── */
   const scoreColor =
     executiveScore >= 70
-      ? "#9B2423"           /* Signal Red – strong */
+      ? "#9B2423"
       : executiveScore >= 40
-      ? "#F3ECE0"           /* Cream – average */
-      : "#6B0F0E";          /* Dark red – weak */
+      ? "#F3ECE0"
+      : "#6B0F0E";
 
   return (
     <MainLayout>
-      {/*
-        ═══════════════════════════════════════════════
-        ROOT CANVAS
-        Background:  #0A0A0A  (industrial near-black)
-        Accent:      #9B2423  (Sieger Signal Red)
-        Highlight:   #F3ECE0  (Sieger Cream)
-        ═══════════════════════════════════════════════
-      */}
       <div
         className="min-h-screen px-4 py-3 sm:px-6 sm:py-5"
         style={{ background: "#0A0A0A" }}
       >
-        {/* ── Top rule ── */}
         <div
           className="w-full h-[3px] mb-5 rounded-full"
           style={{ background: "linear-gradient(90deg,#9B2423 0%,#6B0F0E 60%,transparent 100%)" }}
         />
 
-        {/* ══════════════════════════════════════════
-            HEADER — Sieger identity block
-        ══════════════════════════════════════════ */}
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
-          {/* Left — brand + title */}
           <div>
-            {/* Live indicator */}
             <div className="flex items-center gap-3 mb-3">
               <span
                 className="inline-block w-2 h-2 rounded-full animate-pulse"
@@ -528,7 +509,6 @@ export default function GoogleAdsDashboard() {
               </span>
             </div>
 
-            {/* Premium Sieger logo + title block */}
             <div className="flex items-center gap-4">
               <img
                 src={SiegerLogo}
@@ -555,9 +535,7 @@ export default function GoogleAdsDashboard() {
             </p>
           </div>
 
-          {/* Right — KPI badges */}
           <div className="flex flex-wrap items-stretch gap-3">
-            {/* Waste spend alert */}
             {wasteSpend > 0 && (
               <div
                 className="rounded-xl px-4 py-3 text-right border"
@@ -581,7 +559,6 @@ export default function GoogleAdsDashboard() {
               </div>
             )}
 
-            {/* Performance score */}
             <div
               className="rounded-xl px-5 py-3 text-right border"
               style={{
@@ -605,9 +582,6 @@ export default function GoogleAdsDashboard() {
           </div>
         </div>
 
-        {/* ══════════════════════════════════════════
-            TIME, ACCOUNT & CAMPAIGN FILTER BAR
-        ══════════════════════════════════════════ */}
         <div
           className="flex flex-wrap items-center gap-3 mb-5 rounded-xl p-3 border"
           style={{ background: "#111111", borderColor: "#1E1E1E" }}
@@ -619,7 +593,6 @@ export default function GoogleAdsDashboard() {
             Time &amp; Filters
           </span>
 
-          {/* Date range presets */}
           {[
             { label: "Last 7 days", days: 7 },
             { label: "Last 30 days", days: 30 },
@@ -651,7 +624,6 @@ export default function GoogleAdsDashboard() {
             );
           })}
 
-          {/* Custom date inputs */}
           <div className="flex items-center gap-1.5">
             <input
               type="date"
@@ -694,7 +666,6 @@ export default function GoogleAdsDashboard() {
             />
           </div>
 
-          {/* Account dropdown */}
           <select
             value={selectedAccount}
             onChange={(e) => setSelectedAccount(e.target.value)}
@@ -706,14 +677,13 @@ export default function GoogleAdsDashboard() {
             }}
           >
             <option value="All">All Accounts</option>
-            {uniqueAccounts.map((account) => (
-              <option key={account} value={account}>
-                {account}
+            {uniqueAccounts.map((accountId) => (
+              <option key={accountId} value={accountId}>
+                {accountId}
               </option>
             ))}
           </select>
 
-          {/* Campaign dropdown (cascading) */}
           <select
             value={selectedCampaign}
             onChange={(e) => setSelectedCampaign(e.target.value)}
@@ -733,9 +703,6 @@ export default function GoogleAdsDashboard() {
           </select>
         </div>
 
-        {/* ══════════════════════════════════════════
-            DIRECTOR FILTER STRIP
-        ══════════════════════════════════════════ */}
         <DirectorFilterStrip
           filters={filters}
           setFilters={setFilters}
@@ -743,10 +710,6 @@ export default function GoogleAdsDashboard() {
           hasActiveFilters={hasActiveDirectorFilters}
         />
 
-        {/* ══════════════════════════════════════════
-            ROW 1 — Executive KPI Strip
-            Sieger accent cycling: red → cream → red
-        ══════════════════════════════════════════ */}
         <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3 mb-5">
           {[
             {
@@ -812,7 +775,6 @@ export default function GoogleAdsDashboard() {
                     : "rgba(243,236,224,0.1)",
               }}
             >
-              {/* accent bar */}
               <div
                 className="absolute top-0 left-0 right-0 h-[2px]"
                 style={{
@@ -850,58 +812,43 @@ export default function GoogleAdsDashboard() {
           ))}
         </div>
 
-        {/* ══════════════════════════════════════════
-            SECTION DIVIDER HELPER
-        ══════════════════════════════════════════ */}
-        {/* Reusable inline divider between chart rows */}
-
-        {/* ROW 2 — Executive Summary Card */}
         <div className="mb-5">
           <ExecutiveSummaryCard {...executiveSummary} />
         </div>
 
-        {/* ROW 3 — Spend vs Conversion Trend */}
         <div className="mb-5">
           <SpendTrendChart trends={filteredTrends} />
         </div>
 
-        {/* ROW 4 — Monthly Comparison + Conversion Funnel */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
           <MonthlyComparisonChart trends={filteredTrends} />
           <ConversionFunnel overview={overview} />
         </div>
 
-        {/* ROW 5 — Campaign Efficiency Matrix */}
         <div className="mb-5">
           <CampaignEfficiencyMatrix campaigns={filteredCampaigns} />
         </div>
 
-        {/* ROW 6 — Pareto Chart */}
         <div className="mb-5">
           <ParetoChart campaigns={filteredCampaigns} />
         </div>
 
-        {/* ROW 7 — Spend vs Conversion Share */}
         <div className="mb-5">
           <SpendVsConversionShare campaigns={filteredCampaigns} />
         </div>
 
-        {/* ROW 8 — CTR CVR Quadrant */}
         <div className="mb-5">
           <CTRCVRQuadrant campaigns={filteredCampaigns} />
         </div>
 
-        {/* ROW 9 — CPA Trend Chart */}
         <div className="mb-5">
           <CPATrendChart trends={filteredTrends} />
         </div>
 
-        {/* ROW 10 — Campaign Health Treemap */}
         <div className="mb-5">
           <CampaignHealthTreemap campaigns={filteredCampaigns} />
         </div>
 
-        {/* ROW 11 — Executive Score Card */}
         <div className="mb-5">
           <ExecutiveScoreCard
             score={executiveScore}
@@ -914,22 +861,18 @@ export default function GoogleAdsDashboard() {
           />
         </div>
 
-        {/* ROW 12 — Match Type Analytics */}
         <div className="mb-5">
           <MatchTypeAnalytics keywords={filteredKeywords} />
         </div>
 
-        {/* ROW 13 — Campaign Ranking Table */}
         <div className="mb-5">
           <CampaignRankingTable campaigns={filteredCampaigns} />
         </div>
 
-        {/* ROW 14 — Recommendations Panel */}
         <div className="mb-5">
           <RecommendationPanel recommendations={recommendations} />
         </div>
 
-        {/* AI Insights Panel */}
         <AIInsightPanel
           campaigns={filteredCampaigns}
           topCampaign={advMetrics.topCampaign}
@@ -938,12 +881,10 @@ export default function GoogleAdsDashboard() {
           wasteSpend={wasteSpend}
         />
 
-        {/* Campaign Intelligence Table */}
         <div className="mb-5">
           <CampaignIntelligenceTable campaigns={filteredCampaigns} />
         </div>
 
-        {/* Narrative Summary */}
         <NarrativeSummary
           overview={overview}
           campaigns={filteredCampaigns}
@@ -951,13 +892,11 @@ export default function GoogleAdsDashboard() {
           performanceScore={executiveScore}
         />
 
-        {/* ── Bottom brand footer ── */}
         <div
           className="mt-8 pt-4 flex items-center justify-between border-t"
           style={{ borderColor: "#1A1A1A" }}
         >
           <div className="flex items-center gap-2">
-            {/* Mini V-mark */}
             <svg width="14" height="10" viewBox="0 0 20 14">
               <polygon points="0,0 10,14 20,0" fill="#9B2423" />
               <polygon points="4,0 10,9 16,0" fill="#6B0F0E" />
