@@ -5,6 +5,10 @@ import useExecutiveMetrics from "../hooks/useExecutiveMetrics";
 import ExecutiveScoreCard from "../components/GoogleAds1/kpis/ExecutiveScoreCard";
 import CampaignEfficiencyMatrix from "../components/GoogleAds1/charts/CampaignEfficiencyMatrix";
 import MatchTypeAnalytics from "../components/GoogleAds1/charts/MatchTypeAnalytics";
+import KeywordTopPerformers from "../components/GoogleAds1/charts/KeywordTopPerformers";
+import KeywordQuadrant from "../components/GoogleAds1/charts/KeywordQuadrant";
+import KeywordCPAChart from "../components/GoogleAds1/charts/KeywordCPAChart";
+import KeywordWasteAnalyzer from "../components/GoogleAds1/charts/KeywordWasteAnalyzer";
 import SpendTrendChart from "../components/GoogleAds1/charts/SpendTrendChart";
 import ConversionFunnel from "../components/GoogleAds1/charts/ConversionFunnel";
 import SpendVsConversionShare from "../components/GoogleAds1/charts/SpendVsConversionShare";
@@ -910,8 +914,35 @@ export default function GoogleAdsDashboard() {
           />
         </div>
 
+        {/* ── KEYWORD INTELLIGENCE ── */}
+        <div className="mb-3">
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1" style={{ background: "#1A1A1A" }} />
+            <span
+              className="text-[9px] font-black uppercase tracking-[0.25em] px-3"
+              style={{ color: "#9B2423" }}
+            >
+              Keyword Intelligence
+            </span>
+            <div className="h-px flex-1" style={{ background: "#1A1A1A" }} />
+          </div>
+        </div>
+
         <div className="mb-5">
           <MatchTypeAnalytics keywords={filteredKeywords} />
+        </div>
+
+        <div className="mb-5">
+          <KeywordTopPerformers keywords={filteredKeywords} />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+          <KeywordQuadrant keywords={filteredKeywords} />
+          <KeywordCPAChart keywords={filteredKeywords} />
+        </div>
+
+        <div className="mb-5">
+          <KeywordWasteAnalyzer keywords={filteredKeywords} />
         </div>
 
         <div className="mb-5">

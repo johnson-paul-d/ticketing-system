@@ -204,18 +204,26 @@ router.get("/keywords", async (req, res) => {
       throw error;
     }
 
+    const clicks = (row) => Number(row.clicks || 0);
     const keywords = data.map((row) => ({
+      account_id: row.account_id || null,
+      account_name: row.account_name || null,
       campaign: row.campaign,
+      campaign_budget: Number(row.campaign_budget || 0),
+      ad_group: row.ad_group || null,
       keyword: row.keyword,
       match_type: row.match_type || "UNKNOWN",
+      report_date: row.report_date || null,
       clicks: Number(row.clicks || 0),
       impressions: Number(row.impressions || 0),
-      conversions: Number(row.conversions || 0),
-      cost: Number(row.cost || 0),
+      ctr: Number(row.ctr || 0),
       avg_cpc: Number(row.avg_cpc || 0),
+      cost: Number(row.cost || 0),
+      conversions: Number(row.conversions || 0),
+      cost_per_conversion: Number(row.cost_per_conversion || 0),
       conversion_rate:
-        Number(row.clicks || 0) > 0
-          ? (Number(row.conversions || 0) / Number(row.clicks || 0)) * 100
+        clicks(row) > 0
+          ? (Number(row.conversions || 0) / clicks(row)) * 100
           : 0,
     }));
 
