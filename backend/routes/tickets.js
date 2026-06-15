@@ -332,12 +332,27 @@ router.put('/:id', auth, async (req, res) => {
     }
 
     // =====================================================
-    // 2. NEW DUE DATE CHANGE REQUEST (User)
+    // 2. DIRECT DUE DATE UPDATE (Admin — no approval needed)
+    // =====================================================
+    if (due_date && (req.user.role === 'Admin' || req.user.role === 'Super Admin')) {
+      updateData.due_date = due_date;
+      timeline.push({
+        type: 'due_date',
+        action: `Due date updated from ${existing.due_date || 'Not set'} to ${due_date}`,
+        user: req.user.name,
+        created_at: getISTTime(),
+      });
+    }
+
+    // =====================================================
+    // 3. NEW DUE DATE CHANGE REQUEST (non-admin users only)
     // =====================================================
     if (
       requested_due_date &&
       due_date_change_status === 'Pending' &&
-      existing.due_date_change_status !== 'Pending'
+      existing.due_date_change_status !== 'Pending' &&
+      req.user.role !== 'Admin' &&
+      req.user.role !== 'Super Admin'
     ) {
       updateData.requested_due_date = requested_due_date;
       updateData.due_date_change_status = 'Pending';
@@ -365,7 +380,7 @@ router.put('/:id', auth, async (req, res) => {
     }
 
     // =====================================================
-    // 3. VALIDATE TIME LOG BEFORE STATUS CHANGE
+    // 4. VALIDATE TIME LOG BEFORE STATUS CHANGE
     // =====================================================
     const approvalTriggers = ['Completed', 'Waiting For Sources', 'Waiting For Resources'];
     if (status && approvalTriggers.includes(status)) {

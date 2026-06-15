@@ -119,26 +119,37 @@ export default function TicketDetails() {
     }
   };
 
-  // MODIFIED: due date change request (no direct update)
+  const isAdmin = user?.role === "Admin" || user?.role === "Super Admin";
+
   const updateDueDate = async () => {
     if (!dueDate) {
       alert("Please select a due date");
       return;
     }
     try {
-      await api.put(`/tickets/${ticket.id}`, {
-        requested_due_date: dueDate,
-        due_date_change_status: "Pending",
-        due_date_change_requested_by: user.name,
-        due_date_change_requested_at: new Date().toISOString(),
-        comment: comment || "Due date change request",
-      });
-      alert("Due date change request submitted for approval");
+      if (isAdmin) {
+        // Admin: update due date directly, no approval needed
+        await api.put(`/tickets/${ticket.id}`, {
+          due_date: dueDate,
+          comment: comment || "Due date updated by admin",
+        });
+        alert("Due date updated");
+      } else {
+        // Non-admin: submit for approval
+        await api.put(`/tickets/${ticket.id}`, {
+          requested_due_date: dueDate,
+          due_date_change_status: "Pending",
+          due_date_change_requested_by: user.name,
+          due_date_change_requested_at: new Date().toISOString(),
+          comment: comment || "Due date change request",
+        });
+        alert("Due date change request submitted for approval");
+      }
       fetchTicket();
       setComment("");
-      setDueDate(""); // clear the input
+      setDueDate("");
     } catch (err) {
-      alert("Failed to request due date change");
+      alert("Failed to update due date");
     }
   };
 
@@ -642,9 +653,11 @@ export default function TicketDetails() {
               </div>
             </div>
 
-            {/* Due Date Request (modified) */}
+            {/* Due Date */}
             <div>
-              <p className="font-semibold text-gray-500">Request Due Date Change</p>
+              <p className="font-semibold text-gray-500">
+                {isAdmin ? "Update Due Date" : "Request Due Date Change"}
+              </p>
               <div className="flex flex-col sm:flex-row gap-4 mt-3">
                 <input
                   type="date"
@@ -655,12 +668,12 @@ export default function TicketDetails() {
                 <button
                   onClick={updateDueDate}
                   className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl whitespace-nowrap"
-                  disabled={ticket.due_date_change_status === "Pending"}
+                  disabled={!isAdmin && ticket.due_date_change_status === "Pending"}
                 >
-                  Request Change
+                  {isAdmin ? "Update" : "Request Change"}
                 </button>
               </div>
-              {ticket.due_date_change_status === "Pending" && (
+              {!isAdmin && ticket.due_date_change_status === "Pending" && (
                 <p className="text-sm text-orange-600 mt-2">
                   A due date change request is pending approval.
                 </p>
