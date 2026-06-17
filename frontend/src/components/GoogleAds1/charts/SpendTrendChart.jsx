@@ -54,14 +54,16 @@ const SpendTrendChart = ({ trends }) => {
             <YAxis
               yAxisId="right"
               orientation="right"
-              tickFormatter={(v) => v.toFixed(0)}
+              tickFormatter={(v) => Number(v).toFixed(2)}
               tick={{ fill: '#f472b6' }}
             />
             <Tooltip
               formatter={(value, name) => {
-                if (name === 'Spend (INR)') return [`₹${value.toLocaleString('en-IN')}`, name];
-                return [value.toLocaleString(), name];
+                if (name === 'Spend (INR)')
+                  return [`₹${Number(value).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`, name];
+                return [Number(value).toFixed(2), name];
               }}
+              labelFormatter={(label) => `Date: ${label}`}
               contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#f1f5f9' }}
             />
             <Legend wrapperStyle={{ fontSize: '12px' }} />
