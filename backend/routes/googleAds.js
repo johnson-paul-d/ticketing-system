@@ -88,7 +88,7 @@ router.get("/trends", async (req, res) => {
     const { data, error } = await supabase
       .from("google_ads_campaign_analysis")
       .select("*")
-      .order("report_date", { ascending: true })
+      .order("report_date", { ascending: false })
       .range(0, 50000);
 
     console.log("Trend rows returned:", data?.length);
@@ -143,7 +143,7 @@ router.get("/campaigns", async (req, res) => {
     const { data, error } = await supabase
       .from("google_ads_campaign_analysis")
       .select("*")
-      .order("report_date", { ascending: true })
+      .order("report_date", { ascending: false })
       .range(0, 50000);
 
     console.log("Campaign rows returned:", data?.length);
@@ -198,7 +198,9 @@ router.get("/keywords", async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("google_ads_keyword_analysis")
-      .select("*");
+      .select("*")
+      .order("report_date", { ascending: false })
+      .range(0, 50000);
 
     if (error) {
       throw error;

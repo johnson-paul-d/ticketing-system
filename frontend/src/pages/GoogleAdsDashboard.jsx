@@ -77,8 +77,22 @@ export default function GoogleAdsDashboard() {
   const [selectedCampaign, setSelectedCampaign] = useState("All");
   const [selectedAccount, setSelectedAccount] = useState("All");
   const [selectedStatus, setSelectedStatus] = useState("All");
+
+  // Use the latest date in the dataset so preset buttons don't cut off future-dated rows
+  const dataMaxDate = useMemo(() => {
+    if (!rawCampaigns?.length) return new Date();
+    let max = new Date(0);
+    rawCampaigns.forEach((r) => {
+      const d = new Date(r.report_date);
+      if (!isNaN(d) && d > max) max = d;
+    });
+    return max > new Date(0) ? max : new Date();
+  }, [rawCampaigns]);
   const clearFilters = () => {
-    setFilters(DEFAULT_FILTERS);
+    const end = new Date(dataMaxDate);
+    const start = new Date(dataMaxDate);
+    start.setDate(end.getDate() - 30);
+    setFilters({ ...DEFAULT_FILTERS, dateRange: { start, end, label: "Last 30 days" } });
     setSelectedCampaign("All");
     setSelectedAccount("All");
     setSelectedStatus("All");
@@ -191,6 +205,19 @@ export default function GoogleAdsDashboard() {
   }, [rawCampaigns, filters.dateRange, selectedAccount, selectedStatus]);
 
   // Reset selectedCampaign if it's no longer valid after account or status changes
+  // Once data loads, shift the default "Last 30 days" end to the dataset's max date
+  // so future-dated rows (e.g. July data when today is June) are not cut off
+  useEffect(() => {
+    if (!rawCampaigns?.length) return;
+    setFilters((prev) => {
+      if (prev.dateRange?.label !== "Last 30 days") return prev;
+      const end = new Date(dataMaxDate);
+      const start = new Date(dataMaxDate);
+      start.setDate(end.getDate() - 30);
+      return { ...prev, dateRange: { start, end, label: "Last 30 days" } };
+    });
+  }, [dataMaxDate]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (selectedCampaign !== "All") {
       const stillAvailable = uniqueCampaigns.some(
@@ -658,8 +685,8 @@ export default function GoogleAdsDashboard() {
               <button
                 key={label}
                 onClick={() => {
-                  const end = new Date();
-                  const start = new Date();
+                  const end = new Date(dataMaxDate);
+                  const start = new Date(dataMaxDate);
                   start.setDate(end.getDate() - days);
                   setFilters((f) => ({ ...f, dateRange: { start, end, label } }));
                 }}
