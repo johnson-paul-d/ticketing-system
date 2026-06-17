@@ -108,7 +108,20 @@ export default function KeywordQuadrant({ keywords = [] }) {
         </div>
       </div>
 
-      <div className="h-[400px] mt-4">
+      {/* Match type legend — this is what the dot COLOURS actually represent */}
+      <div className="flex items-center gap-4 mb-3 flex-wrap">
+        <span className="text-[10px]" style={{ color: "#444" }}>Dot colour:</span>
+        {Object.entries(MATCH_COLORS).map(([type, color]) => (
+          <div key={type} className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: color }} />
+            <span className="text-[10px]" style={{ color: "#666" }}>{type}</span>
+          </div>
+        ))}
+        <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: "#888" }} />
+        <span className="text-[10px]" style={{ color: "#666" }}>OTHER</span>
+      </div>
+
+      <div className="h-[400px]">
         <ResponsiveContainer width="100%" height="100%">
           <ScatterChart margin={{ top: 10, right: 20, bottom: 20, left: 0 }}>
             <CartesianGrid stroke="#1A1A1A" strokeDasharray="3 3" />
@@ -149,12 +162,16 @@ export default function KeywordQuadrant({ keywords = [] }) {
         </ResponsiveContainer>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
-        {QUADRANTS.map((q) => (
-          <div key={q.id} className="rounded-lg px-3 py-2" style={{ background: `${q.color}10`, border: `1px solid ${q.color}30` }}>
-            <div className="text-[10px] font-bold" style={{ color: q.color }}>{q.icon} {q.label}</div>
-          </div>
-        ))}
+      {/* Quadrant zones — about POSITION in the chart, not dot colour */}
+      <div className="mt-4">
+        <p className="text-[9px] mb-1.5" style={{ color: "#333" }}>QUADRANT ZONES (position, not colour)</p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {QUADRANTS.map((q) => (
+            <div key={q.id} className="rounded-lg px-3 py-2" style={{ background: `${q.color}10`, border: `1px solid ${q.color}30` }}>
+              <div className="text-[10px] font-bold" style={{ color: q.color }}>{q.icon} {q.label}</div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
