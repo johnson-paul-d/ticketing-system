@@ -7,7 +7,6 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
-  Legend,
   Cell,
 } from "recharts";
 
@@ -190,13 +189,21 @@ export default function MatchTypeAnalytics({ keywords = [] }) {
       </div>
 
       {/* CHART */}
+      {/* Custom legend — Recharts <Legend /> can't auto-detect per-bar Cell colors */}
+      <div className="flex gap-4 mb-3 flex-wrap">
+        {Object.entries(COLORS).map(([type, color]) => (
+          <div key={type} className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-sm inline-block" style={{ background: color }} />
+            <span className="text-xs text-slate-400">{type}</span>
+          </div>
+        ))}
+      </div>
       <ResponsiveContainer width="100%" height={420}>
         <BarChart data={matchTypeData} margin={{ top: 20, right: 20, left: 0, bottom: 20 }}>
           <CartesianGrid stroke="#1E293B" strokeDasharray="3 3" />
           <XAxis dataKey="matchType" stroke="#94A3B8" tick={{ fill: "#94A3B8" }} />
           <YAxis stroke="#94A3B8" tick={{ fill: "#94A3B8" }} />
           <Tooltip content={<CustomTooltip />} />
-          <Legend />
           <Bar dataKey="efficiency" name="Efficiency Score" radius={[8, 8, 0, 0]}>
             {matchTypeData.map((entry, index) => (
               <Cell key={index} fill={COLORS[entry.matchType] || "#6366F1"} />

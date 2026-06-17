@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import MainLayout from "../layouts/MainLayout";
 import useGoogleAdsData from "../hooks/useGoogleAdsData";
 import useExecutiveMetrics from "../hooks/useExecutiveMetrics";
+import { calculateWasteSpend } from "../utils/metrics";
 import ExecutiveScoreCard from "../components/GoogleAds1/kpis/ExecutiveScoreCard";
 import CampaignEfficiencyMatrix from "../components/GoogleAds1/charts/CampaignEfficiencyMatrix";
 import MatchTypeAnalytics from "../components/GoogleAds1/charts/MatchTypeAnalytics";
@@ -52,7 +53,7 @@ export default function GoogleAdsDashboard() {
     trends: rawTrends,
     loading,
   } = useGoogleAdsData();
-  const { wasteSpend, recommendations: hookRecommendations } =
+  const { wasteSpend: _wasteSpendUnfiltered, recommendations: hookRecommendations } =
     useExecutiveMetrics({ rows: rawCampaigns });
 
   // ---------------------------------------------------------------------------
@@ -345,6 +346,12 @@ export default function GoogleAdsDashboard() {
     return result;
   }, [rawCampaigns, filters, selectedCampaign, selectedAccount, selectedStatus]);
 
+  // Waste spend scoped to current filters (campaigns with 0 total conversions in the filtered view)
+  const wasteSpend = useMemo(
+    () => calculateWasteSpend(filteredCampaigns),
+    [filteredCampaigns]
+  );
+
   // ---------------------------------------------------------------------------
   // 5. DERIVED METRICS
   // ---------------------------------------------------------------------------
@@ -464,6 +471,16 @@ export default function GoogleAdsDashboard() {
     if (selectedCampaign !== "All") {
       trends = trends.filter((t) => t.campaign === selectedCampaign);
     }
+    // DEBUG: log per-date conversion totals so we can verify what's in the data
+    const dateConvMap = {};
+    trends.forEach((t) => {
+      const d = t.report_date;
+      if (!d) return;
+      dateConvMap[d] = (dateConvMap[d] || 0) + (Number(t.conversions) || 0);
+    });
+    console.log("[filteredTrends] conversions per date:", dateConvMap);
+    console.log("[filteredTrends] date range:", filters.dateRange?.start, "→", filters.dateRange?.end);
+    console.log("[filteredTrends] total rows:", trends.length);
     return trends;
   }, [rawTrends, filters.dateRange, selectedCampaign, selectedAccount, selectedStatus]);
 

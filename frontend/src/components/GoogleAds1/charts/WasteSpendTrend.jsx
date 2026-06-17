@@ -6,7 +6,6 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
-  Legend,
   Cell,
 } from "recharts";
 
@@ -301,6 +300,21 @@ export default function MatchTypeAnalytics({
 
       </div>
 
+      {/* Custom legend — Spend bars are colored per match type via Cell; Conversions is fixed green */}
+      <div className="flex flex-wrap gap-4 mb-3">
+        <span className="text-xs text-slate-500 self-center">Spend:</span>
+        {Object.entries(COLORS).map(([type, color]) => (
+          <div key={type} className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-sm inline-block" style={{ background: color }} />
+            <span className="text-xs text-slate-400">{type}</span>
+          </div>
+        ))}
+        <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-slate-700">
+          <span className="w-3 h-3 rounded-sm inline-block" style={{ background: "#10B981" }} />
+          <span className="text-xs text-slate-400">Conversions</span>
+        </div>
+      </div>
+
       {/* =====================================================
           CHART
       ===================================================== */}
@@ -343,8 +357,6 @@ export default function MatchTypeAnalytics({
           <Tooltip
             content={<CustomTooltip />}
           />
-
-          <Legend />
 
           {/* =====================================================
               SPEND
