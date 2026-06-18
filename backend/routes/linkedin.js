@@ -463,4 +463,105 @@ router.get("/ad-analytics", async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
+// ─── AI helper: call Gemini Flash (free tier) ────────────────────────────────
+
+async function geminiGenerate(prompt) {
+  const { GoogleGenerativeAI } = require("@google/generative-ai");
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const result = await model.generateContent(prompt);
+  return result.response.text();
+}
+
+// ─── AI: Classify posts via Gemini Flash ─────────────────────────────────────
+
+const AI_CATEGORIES = [
+  "Event & Invitation", "Company Announcement", "Product",
+  "Wishes & Celebrations", "Achievement", "Educational Content",
+  "Customer Success", "Recruitment & Careers",
+];
+
+router.post("/ai-classify", async (req, res) => {
+  const { posts } = req.body || {};
+  if (!posts?.length) return res.json({ classifications: {}, aiPowered: false });
+
+  if (!process.env.GEMINI_API_KEY) {
+    return res.json({ classifications: {}, aiPowered: false,
+      message: "GEMINI_API_KEY not configured — using keyword classifier" });
+  }
+
+  try {
+    const classifications = {};
+    const BATCH = 15;
+
+    for (let i = 0; i < posts.length; i += BATCH) {
+      const batch = posts.slice(i, i + BATCH);
+      const prompt =
+        `Classify each LinkedIn post into exactly one category:\n` +
+        AI_CATEGORIES.map((n, j) => `${j+1}. ${n}`).join("\n") +
+        `\n\nPosts:\n` +
+        batch.map(p => `[${p.post_id}] "${(p.text_preview || "").slice(0, 180)}"`).join("\n\n") +
+        `\n\nReply ONLY with valid JSON (no other text): {"post_id1": "Category Name", ...}`;
+
+      try {
+        const text  = await geminiGenerate(prompt);
+        const match = text.match(/\{[\s\S]*\}/);
+        if (match) Object.assign(classifications, JSON.parse(match[0]));
+      } catch { /* skip malformed batch */ }
+    }
+
+    res.json({ classifications, aiPowered: true });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ─── AI: Generate insights via Gemini Flash ───────────────────────────────────
+
+router.get("/ai-insights", async (req, res) => {
+  try {
+    const orgId  = req.query.orgId;
+    const days   = parseInt(req.query.days || "30");
+    const cutoff = new Date(Date.now() - days * 864e5).toISOString().split("T")[0];
+
+    let pQ = supabase.from("linkedin_post_analytics").select("*").gte("post_date", cutoff).order("post_date");
+    let fQ = supabase.from("linkedin_follower_stats").select("*").gte("date", cutoff).order("date");
+    if (orgId) { pQ = pQ.eq("org_id", orgId); fQ = fQ.eq("org_id", orgId); }
+
+    const [{ data: posts }, { data: followers }] = await Promise.all([pQ, fQ]);
+    const pp = posts || [], ff = followers || [];
+
+    if (!process.env.GEMINI_API_KEY) {
+      return res.json({ aiPowered: false, posts: pp, followers: ff });
+    }
+
+    const totalEng = pp.reduce((s,p) => s+(p.reactions||0)+(p.clicks||0)+(p.comments||0)+(p.shares||0), 0);
+    const totalImp = pp.reduce((s,p) => s+(p.impressions||0), 0);
+    const latestF  = ff.at(-1)?.total_followers || 0;
+    const firstF   = ff[0]?.total_followers     || 0;
+    const topPost  = [...pp].sort((a,b) => (b.impressions||0)-(a.impressions||0))[0];
+
+    const prompt =
+      `You are a LinkedIn marketing analytics expert. Analyze this data and generate 5 specific, data-driven insights.\n\n` +
+      `Data (last ${days} days):\n` +
+      `- Posts published: ${pp.length}\n` +
+      `- Total impressions: ${totalImp}\n` +
+      `- Total engagements: ${totalEng}\n` +
+      `- Avg engagements/post: ${pp.length ? (totalEng/pp.length).toFixed(1) : 0}\n` +
+      `- Engagement rate: ${totalImp ? ((totalEng/totalImp)*100).toFixed(2) : 0}%\n` +
+      `- Current followers: ${latestF} (${latestF-firstF >= 0 ? "+" : ""}${latestF-firstF} in period)\n` +
+      `- Top post: ${topPost?.impressions || 0} impressions — "${(topPost?.text_preview||"N/A").slice(0, 120)}"\n\n` +
+      `Return a JSON array ONLY (no markdown, no code blocks, no extra text):\n` +
+      `[{"type":"performance|warning|growth|opportunity|timing","icon":"emoji","color":"#hex","title":"Max 8 words","text":"2 sentences with specific numbers","action":"One specific recommended action"}]\n\n` +
+      `Color guide: performance=#10B981, warning=#F59E0B, growth=#0077B5, opportunity=#8B5CF6, timing=#6366F1`;
+
+    const text  = await geminiGenerate(prompt);
+    const match = text.match(/\[[\s\S]*?\]/);
+    const insights = match ? JSON.parse(match[0]) : [];
+    res.json({ aiPowered: true, insights, posts: pp, followers: ff });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 module.exports = router;
