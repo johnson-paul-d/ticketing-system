@@ -131,7 +131,7 @@ router.post("/exchange-token", async (req, res) => {
 
 // ─── 2. Connection status ─────────────────────────────────────────────────────
 
-router.get("/status", auth, async (req, res) => {
+router.get("/status", async (req, res) => {
   try {
     const token = await getStoredToken();
     res.json({

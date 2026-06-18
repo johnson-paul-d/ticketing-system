@@ -17,7 +17,8 @@ export default function useLinkedInData() {
       const res = await api.get("/linkedin/status");
       setStatus(res.data);
       return res.data.connected;
-    } catch {
+    } catch (e) {
+      // Status endpoint has no auth — any error means not connected
       setStatus({ connected: false });
       return false;
     }
