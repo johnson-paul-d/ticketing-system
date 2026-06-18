@@ -13,6 +13,8 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import TicketTimeline from "./pages/TicketTimeTracker";
 import AdminAnalytics from "./pages/AdminAnalytics";
 import GoogleAdsDashboard from "./pages/GoogleAdsDashboard";
+import LinkedInDashboard  from "./pages/LinkedInDashboard";
+import LinkedInCallback   from "./pages/LinkedInCallback";
 import useAuthStore from "./store/authStore";
 
 function App() {
@@ -136,6 +138,18 @@ const canAccessGoogleAds =
             </ProtectedRoute>
           }
         />
+
+        <Route
+          path="/linkedin"
+          element={
+            <ProtectedRoute>
+              <LinkedInDashboard />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route path="/auth/linkedin/callback" element={<LinkedInCallback />} />
+
       </Routes>
     </BrowserRouter>
   );

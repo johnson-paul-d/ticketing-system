@@ -17,7 +17,8 @@ const permissionRoutes = require("./routes/permissionRoutes");
 const timeEntryRoutes =
   require("./routes/timeEntries");
 const salesforceRoutes = require("./routes/salesforce");
-const googleAdsRoutes = require("./routes/googleAds");
+const googleAdsRoutes  = require("./routes/googleAds");
+const linkedinRoutes   = require("./routes/linkedin");
 
 app.use(express.json());
 
@@ -78,6 +79,7 @@ app.use("/api/leave-requests", leaveRoutes);
 
 app.use("/api/salesforce", salesforceRoutes);
 app.use("/api/google-ads", googleAdsRoutes);
+app.use("/api/linkedin",   linkedinRoutes);
 
 app.use(
   "/api/permission-requests",
