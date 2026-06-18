@@ -34,7 +34,12 @@ export default function LinkedInCallback() {
         setStatus(`Connected to ${orgName || "your LinkedIn page"}. Redirecting…`);
         setTimeout(() => navigate("/linkedin"), 1500);
       } catch (e) {
-        setError(e?.response?.data?.message || e.message || "Token exchange failed");
+        const backendMsg = e?.response?.data?.message;
+        const detail     = e?.response?.data?.detail;
+        const fallback   = e.message || "Token exchange failed";
+        const full = detail ? `${backendMsg || fallback} — LinkedIn said: ${detail}` : (backendMsg || fallback);
+        console.error("LinkedIn token exchange error:", e?.response?.data || e);
+        setError(full);
       }
     })();
   }, []);

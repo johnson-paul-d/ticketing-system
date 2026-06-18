@@ -106,13 +106,21 @@ router.post("/exchange-token", async (req, res) => {
 
     // Remove old tokens and store new one
     await supabase.from("linkedin_tokens").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-    await supabase.from("linkedin_tokens").insert({
+    const { error: insertError } = await supabase.from("linkedin_tokens").insert({
       access_token,
       expires_at: expiresAt.toISOString(),
       org_id:   orgId,
       org_name: orgName,
       org_urn:  orgUrn,
     });
+
+    if (insertError) {
+      console.error("Supabase insert error:", insertError);
+      return res.status(500).json({
+        message: "Token exchange succeeded but failed to save to database",
+        detail: insertError.message,
+      });
+    }
 
     res.json({ success: true, orgName, orgId });
   } catch (err) {
