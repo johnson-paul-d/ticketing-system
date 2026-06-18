@@ -191,19 +191,26 @@ router.get("/debug", auth, async (req, res) => {
       "timeIntervals.timeRange.end":   end,
     };
 
-    const [follower, page, posts, shareStats] = await Promise.allSettled([
+    const [follower, followerSnap, page, posts, shareWithTime, shareNoTime] = await Promise.allSettled([
       liGet("/organizationalEntityFollowerStatistics", token, { q: "organizationalEntity", organizationalEntity: orgUrn, ...timeP }),
-      liGet("/organizationPageStatistics",             token, { q: "organization",         organization: orgUrn, ...timeP }),
+      liGet("/organizationalEntityFollowerStatistics", token, { q: "organizationalEntity", organizationalEntity: orgUrn }),
+      liGet("/organizationPageStatistics",             token, { q: "organization", organization: orgUrn, ...timeP }),
       liGetRaw("/ugcPosts", token, `q=authors&authors=List(${encodeURIComponent(orgUrn)})&sortBy=LAST_MODIFIED&count=3`),
       liGet("/organizationalEntityShareStatistics",    token, { q: "organizationalEntity", organizationalEntity: orgUrn, ...timeP }),
+      liGet("/organizationalEntityShareStatistics",    token, { q: "organizationalEntity", organizationalEntity: orgUrn }),
     ]);
+
+    const ok  = r => r.status === "fulfilled" ? r.value : { error: r.reason?.message };
+    const cnt = r => r.status === "fulfilled" ? r.value?.elements?.length : null;
 
     res.json({
       org, orgUrn,
-      follower:    follower.status  === "fulfilled" ? { elements: follower.value?.elements?.length,  sample: follower.value?.elements?.[0] }  : { error: follower.reason?.message },
-      page:        page.status      === "fulfilled" ? { elements: page.value?.elements?.length,      sample: page.value?.elements?.[0] }      : { error: page.reason?.message },
-      posts:       posts.status     === "fulfilled" ? { elements: posts.value?.elements?.length,     sample: posts.value?.elements?.[0]?.id } : { error: posts.reason?.message },
-      shareStats:  shareStats.status === "fulfilled" ? { elements: shareStats.value?.elements?.length, sample: shareStats.value?.elements?.[0] } : { error: shareStats.reason?.message },
+      follower_timeseries: { elements: cnt(follower),     sample: ok(follower)?.elements?.[0] },
+      follower_snapshot:   { elements: cnt(followerSnap), sample: ok(followerSnap)?.elements?.[0] },
+      page:                { elements: cnt(page),         sample: ok(page)?.elements?.[0] },
+      posts:               { elements: cnt(posts),        sample: ok(posts)?.elements?.[0]?.id },
+      share_with_time:     { elements: cnt(shareWithTime), sample: ok(shareWithTime)?.elements?.[0] },
+      share_no_time:       { elements: cnt(shareNoTime),   sample: ok(shareNoTime)?.elements?.[0] },
     });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
@@ -238,50 +245,91 @@ router.post("/sync", auth, async (req, res) => {
       const orgName = org.name || orgId;
       const r = { follower: 0, page: 0, posts: 0, errors: [] };
 
-      // ── Follower stats ───────────────────────────────────────────────────
+      // ── Follower stats (time-series, fallback to snapshot) ───────────────
       try {
-        const raw = await liGet("/organizationalEntityFollowerStatistics", token, {
-          q: "organizationalEntity", organizationalEntity: orgUrn, ...timeP,
-        });
-        const rows = (raw?.elements || []).map(el => ({
-          date:              toDate(el.timeRange?.start),
-          org_id:            orgId,
-          org_name:          orgName,
-          total_followers:   (el.totalFollowerCounts?.organicFollowerCount || 0) + (el.totalFollowerCounts?.paidFollowerCount || 0),
-          organic_followers:  el.totalFollowerCounts?.organicFollowerCount || 0,
-          paid_followers:     el.totalFollowerCounts?.paidFollowerCount    || 0,
-        })).filter(x => x.date);
+        let rows = [];
+
+        // Try daily time-series first
+        try {
+          const raw = await liGet("/organizationalEntityFollowerStatistics", token, {
+            q: "organizationalEntity", organizationalEntity: orgUrn, ...timeP,
+          });
+          rows = (raw?.elements || []).map(el => ({
+            date:              toDate(el.timeRange?.start),
+            org_id:            orgId,
+            org_name:          orgName,
+            total_followers:   (el.totalFollowerCounts?.organicFollowerCount || 0) + (el.totalFollowerCounts?.paidFollowerCount || 0),
+            organic_followers:  el.totalFollowerCounts?.organicFollowerCount || 0,
+            paid_followers:     el.totalFollowerCounts?.paidFollowerCount    || 0,
+          })).filter(x => x.date);
+        } catch (e) { r.errors.push(`FollowerTimeSeries: ${e.message}`); }
+
+        // Fallback: current snapshot (no time range → returns total counts)
+        if (!rows.length) {
+          try {
+            const snap = await liGet("/organizationalEntityFollowerStatistics", token, {
+              q: "organizationalEntity", organizationalEntity: orgUrn,
+            });
+            const el0 = snap?.elements?.[0];
+            const tc  = el0?.totalFollowerCounts || {};
+            const total = (tc.organicFollowerCount || 0) + (tc.paidFollowerCount || 0);
+            if (total > 0) {
+              rows = [{ date: new Date().toISOString().split("T")[0], org_id: orgId, org_name: orgName,
+                total_followers: total, organic_followers: tc.organicFollowerCount || 0, paid_followers: tc.paidFollowerCount || 0 }];
+            } else {
+              r.errors.push(`Follower: 0 elements from both time-series and snapshot. snap keys: ${Object.keys(snap || {}).join(",")}`);
+            }
+          } catch (e) { r.errors.push(`FollowerSnapshot: ${e.message}`); }
+        }
 
         if (rows.length) {
           const { error } = await supabase.from("linkedin_follower_stats").upsert(rows, { onConflict: "date,org_id" });
           if (error) r.errors.push(`Follower upsert: ${error.message}`);
           else r.follower = rows.length;
-        } else {
-          r.errors.push(`Follower: 0 elements returned. Raw keys: ${Object.keys(raw || {}).join(",")}`);
         }
       } catch (e) { r.errors.push(`Follower: ${e.message}`); }
 
-      // ── Page views ───────────────────────────────────────────────────────
+      // ── Page views (time-series, fallback to snapshot) ───────────────────
       try {
-        const raw = await liGet("/organizationPageStatistics", token, {
-          q: "organization", organization: orgUrn, ...timeP,
-        });
-        const rows = (raw?.elements || []).map(el => ({
-          date:            toDate(el.timeRange?.start),
-          org_id:          orgId,
-          org_name:        orgName,
-          page_views:      el.totalPageStatistics?.views?.allPageViews?.pageViews       || 0,
-          unique_visitors: el.totalPageStatistics?.views?.allPageViews?.uniquePageViews || 0,
-          impressions:     0,
-          clicks:          0,
-        })).filter(x => x.date);
+        let rows = [];
+
+        try {
+          const raw = await liGet("/organizationPageStatistics", token, {
+            q: "organization", organization: orgUrn, ...timeP,
+          });
+          rows = (raw?.elements || []).map(el => ({
+            date:            toDate(el.timeRange?.start),
+            org_id:          orgId,
+            org_name:        orgName,
+            page_views:      el.totalPageStatistics?.views?.allPageViews?.pageViews       || 0,
+            unique_visitors: el.totalPageStatistics?.views?.allPageViews?.uniquePageViews || 0,
+            impressions:     0,
+            clicks:          0,
+          })).filter(x => x.date);
+        } catch (e) { r.errors.push(`PageTimeSeries: ${e.message}`); }
+
+        // Fallback: snapshot without time range
+        if (!rows.length) {
+          try {
+            const snap = await liGet("/organizationPageStatistics", token, {
+              q: "organization", organization: orgUrn,
+            });
+            const el0 = snap?.elements?.[0];
+            const views = el0?.totalPageStatistics?.views?.allPageViews;
+            if (views?.pageViews) {
+              rows = [{ date: new Date().toISOString().split("T")[0], org_id: orgId, org_name: orgName,
+                page_views: views.pageViews || 0, unique_visitors: views.uniquePageViews || 0,
+                impressions: 0, clicks: 0 }];
+            } else {
+              r.errors.push(`Page: 0 elements from both queries. snap keys: ${Object.keys(snap || {}).join(",")}`);
+            }
+          } catch (e) { r.errors.push(`PageSnapshot: ${e.message}`); }
+        }
 
         if (rows.length) {
           const { error } = await supabase.from("linkedin_page_analytics").upsert(rows, { onConflict: "date,org_id" });
           if (error) r.errors.push(`Page upsert: ${error.message}`);
           else r.page = rows.length;
-        } else {
-          r.errors.push(`Page: 0 elements returned. Raw keys: ${Object.keys(raw || {}).join(",")}`);
         }
       } catch (e) { r.errors.push(`Page: ${e.message}`); }
 
@@ -294,16 +342,18 @@ router.post("/sync", auth, async (req, res) => {
         const posts = ugcRaw?.elements || [];
         if (!posts.length) r.errors.push("Posts: 0 UGC posts returned");
 
-        // Bulk share stats (all at once, not per-post)
+        // Share stats WITHOUT time range = per-post lifetime engagement
+        // (with time range it returns time-bucketed aggregates, not per-post)
         let shareMap = {};
         try {
           const shareRaw = await liGet("/organizationalEntityShareStatistics", token, {
-            q: "organizationalEntity", organizationalEntity: orgUrn, ...timeP,
+            q: "organizationalEntity", organizationalEntity: orgUrn,
           });
           for (const el of shareRaw?.elements || []) {
             const key = el.ugcPost || el.share;
             if (key) shareMap[key] = el.totalShareStatistics || {};
           }
+          r.errors.push(`ShareStats: ${Object.keys(shareMap).length} posts mapped`);
         } catch (se) { r.errors.push(`ShareStats: ${se.message}`); }
 
         const rows = posts.map(post => {
@@ -380,7 +430,11 @@ router.get("/ad-analytics", async (req, res) => {
     let q = supabase.from("linkedin_ad_analytics").select("*").order("date", { ascending: true });
     if (req.query.orgId) q = q.eq("org_id", req.query.orgId);
     const { data, error } = await q;
-    if (error) throw error;
+    // 42703 = column does not exist (org_id not yet added via ALTER TABLE)
+    if (error) {
+      if (error.code === "42703") return res.json([]);
+      throw error;
+    }
     res.json(data || []);
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
