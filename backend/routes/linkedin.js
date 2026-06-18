@@ -235,14 +235,6 @@ router.post("/sync", auth, async (req, res) => {
       return res.status(400).json({ message: "No organizations found. Please reconnect." });
     }
 
-    const start = daysAgoMs(90);
-    const end   = Date.now();
-    const timeP = {
-      "timeIntervals.timeGranularityType": "DAY",
-      "timeIntervals.timeRange.start": start,
-      "timeIntervals.timeRange.end":   end,
-    };
-
     const summary = {};
 
     for (const org of allOrgs) {
@@ -251,123 +243,104 @@ router.post("/sync", auth, async (req, res) => {
       const orgName = org.name || orgId;
       const r = { follower: 0, page: 0, posts: 0, errors: [] };
 
-      // ── Follower stats (time-series, fallback to snapshot) ───────────────
+      // ── Follower count (snapshot only — time-series requires LinkedIn MDP) ─
       try {
-        let rows = [];
-
-        // Try daily time-series first
+        let total = 0;
+        // 1. Try follower stats snapshot (no time range)
         try {
-          const raw = await liGet("/organizationalEntityFollowerStatistics", token, {
-            q: "organizationalEntity", organizationalEntity: orgUrn, ...timeP,
+          const snap = await liGet("/organizationalEntityFollowerStatistics", token, {
+            q: "organizationalEntity", organizationalEntity: orgUrn,
           });
-          rows = (raw?.elements || []).map(el => ({
-            date:              toDate(el.timeRange?.start),
-            org_id:            orgId,
-            org_name:          orgName,
-            total_followers:   (el.totalFollowerCounts?.organicFollowerCount || 0) + (el.totalFollowerCounts?.paidFollowerCount || 0),
-            organic_followers:  el.totalFollowerCounts?.organicFollowerCount || 0,
-            paid_followers:     el.totalFollowerCounts?.paidFollowerCount    || 0,
-          })).filter(x => x.date);
-        } catch (e) { r.errors.push(`FollowerTimeSeries: ${e.message}`); }
+          const tc = snap?.elements?.[0]?.totalFollowerCounts || {};
+          total = (tc.organicFollowerCount || 0) + (tc.paidFollowerCount || 0);
+        } catch (e) { r.errors.push(`FollowerSnap: ${e.message}`); }
 
-        // Fallback: current snapshot (no time range → returns total counts)
-        if (!rows.length) {
+        // 2. Fallback: networkSizes endpoint
+        if (!total) {
           try {
-            const snap = await liGet("/organizationalEntityFollowerStatistics", token, {
-              q: "organizationalEntity", organizationalEntity: orgUrn,
+            const ns = await liGet(`/networkSizes/${encodeURIComponent(orgUrn)}`, token, {
+              edgeType: "CompanyFollowedByMember",
             });
-            const el0 = snap?.elements?.[0];
-            const tc  = el0?.totalFollowerCounts || {};
-            const total = (tc.organicFollowerCount || 0) + (tc.paidFollowerCount || 0);
-            if (total > 0) {
-              rows = [{ date: new Date().toISOString().split("T")[0], org_id: orgId, org_name: orgName,
-                total_followers: total, organic_followers: tc.organicFollowerCount || 0, paid_followers: tc.paidFollowerCount || 0 }];
-            } else {
-              r.errors.push(`Follower: 0 elements from both time-series and snapshot. snap keys: ${Object.keys(snap || {}).join(",")}`);
-            }
-          } catch (e) { r.errors.push(`FollowerSnapshot: ${e.message}`); }
+            total = ns?.firstDegreeSize || 0;
+          } catch (e) { r.errors.push(`NetworkSizes: ${e.message}`); }
         }
 
-        if (rows.length) {
-          const { error } = await supabase.from("linkedin_follower_stats").upsert(rows, { onConflict: "date,org_id" });
+        if (total > 0) {
+          const today = new Date().toISOString().split("T")[0];
+          const { error } = await supabase.from("linkedin_follower_stats").upsert(
+            [{ date: today, org_id: orgId, org_name: orgName,
+               total_followers: total, organic_followers: total, paid_followers: 0 }],
+            { onConflict: "date,org_id" }
+          );
           if (error) r.errors.push(`Follower upsert: ${error.message}`);
-          else r.follower = rows.length;
+          else r.follower = 1;
+        } else {
+          r.errors.push("Follower: count is 0 from all sources");
         }
       } catch (e) { r.errors.push(`Follower: ${e.message}`); }
 
-      // ── Page views (time-series, fallback to snapshot) ───────────────────
+      // ── Page stats (snapshot only — time-series requires LinkedIn MDP) ────
       try {
-        let rows = [];
-
-        try {
-          const raw = await liGet("/organizationPageStatistics", token, {
-            q: "organization", organization: orgUrn, ...timeP,
-          });
-          rows = (raw?.elements || []).map(el => ({
-            date:            toDate(el.timeRange?.start),
-            org_id:          orgId,
-            org_name:        orgName,
-            page_views:      el.totalPageStatistics?.views?.allPageViews?.pageViews       || 0,
-            unique_visitors: el.totalPageStatistics?.views?.allPageViews?.uniquePageViews || 0,
-            impressions:     0,
-            clicks:          0,
-          })).filter(x => x.date);
-        } catch (e) { r.errors.push(`PageTimeSeries: ${e.message}`); }
-
-        // Fallback: snapshot without time range
-        if (!rows.length) {
-          try {
-            const snap = await liGet("/organizationPageStatistics", token, {
-              q: "organization", organization: orgUrn,
-            });
-            const el0 = snap?.elements?.[0];
-            const views = el0?.totalPageStatistics?.views?.allPageViews;
-            if (views?.pageViews) {
-              rows = [{ date: new Date().toISOString().split("T")[0], org_id: orgId, org_name: orgName,
-                page_views: views.pageViews || 0, unique_visitors: views.uniquePageViews || 0,
-                impressions: 0, clicks: 0 }];
-            } else {
-              r.errors.push(`Page: 0 elements from both queries. snap keys: ${Object.keys(snap || {}).join(",")}`);
-            }
-          } catch (e) { r.errors.push(`PageSnapshot: ${e.message}`); }
-        }
-
-        if (rows.length) {
-          const { error } = await supabase.from("linkedin_page_analytics").upsert(rows, { onConflict: "date,org_id" });
+        const snap = await liGet("/organizationPageStatistics", token, {
+          q: "organization", organization: orgUrn,
+        });
+        const el0  = snap?.elements?.[0];
+        const views = el0?.totalPageStatistics?.views?.allPageViews;
+        if (views?.pageViews) {
+          const today = new Date().toISOString().split("T")[0];
+          const { error } = await supabase.from("linkedin_page_analytics").upsert(
+            [{ date: today, org_id: orgId, org_name: orgName,
+               page_views: views.pageViews || 0, unique_visitors: views.uniquePageViews || 0,
+               impressions: 0, clicks: 0 }],
+            { onConflict: "date,org_id" }
+          );
           if (error) r.errors.push(`Page upsert: ${error.message}`);
-          else r.page = rows.length;
+          else r.page = 1;
+        } else {
+          r.errors.push(`Page: empty snapshot. keys: ${Object.keys(snap || {}).join(",")}`);
         }
       } catch (e) { r.errors.push(`Page: ${e.message}`); }
 
-      // ── Posts ────────────────────────────────────────────────────────────
+      // ── Posts + share stats ───────────────────────────────────────────────
       try {
         const ugcRaw = await liGetRaw(
           "/ugcPosts", token,
           `q=authors&authors=List(${encodeURIComponent(orgUrn)})&sortBy=LAST_MODIFIED&count=50`,
-          true  // needs LinkedIn-Version header
+          true  // LinkedIn-Version header required for ugcPosts
         );
         const posts = ugcRaw?.elements || [];
-        if (!posts.length) r.errors.push("Posts: 0 UGC posts returned");
+        if (!posts.length) r.errors.push("Posts: 0 returned");
 
-        // Per-post engagement via ugcPosts=List(...) — batch 20 at a time
-        // LinkedIn share stats API requires explicit ugcPost URNs to return per-post metrics
+        // Posts from ugcPosts endpoint return urn:li:share: URNs (not urn:li:ugcPost:)
+        // Use shares=List(...) param, not ugcPosts=List(...)
         let shareMap = {};
         const BATCH = 20;
         for (let bi = 0; bi < posts.length; bi += BATCH) {
           const batch = posts.slice(bi, bi + BATCH);
-          const ugcList = batch.map(p => encodeURIComponent(p.id)).join(",");
-          try {
-            const batchRaw = await liGetRaw("/organizationalEntityShareStatistics", token,
-              `q=organizationalEntity&organizationalEntity=${encodeURIComponent(orgUrn)}&ugcPosts=List(${ugcList})`
-            );
-            for (const el of batchRaw?.elements || []) {
-              const key = el.ugcPost || el.share;
-              if (key) shareMap[key] = el.totalShareStatistics || {};
-            }
-          } catch (be) { r.errors.push(`ShareBatch[${bi}]: ${be.message}`); }
+
+          // Group by URN type — share URNs → shares param, ugcPost URNs → ugcPosts param
+          const byParam = {};
+          batch.forEach(p => {
+            const param = p.id?.includes(":ugcPost:") ? "ugcPosts" : "shares";
+            if (!byParam[param]) byParam[param] = [];
+            byParam[param].push(p);
+          });
+
+          for (const [param, group] of Object.entries(byParam)) {
+            const urnList = group.map(p => encodeURIComponent(p.id)).join(",");
+            try {
+              const batchRaw = await liGetRaw("/organizationalEntityShareStatistics", token,
+                `q=organizationalEntity&organizationalEntity=${encodeURIComponent(orgUrn)}&${param}=List(${urnList})`
+              );
+              for (const el of batchRaw?.elements || []) {
+                const key = el.ugcPost || el.share;
+                if (key) shareMap[key] = el.totalShareStatistics || {};
+              }
+            } catch (be) { r.errors.push(`ShareBatch[${bi}/${param}]: ${be.message}`); }
+          }
         }
         const mapped = Object.keys(shareMap).length;
-        if (mapped === 0 && posts.length > 0) r.errors.push(`ShareStats: 0/${posts.length} posts got metrics`);
+        if (mapped === 0 && posts.length > 0) r.errors.push(`ShareStats: 0/${posts.length} mapped`);
 
         const rows = posts.map(post => {
           const postUrn = post.id;

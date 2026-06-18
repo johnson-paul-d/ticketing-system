@@ -14,7 +14,12 @@ const RED        = "#EF4444";
 const SLATE      = "#64748B";
 
 const OAUTH_SCOPES = [
-  "r_organization_social", "rw_organization_admin", "r_ads_reporting", "r_ads",
+  "r_organization_social",
+  "r_organization_admin",   // follower, visitor and content analytics
+  "rw_organization_admin",
+  "w_organization_social",
+  "r_ads_reporting",
+  "r_ads",
 ].join("%20");
 
 function buildAuthUrl(clientId, redirectUri) {
