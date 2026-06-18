@@ -36,7 +36,9 @@ export default function TicketDetails() {
   const [editNotes, setEditNotes] = useState("");
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState("");
-  const [requestDueDate, setRequestDueDate] = useState(""); // for the request input
+  const [requestDueDate, setRequestDueDate] = useState("");
+  const [showCloseModal, setShowCloseModal] = useState(false);
+  const [closeReason, setCloseReason] = useState("");
 
   useEffect(() => {
     fetchTicket();
@@ -185,6 +187,10 @@ export default function TicketDetails() {
   };
 
   const updateStatus = async () => {
+    if (status === "Closed") {
+      setShowCloseModal(true);
+      return;
+    }
     try {
       await api.put(`/tickets/${ticket.id}`, { status, comment });
       fetchTicket();
@@ -192,6 +198,28 @@ export default function TicketDetails() {
       alert("Status updated");
     } catch (err) {
       alert("Failed to update status");
+    }
+  };
+
+  const closeTicket = async () => {
+    if (!closeReason.trim()) {
+      alert("Please provide a reason for closing");
+      return;
+    }
+    try {
+      const closedOn = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+      const closureNote = `\n\n---\nClosed by ${user?.name || "Admin"} on ${closedOn}\nReason: ${closeReason.trim()}`;
+      const updatedDescription = (ticket.description || "") + closureNote;
+      await api.put(`/tickets/${ticket.id}`, {
+        status: "Closed",
+        description: updatedDescription,
+        comment: `Ticket closed — Reason: ${closeReason.trim()}`,
+      });
+      setShowCloseModal(false);
+      setCloseReason("");
+      fetchTicket();
+    } catch (err) {
+      alert("Failed to close ticket");
     }
   };
 
@@ -648,6 +676,7 @@ export default function TicketDetails() {
                   <option>In Progress</option>
                   <option>Waiting For Sources</option>
                   <option>Completed</option>
+                  <option>Closed</option>
                 </select>
                 <button onClick={updateStatus} className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl whitespace-nowrap">Update</button>
               </div>
@@ -840,5 +869,39 @@ export default function TicketDetails() {
         <div className="mt-16"><h2 className="text-2xl font-bold mb-6">Allotted Time Changes</h2><div className="space-y-4">{allottedTimeline.length === 0 ? <div className="text-gray-400">No allotted time changes</div> : allottedTimeline.map((item, idx) => (<div key={idx} className="bg-green-50 border rounded-2xl p-5"><p className="font-semibold">{item.action}</p><div className="text-sm text-gray-500 mt-2">{item.user}</div></div>))}</div></div>
       </div>
     </MainLayout>
+
+    {/* CLOSE TICKET MODAL */}
+    {showCloseModal && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-lg mx-4">
+          <h2 className="text-2xl font-bold text-red-600">Close Ticket</h2>
+          <p className="text-gray-500 mt-2">
+            Provide a reason for closing <span className="font-semibold text-black">"{ticket?.title}"</span>.
+            This will be appended to the ticket description.
+          </p>
+          <textarea
+            value={closeReason}
+            onChange={(e) => setCloseReason(e.target.value)}
+            placeholder="e.g. Duplicate ticket, issue resolved offline, no longer required..."
+            className="mt-5 border rounded-2xl px-4 py-3 w-full h-36 focus:outline-none focus:ring-2 focus:ring-red-400"
+            autoFocus
+          />
+          <div className="flex gap-3 mt-6">
+            <button
+              onClick={closeTicket}
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold px-6 py-3 rounded-2xl"
+            >
+              Close Ticket
+            </button>
+            <button
+              onClick={() => { setShowCloseModal(false); setCloseReason(""); setStatus(ticket?.status || "Open"); }}
+              className="flex-1 bg-gray-100 hover:bg-gray-200 text-black font-semibold px-6 py-3 rounded-2xl"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
   );
 }
