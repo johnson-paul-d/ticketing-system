@@ -569,9 +569,10 @@ function OverviewSection({ posts, followerRows, pageRows, prevPosts, prevFollowe
 
 // ─── Follower Growth Section ──────────────────────────────────────────────────
 
-function FollowerSection({ rows }) {
+function FollowerSection({ rows, filtRows }) {
   const [forecastDays, setForecastDays] = useState(30);
 
+  // Monthly breakdown uses all-time data for richer history
   const monthlyData = useMemo(() => {
     const byMonth = {};
     rows.forEach(r => {
@@ -590,7 +591,7 @@ function FollowerSection({ rows }) {
   return (
     <div className="space-y-6">
       <Section title="Follower Growth Trend"
-        sub="Actual data + linear forecast projection"
+        sub={`All historical data (${rows.length} data points) + forecast projection`}
         action={
           <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
             {[30,60,90].map(d => (
@@ -613,7 +614,7 @@ function FollowerSection({ rows }) {
       </Section>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Section title="Organic vs Paid Growth" sub="Follower source breakdown">
+        <Section title="Organic vs Paid Growth" sub="All-time follower source breakdown">
           <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
             <OrgSponChart rows={rows} />
           </div>
@@ -1316,7 +1317,7 @@ export default function LinkedInDashboard() {
               />
             )}
             {section === "followers" && (
-              <FollowerSection rows={filtFollower} />
+              <FollowerSection rows={followerStats} filtRows={filtFollower} />
             )}
             {section === "content" && (
               <ContentSection posts={filtPosts} showPage={showPage} />
@@ -1339,7 +1340,7 @@ export default function LinkedInDashboard() {
               />
             )}
             {section === "strategy" && (
-              <StrategySection posts={filtPosts} followerRows={filtFollower} />
+              <StrategySection posts={filtPosts} followerRows={followerStats} />
             )}
           </div>
         </div>
