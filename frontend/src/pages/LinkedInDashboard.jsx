@@ -1406,6 +1406,193 @@ function ConnectScreen() {
   );
 }
 
+// ─── Google-Ads-style metric definitions ─────────────────────────────────────
+const GA_METRICS = [
+  { id:"new_followers",  label:"New followers",  color:"#1a73e8", field:"new_followers"  },
+  { id:"total_followers",label:"Total followers", color:"#34a853", field:"total"          },
+  { id:"impressions",    label:"Impressions",     color:"#fbbc04", field:"impressions"    },
+  { id:"page_views",     label:"Page views",      color:"#ea4335", field:"page_views"     },
+  { id:"engagements",    label:"Engagements",     color:"#9c27b0", field:"engagements"    },
+  { id:"clicks",         label:"Clicks",          color:"#ff6d00", field:"clicks"         },
+];
+
+// Build merged daily dataset: followers (interpolated) + page metrics (sync dates)
+function buildUnifiedDaily(allFollowerRows, pageRows, cutoff) {
+  // 1. Follower daily (already has every calendar day via interpolation)
+  const follDaily = buildDailyFollowerData(allFollowerRows, cutoff);
+
+  // 2. Page analytics: aggregate by date
+  const pageByDate = {};
+  pageRows.forEach(r => {
+    if (!r.date) return;
+    if (!pageByDate[r.date]) pageByDate[r.date] = { impressions:0, page_views:0, clicks:0, engagements:0 };
+    pageByDate[r.date].impressions  += r.impressions  || 0;
+    pageByDate[r.date].page_views   += r.page_views   || 0;
+    pageByDate[r.date].clicks       += r.clicks       || 0;
+    pageByDate[r.date].engagements  += (r.impressions||0) > 0
+      ? Math.round(((r.clicks||0)) ) : 0;
+  });
+
+  // 3. Merge — follower data provides the full date spine
+  return follDaily.map(d => ({
+    date:           d.date,
+    label:          d.label,
+    new_followers:  d.organic + d.paid,
+    total:          d.total,
+    impressions:    pageByDate[d.rawDate]?.impressions  ?? null,
+    page_views:     pageByDate[d.rawDate]?.page_views   ?? null,
+    clicks:         pageByDate[d.rawDate]?.clicks       ?? null,
+    engagements:    pageByDate[d.rawDate]?.engagements  ?? null,
+  }));
+}
+
+// Compute period totals for a metric in unified data
+function periodTotal(data, field) {
+  return data.reduce((s, d) => s + (d[field] ?? 0), 0);
+}
+
+// Google Ads-style metric card + chart component
+function MetricSelectorChart({ followerStats, pageRows, posts, prevFollower, cutoff, dateRange, selectedMetrics, onToggleMetric }) {
+  const data = useMemo(
+    () => buildUnifiedDaily(followerStats, pageRows, cutoff),
+    [followerStats, pageRows, cutoff]
+  );
+
+  const prevCutoffDate = useMemo(() => {
+    const d = new Date(); d.setDate(d.getDate() - dateRange * 2);
+    return d.toISOString().split("T")[0];
+  }, [dateRange]);
+
+  const prevData = useMemo(
+    () => buildUnifiedDaily(followerStats, pageRows, prevCutoffDate).slice(0, data.length),
+    [followerStats, pageRows, prevCutoffDate, data.length]
+  );
+
+  const tickInterval = Math.max(1, Math.floor(data.length / 7));
+
+  // Stat for each metric card
+  const stat = id => {
+    const cur  = periodTotal(data, GA_METRICS.find(m=>m.id===id)?.field || id);
+    const prev = periodTotal(prevData, GA_METRICS.find(m=>m.id===id)?.field || id);
+    const pct  = prev > 0 ? Math.round(((cur - prev) / prev) * 100) : null;
+    return { cur, pct };
+  };
+
+  // Format value for display
+  const fmtStat = v => v >= 1e6 ? `${(v/1e6).toFixed(1)}M` : v >= 1e3 ? `${(v/1e3).toFixed(1)}K` : String(v);
+
+  return (
+    <div className="bg-white rounded-lg border overflow-hidden" style={{ borderColor:"#dadce0" }}>
+      {/* Metric selector cards */}
+      <div className="flex divide-x" style={{ borderColor:"#dadce0" }}>
+        {GA_METRICS.map(m => {
+          const s       = stat(m.id);
+          const active  = selectedMetrics.includes(m.id);
+          const idx     = selectedMetrics.indexOf(m.id);
+          return (
+            <button key={m.id} onClick={() => onToggleMetric(m.id)}
+              className="flex-1 text-left px-5 py-4 hover:bg-gray-50 transition-colors relative"
+              style={{ borderTop: active ? `3px solid ${m.color}` : "3px solid transparent" }}>
+              {/* Series indicator dot */}
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-3 h-3 rounded-sm" style={{ background: active ? m.color : "#dadce0" }} />
+                {active && idx >= 0 && (
+                  <span className="text-xs font-medium px-1.5 py-0.5 rounded" style={{ background: m.color+"22", color: m.color }}>
+                    {idx === 0 ? "Line 1" : "Line 2"}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs mb-1" style={{ color:"#5f6368" }}>{m.label}</p>
+              <p className="text-xl font-medium" style={{ color:"#202124" }}>{fmtStat(s.cur)}</p>
+              {s.pct !== null && (
+                <p className={`text-xs font-medium mt-0.5 flex items-center gap-1 ${s.pct >= 0 ? "text-green-600" : "text-red-600"}`}>
+                  {s.pct >= 0 ? "▲" : "▼"} {Math.abs(s.pct)}%
+                  <span style={{ color:"#5f6368", fontWeight:400 }}>vs prev. period</span>
+                </p>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Chart */}
+      <div className="border-t px-4 pt-4 pb-2" style={{ borderColor:"#dadce0" }}>
+        {selectedMetrics.length === 0 ? (
+          <div className="h-56 flex items-center justify-center text-sm" style={{ color:"#5f6368" }}>
+            Select a metric above to display it in the chart
+          </div>
+        ) : (
+          <div className="h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={data} margin={{ top:8, right:8, left:0, bottom:0 }}>
+                <defs>
+                  {selectedMetrics.map(id => {
+                    const m = GA_METRICS.find(x => x.id === id);
+                    if (!m) return null;
+                    return (
+                      <linearGradient key={id} id={`grad_${id}`} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%"  stopColor={m.color} stopOpacity={0.15} />
+                        <stop offset="95%" stopColor={m.color} stopOpacity={0} />
+                      </linearGradient>
+                    );
+                  })}
+                </defs>
+                <CartesianGrid stroke="#f1f3f4" strokeDasharray="" vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize:11, fill:"#5f6368" }} tickLine={false} axisLine={false}
+                  interval={tickInterval} />
+                <YAxis tick={{ fontSize:11, fill:"#5f6368" }} tickLine={false} axisLine={false}
+                  tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}K` : v} width={40} />
+                <Tooltip
+                  cursor={{ stroke:"#dadce0", strokeWidth:1 }}
+                  contentStyle={{ background:"#fff", border:"1px solid #dadce0", borderRadius:8, fontSize:12, padding:"10px 14px" }}
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload?.length) return null;
+                    return (
+                      <div style={{ background:"#fff", border:"1px solid #dadce0", borderRadius:8, padding:"10px 14px", fontSize:12 }}>
+                        <p className="font-medium mb-2" style={{ color:"#202124" }}>{label}</p>
+                        {payload.map(p => (
+                          <div key={p.dataKey} className="flex items-center gap-2 mb-1">
+                            <div className="w-2.5 h-2.5 rounded-sm" style={{ background: p.color }} />
+                            <span style={{ color:"#5f6368" }}>{GA_METRICS.find(m=>m.id===p.dataKey)?.label}:</span>
+                            <span className="font-semibold" style={{ color:"#202124" }}>{fmtStat(p.value ?? 0)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  }}
+                />
+                {selectedMetrics.map(id => {
+                  const m = GA_METRICS.find(x => x.id === id);
+                  if (!m) return null;
+                  return (
+                    <Area key={id} type="monotone" dataKey={m.field} name={m.label}
+                      stroke={m.color} strokeWidth={2}
+                      fill={`url(#grad_${id})`}
+                      dot={false} activeDot={{ r:4, fill:m.color, strokeWidth:0 }}
+                      connectNulls={false} />
+                  );
+                })}
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+        <div className="flex items-center gap-1 mt-2 mb-1">
+          {selectedMetrics.map(id => {
+            const m = GA_METRICS.find(x => x.id === id);
+            if (!m) return null;
+            return (
+              <span key={id} className="flex items-center gap-1.5 text-xs mr-3" style={{ color:"#5f6368" }}>
+                <svg width="16" height="10"><line x1="0" y1="5" x2="16" y2="5" stroke={m.color} strokeWidth="2"/></svg>
+                {m.label}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
 export default function LinkedInDashboard() {
@@ -1422,7 +1609,7 @@ export default function LinkedInDashboard() {
   const [classifications, setClassifications] = useState({});
   const [classifying,   setClassifying]  = useState(false);
   const [aiClassified,  setAiClassified] = useState(false);
-  const [sidebarOpen,   setSidebarOpen]  = useState(false);
+  const [selectedMetrics, setSelectedMetrics] = useState(["new_followers", "impressions"]);
 
   // All hooks must be above early returns
   const cutoff = useMemo(() => {
@@ -1481,107 +1668,143 @@ export default function LinkedInDashboard() {
 
   if (!status?.connected) return <ConnectScreen />;
 
-  const navItems = SECTIONS;
+  const handleToggleMetric = useCallback(id => {
+    setSelectedMetrics(prev => {
+      if (prev.includes(id)) return prev.filter(m => m !== id);
+      if (prev.length >= 2)  return [prev[1], id];
+      return [...prev, id];
+    });
+  }, []);
+
+  const GA_BLUE = "#1a73e8";
 
   return (
     <MainLayout>
-      <div className="flex h-full min-h-screen bg-gray-50">
-        {/* ── Sidebar ─────────────────────────────────────────────────────── */}
-        <aside className={`fixed inset-y-0 left-0 z-40 w-56 bg-white border-r border-gray-100 flex flex-col pt-4 pb-8 transition-transform lg:translate-x-0 lg:static lg:z-auto ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
-          style={{ top:"64px" }}>
-          {/* Page selector */}
-          <div className="px-3 mb-4">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-3 mb-2">Pages</p>
-            <button onClick={()=>selectOrg(null)}
-              className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold mb-1 transition-all ${!selectedOrgId ? "bg-blue-50 text-blue-700" : "text-gray-600 hover:bg-gray-50"}`}>
-              All Pages
-            </button>
-            {allOrgs.map(o => (
-              <button key={o.id} onClick={()=>selectOrg(o.id)}
-                className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold mb-1 transition-all ${selectedOrgId===o.id ? "bg-blue-50 text-blue-700" : "text-gray-600 hover:bg-gray-50"}`}>
-                {o.name || o.id}
-              </button>
-            ))}
-          </div>
+      <div className="min-h-screen" style={{ background:"#f8f9fa" }}>
 
-          <div className="h-px bg-gray-100 mx-3 mb-4" />
+        {/* ══ Top header bar ═══════════════════════════════════════════════ */}
+        <div className="sticky top-0 z-30 bg-white" style={{ borderBottom:"1px solid #dadce0" }}>
 
-          {/* Section nav */}
-          <nav className="flex-1 px-3 space-y-0.5">
-            {navItems.map(s => (
-              <button key={s.id} onClick={()=>{ setSection(s.id); setSidebarOpen(false); }}
-                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  section===s.id ? "bg-blue-50 text-blue-700" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                }`}>
-                <span>{s.icon}</span>
-                <span>{s.label}</span>
-              </button>
-            ))}
-          </nav>
-
-          <div className="px-3 space-y-2 mt-4">
-            <button onClick={sync} disabled={syncing}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
-              style={{ background:LI_BLUE }}>
-              {syncing ? <><Spinner sm /> Syncing…</> : "↻ Sync Data"}
-            </button>
-            <button onClick={handleRefreshOrgs} disabled={refreshing}
-              className="w-full text-xs text-gray-500 hover:text-blue-600 py-2 rounded-xl hover:bg-blue-50 transition-colors disabled:opacity-50">
-              {refreshing ? "Refreshing…" : "⟳ Refresh Pages"}
-            </button>
-            {refreshMsg && <p className="text-xs text-green-600 text-center">{refreshMsg}</p>}
-            <button onClick={disconnect}
-              className="w-full text-xs text-gray-400 hover:text-red-500 py-2 rounded-xl hover:bg-red-50 transition-colors">
-              Disconnect
-            </button>
-          </div>
-        </aside>
-
-        {/* Overlay for mobile sidebar */}
-        {sidebarOpen && (
-          <div className="fixed inset-0 z-30 bg-black/20 lg:hidden" onClick={()=>setSidebarOpen(false)} />
-        )}
-
-        {/* ── Main Content ─────────────────────────────────────────────────── */}
-        <div className="flex-1 min-w-0">
-          {/* Top bar */}
-          <div className="sticky top-0 z-20 bg-white border-b border-gray-100 px-6 py-3 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <button className="lg:hidden p-1.5 rounded-lg hover:bg-gray-100"
-                onClick={()=>setSidebarOpen(v=>!v)}>
-                <svg className="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-              </button>
-              <div>
-                <h1 className="text-sm font-bold text-gray-900">
-                  {navItems.find(s=>s.id===section)?.icon} {navItems.find(s=>s.id===section)?.label}
-                </h1>
-                <p className="text-xs text-gray-400">
-                  {selectedOrgId ? allOrgs.find(o=>o.id===selectedOrgId)?.name : "All Pages"} · {filtPosts.length} posts
-                  {dataLoading ? " · Loading…" : ""}
-                </p>
+          {/* Row 1: branding + controls */}
+          <div className="flex items-center justify-between px-6 py-3 gap-4 flex-wrap">
+            {/* Left: icon + title + page pills */}
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded flex items-center justify-center flex-shrink-0"
+                  style={{ background: LI_BLUE }}>
+                  <svg viewBox="0 0 24 24" fill="white" className="w-4 h-4">
+                    <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+                  </svg>
+                </div>
+                <span className="text-base font-medium" style={{ color:"#202124" }}>LinkedIn Analytics</span>
               </div>
-            </div>
 
-            <div className="flex items-center gap-2">
-              {/* Date range */}
-              <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
-                {[7,30,90,180].map(d=>(
-                  <button key={d} onClick={()=>setDateRange(d)}
-                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${dateRange===d ? "bg-white shadow-sm text-gray-900" : "text-gray-500"}`}>
-                    {d}D
+              {/* Page selector pills */}
+              <div className="flex items-center gap-1.5">
+                <button onClick={()=>selectOrg(null)}
+                  className="px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
+                  style={!selectedOrgId
+                    ? { background:"#e8f0fe", color: GA_BLUE }
+                    : { color:"#5f6368", background:"transparent" }}
+                  onMouseEnter={e=>{ if(selectedOrgId) e.currentTarget.style.background="#f1f3f4"; }}
+                  onMouseLeave={e=>{ if(selectedOrgId) e.currentTarget.style.background="transparent"; }}>
+                  All pages
+                </button>
+                {allOrgs.map(o => (
+                  <button key={o.id} onClick={()=>selectOrg(o.id)}
+                    className="px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
+                    style={selectedOrgId===o.id
+                      ? { background:"#e8f0fe", color: GA_BLUE }
+                      : { color:"#5f6368", background:"transparent" }}
+                    onMouseEnter={e=>{ if(selectedOrgId!==o.id) e.currentTarget.style.background="#f1f3f4"; }}
+                    onMouseLeave={e=>{ if(selectedOrgId!==o.id) e.currentTarget.style.background="transparent"; }}>
+                    {o.name || o.id}
                   </button>
                 ))}
               </div>
-              {syncResult?.summary && (
-                <span className="text-xs text-green-600 font-semibold">✓ Synced</span>
-              )}
+            </div>
+
+            {/* Right: date range + actions */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Date range toggle */}
+              <div className="flex items-center rounded-md overflow-hidden" style={{ border:"1px solid #dadce0" }}>
+                {[{d:7,l:"7 days"},{d:30,l:"30 days"},{d:90,l:"90 days"},{d:180,l:"180 days"}].map(({d,l},i)=>(
+                  <button key={d} onClick={()=>setDateRange(d)}
+                    className="px-3 py-1.5 text-xs font-medium transition-colors"
+                    style={{
+                      borderLeft: i > 0 ? "1px solid #dadce0" : "none",
+                      background: dateRange===d ? GA_BLUE : "transparent",
+                      color:      dateRange===d ? "#fff"   : "#5f6368",
+                    }}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+
+              {/* Sync */}
+              <button onClick={sync} disabled={syncing}
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-semibold text-white disabled:opacity-50 transition-opacity"
+                style={{ background: GA_BLUE }}>
+                {syncing ? <><Spinner sm />Syncing…</> : "↻ Sync now"}
+              </button>
+
+              {/* Refresh orgs */}
+              <button onClick={handleRefreshOrgs} disabled={refreshing}
+                className="px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
+                style={{ border:"1px solid #dadce0", color:"#5f6368" }}>
+                {refreshing ? "…" : "⟳ Refresh pages"}
+              </button>
+
+              {refreshMsg && <span className="text-xs font-medium text-green-600">{refreshMsg}</span>}
+              {syncResult?.summary && <span className="text-xs font-medium" style={{ color:"#34a853" }}>✓ Synced</span>}
+              {dataLoading && <span className="text-xs" style={{ color:"#5f6368" }}>Loading…</span>}
+
+              <button onClick={disconnect}
+                className="text-xs px-2 py-1 rounded transition-colors"
+                style={{ color:"#5f6368" }}
+                onMouseEnter={e=>{ e.currentTarget.style.color="#ea4335"; }}
+                onMouseLeave={e=>{ e.currentTarget.style.color="#5f6368"; }}>
+                Disconnect
+              </button>
             </div>
           </div>
 
-          {/* Section content */}
-          <div className="p-6">
+          {/* Row 2: Tab navigation */}
+          <div className="flex px-6 overflow-x-auto">
+            {SECTIONS.map(s => (
+              <button key={s.id} onClick={()=>setSection(s.id)}
+                className="flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors mr-1"
+                style={{
+                  borderBottom: section===s.id ? `3px solid ${GA_BLUE}` : "3px solid transparent",
+                  color:        section===s.id ? GA_BLUE : "#5f6368",
+                }}>
+                {s.icon} {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ══ Main content ═════════════════════════════════════════════════ */}
+        <div className="px-6 py-6 max-w-screen-2xl">
+
+          {/* Metric selector + unified chart — shown on overview & followers */}
+          {(section === "overview" || section === "followers") && (
+            <div className="mb-6">
+              <MetricSelectorChart
+                followerStats={followerStats}
+                pageRows={filtPage}
+                posts={filtPosts}
+                prevFollower={prevFollower}
+                cutoff={cutoff}
+                dateRange={dateRange}
+                selectedMetrics={selectedMetrics}
+                onToggleMetric={handleToggleMetric}
+              />
+            </div>
+          )}
+
+          {/* Section-specific content */}
+          <div className="space-y-6">
             {section === "overview" && (
               <OverviewSection
                 posts={filtPosts}
