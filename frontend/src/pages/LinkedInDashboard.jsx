@@ -4,6 +4,8 @@ import useLinkedInData from "../hooks/useLinkedInData";
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  ScatterChart, Scatter, ZAxis, Cell, RadarChart, Radar, PolarGrid,
+  PolarAngleAxis, PolarRadiusAxis,
 } from "recharts";
 
 const LI_BLUE   = "#0077B5";
@@ -181,6 +183,268 @@ function DateRangePicker({ value, onChange }) {
           {r.label}
         </button>
       ))}
+    </div>
+  );
+}
+
+// ─── Content impressions timeline ────────────────────────────────────────────
+// Groups posts by publish date, shows impressions + engagements over time
+
+function ContentImpressionsChart({ posts, allOrgs, showPage }) {
+  const chartData = useMemo(() => {
+    if (!showPage || allOrgs.length < 2) {
+      // Single series: total impressions by date
+      const byDate = {};
+      posts.forEach(p => {
+        if (!p.post_date) return;
+        if (!byDate[p.post_date]) byDate[p.post_date] = { date: p.post_date, Impressions: 0, Engagements: 0, Posts: 0 };
+        byDate[p.post_date].Impressions += p.impressions || 0;
+        byDate[p.post_date].Engagements += (p.reactions || 0) + (p.clicks || 0) + (p.comments || 0) + (p.shares || 0);
+        byDate[p.post_date].Posts++;
+      });
+      return Object.values(byDate).sort((a, b) => a.date > b.date ? 1 : -1)
+        .map(d => ({ ...d, date: shortDate(d.date) }));
+    } else {
+      // Multi-series: one line per page
+      const byDate = {};
+      posts.forEach(p => {
+        if (!p.post_date) return;
+        if (!byDate[p.post_date]) byDate[p.post_date] = { date: p.post_date };
+        const key = p.org_name || p.org_id;
+        byDate[p.post_date][key] = (byDate[p.post_date][key] || 0) + (p.impressions || 0);
+      });
+      return Object.values(byDate).sort((a, b) => a.date > b.date ? 1 : -1)
+        .map(d => ({ ...d, date: shortDate(d.date) }));
+    }
+  }, [posts, showPage, allOrgs]);
+
+  if (!chartData.length) return <EmptyState label="No post data to chart yet" />;
+
+  const colors = [LI_BLUE, GREEN, AMBER, RED];
+
+  return (
+    <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+      <h3 className="text-sm font-semibold text-gray-700 mb-1">Content Impressions by Date</h3>
+      <p className="text-xs text-gray-400 mb-4">Total reach of posts published on each date</p>
+      <div className="h-64">
+        <ResponsiveContainer width="100%" height="100%">
+          {showPage && allOrgs.length > 1 ? (
+            <BarChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+              <CartesianGrid stroke="#F3F4F6" strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#9CA3AF" }} tickLine={false} />
+              <YAxis tick={{ fontSize: 10, fill: "#9CA3AF" }} tickLine={false} axisLine={false} tickFormatter={v => fmt(v)} />
+              <Tooltip contentStyle={TTStyle} formatter={v => [fmt(v)]} />
+              <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+              {allOrgs.map((o, i) => (
+                <Bar key={o.id} dataKey={o.name || o.id} fill={colors[i]} radius={[4,4,0,0]} maxBarSize={28} stackId="a" />
+              ))}
+            </BarChart>
+          ) : (
+            <AreaChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="impGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={LI_BLUE} stopOpacity={0.18} />
+                  <stop offset="95%" stopColor={LI_BLUE} stopOpacity={0.02} />
+                </linearGradient>
+                <linearGradient id="engGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={GREEN} stopOpacity={0.18} />
+                  <stop offset="95%" stopColor={GREEN} stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="#F3F4F6" strokeDasharray="3 3" />
+              <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#9CA3AF" }} tickLine={false} />
+              <YAxis tick={{ fontSize: 10, fill: "#9CA3AF" }} tickLine={false} axisLine={false} tickFormatter={v => fmt(v)} />
+              <Tooltip contentStyle={TTStyle} formatter={v => [fmt(v)]} />
+              <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+              <Area type="monotone" dataKey="Impressions" stroke={LI_BLUE} fill="url(#impGrad)" strokeWidth={2} dot={false} />
+              <Area type="monotone" dataKey="Engagements" stroke={GREEN}   fill="url(#engGrad)" strokeWidth={2} dot={false} />
+            </AreaChart>
+          )}
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+// ─── Engagement breakdown per page ───────────────────────────────────────────
+
+function EngagementBreakdownChart({ posts, allOrgs }) {
+  const chartData = useMemo(() => {
+    if (!allOrgs.length) return [];
+    return allOrgs.map(org => {
+      const orgPosts = posts.filter(p => p.org_id === org.id);
+      return {
+        page:      (org.name || org.id).split(" ").slice(-1)[0], // short name
+        fullName:  org.name || org.id,
+        Reactions: orgPosts.reduce((s, p) => s + (p.reactions || 0), 0),
+        Clicks:    orgPosts.reduce((s, p) => s + (p.clicks    || 0), 0),
+        Comments:  orgPosts.reduce((s, p) => s + (p.comments  || 0), 0),
+        Shares:    orgPosts.reduce((s, p) => s + (p.shares    || 0), 0),
+        posts:     orgPosts.length,
+      };
+    });
+  }, [posts, allOrgs]);
+
+  if (!chartData.length || chartData.every(d => !d.Reactions && !d.Clicks && !d.Comments && !d.Shares)) {
+    return <EmptyState label="Engagement data not yet available" sub="Sync to pull post metrics" />;
+  }
+
+  const ENG_COLORS = { Reactions: "#EC4899", Clicks: LI_BLUE, Comments: AMBER, Shares: GREEN };
+
+  return (
+    <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+      <h3 className="text-sm font-semibold text-gray-700 mb-1">Engagement Breakdown by Page</h3>
+      <p className="text-xs text-gray-400 mb-4">Total reactions, clicks, comments and shares per page</p>
+      <div className="h-64">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
+            <CartesianGrid stroke="#F3F4F6" strokeDasharray="3 3" horizontal={false} />
+            <XAxis type="number" tick={{ fontSize: 10, fill: "#9CA3AF" }} tickLine={false} axisLine={false} tickFormatter={v => fmt(v)} />
+            <YAxis type="category" dataKey="page" tick={{ fontSize: 11, fill: "#374151", fontWeight: 600 }} tickLine={false} width={70} />
+            <Tooltip contentStyle={TTStyle}
+              formatter={(v, name) => [fmt(v), name]}
+              labelFormatter={l => chartData.find(d => d.page === l)?.fullName || l} />
+            <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+            {Object.entries(ENG_COLORS).map(([k, c]) => (
+              <Bar key={k} dataKey={k} fill={c} stackId="eng" radius={k === "Shares" ? [0,4,4,0] : [0,0,0,0]} maxBarSize={36} />
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+// ─── Page performance comparison radar ───────────────────────────────────────
+
+function PageRadarChart({ allOrgs, followerStats, posts }) {
+  const chartData = useMemo(() => {
+    if (allOrgs.length < 2) return [];
+    const maxF = Math.max(...allOrgs.map(o => {
+      const latest = followerStats.filter(r => r.org_id === o.id).at(-1);
+      return latest?.total_followers || 0;
+    }), 1);
+    const maxI = Math.max(...allOrgs.map(o =>
+      posts.filter(p => p.org_id === o.id).reduce((s, p) => s + (p.impressions || 0), 0)
+    ), 1);
+    const maxE = Math.max(...allOrgs.map(o => {
+      const op = posts.filter(p => p.org_id === o.id);
+      const imp = op.reduce((s, p) => s + (p.impressions || 0), 0);
+      const eng = op.reduce((s, p) => s + (p.reactions || 0) + (p.clicks || 0) + (p.comments || 0) + (p.shares || 0), 0);
+      return imp > 0 ? (eng / imp) * 100 : 0;
+    }), 1);
+    const maxP = Math.max(...allOrgs.map(o => posts.filter(p => p.org_id === o.id).length), 1);
+
+    const metrics = ["Followers", "Impressions", "Eng. Rate", "Post Count"];
+    return metrics.map((m, mi) => {
+      const row = { metric: m };
+      allOrgs.forEach(org => {
+        const orgPosts = posts.filter(p => p.org_id === org.id);
+        const latest   = followerStats.filter(r => r.org_id === org.id).at(-1);
+        const imp = orgPosts.reduce((s, p) => s + (p.impressions || 0), 0);
+        const eng = orgPosts.reduce((s, p) => s + (p.reactions || 0) + (p.clicks || 0) + (p.comments || 0) + (p.shares || 0), 0);
+        const vals = [
+          ((latest?.total_followers || 0) / maxF) * 100,
+          (imp / maxI) * 100,
+          (imp > 0 ? (eng / imp) * 100 : 0) / maxE * 100,
+          (orgPosts.length / maxP) * 100,
+        ];
+        row[org.name || org.id] = Math.round(vals[mi]);
+      });
+      return row;
+    });
+  }, [allOrgs, followerStats, posts]);
+
+  if (!chartData.length) return null;
+
+  const colors = [LI_BLUE, GREEN];
+
+  return (
+    <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+      <h3 className="text-sm font-semibold text-gray-700 mb-1">Page Strength Comparison</h3>
+      <p className="text-xs text-gray-400 mb-4">Relative performance across key dimensions (scaled 0–100)</p>
+      <div className="h-64">
+        <ResponsiveContainer width="100%" height="100%">
+          <RadarChart data={chartData}>
+            <PolarGrid stroke="#F3F4F6" />
+            <PolarAngleAxis dataKey="metric" tick={{ fontSize: 11, fill: "#6B7280" }} />
+            <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
+            <Tooltip contentStyle={TTStyle} formatter={(v, n) => [`${v}/100`, n]} />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
+            {allOrgs.map((org, i) => (
+              <Radar key={org.id} name={org.name || org.id} dataKey={org.name || org.id}
+                stroke={colors[i]} fill={colors[i]} fillOpacity={0.15} strokeWidth={2} />
+            ))}
+          </RadarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+// ─── Impression vs Engagement scatter ────────────────────────────────────────
+
+function PostScatterChart({ posts, allOrgs, showPage }) {
+  const data = useMemo(() =>
+    posts
+      .filter(p => p.impressions > 0)
+      .map(p => ({
+        x:    p.impressions,
+        y:    parseFloat(p.engagement_rate) || 0,
+        name: (p.text_preview || "").slice(0, 60),
+        page: p.org_name,
+        color: !showPage ? LI_BLUE
+          : (allOrgs.findIndex(o => o.id === p.org_id) === 0 ? LI_BLUE : GREEN),
+      })),
+    [posts, showPage, allOrgs]
+  );
+
+  if (!data.length) return <EmptyState label="Post impression data not yet available" />;
+
+  return (
+    <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+      <h3 className="text-sm font-semibold text-gray-700 mb-1">Impressions vs Engagement Rate</h3>
+      <p className="text-xs text-gray-400 mb-4">
+        Top-right = high reach AND high engagement · Top-left = efficient but small reach
+      </p>
+      <div className="h-64">
+        <ResponsiveContainer width="100%" height="100%">
+          <ScatterChart margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+            <CartesianGrid stroke="#F3F4F6" strokeDasharray="3 3" />
+            <XAxis dataKey="x" type="number" name="Impressions" tick={{ fontSize: 10, fill: "#9CA3AF" }}
+              tickLine={false} tickFormatter={v => fmt(v)} label={{ value: "Impressions", position: "insideBottom", offset: -2, fontSize: 10, fill: "#9CA3AF" }} />
+            <YAxis dataKey="y" type="number" name="Eng. Rate %" tick={{ fontSize: 10, fill: "#9CA3AF" }}
+              tickLine={false} axisLine={false} tickFormatter={v => `${v.toFixed(1)}%`} />
+            <ZAxis range={[40, 40]} />
+            <Tooltip contentStyle={TTStyle} cursor={{ strokeDasharray: "3 3" }}
+              content={({ active, payload }) => {
+                if (!active || !payload?.[0]) return null;
+                const d = payload[0].payload;
+                return (
+                  <div style={TTStyle}>
+                    {d.page && <p className="text-xs text-gray-400 mb-1">{d.page}</p>}
+                    <p className="text-xs font-semibold text-gray-800 mb-1 max-w-xs">{d.name}…</p>
+                    <p className="text-xs text-gray-600">👁 {fmt(d.x)} impressions</p>
+                    <p className="text-xs text-gray-600">📈 {d.y.toFixed(2)}% engagement</p>
+                  </div>
+                );
+              }} />
+            <Scatter data={data}>
+              {data.map((entry, i) => <Cell key={i} fill={entry.color} fillOpacity={0.75} />)}
+            </Scatter>
+          </ScatterChart>
+        </ResponsiveContainer>
+      </div>
+      {showPage && (
+        <div className="flex items-center gap-4 mt-3 justify-center">
+          {allOrgs.map((o, i) => (
+            <span key={o.id} className="flex items-center gap-1.5 text-xs text-gray-500">
+              <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: i === 0 ? LI_BLUE : GREEN }} />
+              {o.name}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -718,6 +982,11 @@ export default function LinkedInDashboard() {
               <PageViewsChart data={filtPage} />
             </div>
 
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
+              <ContentImpressionsChart posts={filtPosts} allOrgs={allOrgs} showPage={showPage} />
+              <EngagementBreakdownChart posts={filtPosts} allOrgs={allOrgs} />
+            </div>
+
             <Section title={`Top Posts — Last ${dateRange} Days`}>
               <TopPosts posts={filtPosts} showPage={showPage} limit={5} />
             </Section>
@@ -736,8 +1005,13 @@ export default function LinkedInDashboard() {
               />
             </Section>
 
-            <Section title="Follower Growth — Both Pages">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
               <FollowerChart data={filtFollower} allOrgs={allOrgs} selectedOrgId={null} />
+              <PageRadarChart allOrgs={allOrgs} followerStats={filtFollower} posts={filtPosts} />
+            </div>
+
+            <Section title="Engagement Breakdown">
+              <EngagementBreakdownChart posts={filtPosts} allOrgs={allOrgs} />
             </Section>
           </>
         )}
@@ -745,6 +1019,11 @@ export default function LinkedInDashboard() {
         {/* ── Posts ────────────────────────────────────────────────────────── */}
         {tab === "Posts" && (
           <>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
+              <ContentImpressionsChart posts={filtPosts} allOrgs={allOrgs} showPage={showPage} />
+              <PostScatterChart posts={filtPosts} allOrgs={allOrgs} showPage={showPage} />
+            </div>
+
             <Section title="Top 5 Posts by Impressions">
               <TopPosts posts={filtPosts} showPage={showPage} limit={5} />
             </Section>
