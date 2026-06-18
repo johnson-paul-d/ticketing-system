@@ -39,16 +39,14 @@ export default function LinkedInCallback() {
       try {
         setStatus("Exchanging code for access token…");
         const res = await api.post("/linkedin/exchange-token", { code });
-        const { orgs: orgList, needsPicker } = res.data;
-
-        if (needsPicker && orgList?.length > 1) {
-          setOrgs(orgList);
-          setPhase("picker");
-        } else {
-          setPhase("done");
-          setStatus("Connected! Redirecting…");
-          setTimeout(() => navigate("/linkedin"), 1200);
-        }
+        const { orgs: orgList } = res.data;
+        const count = orgList?.length || 0;
+        setPhase("done");
+        setStatus(count > 1
+          ? `Connected ${count} pages. Redirecting…`
+          : "Connected! Redirecting…"
+        );
+        setTimeout(() => navigate("/linkedin"), 1200);
       } catch (e) {
         const detail = e?.response?.data?.detail;
         const msg    = e?.response?.data?.message || e.message || "Token exchange failed";

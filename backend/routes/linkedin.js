@@ -1,61 +1,75 @@
 const express = require("express");
-const router = express.Router();
+const router  = express.Router();
 const supabase = require("../config/supabase");
-const auth = require("../middleware/auth");
+const auth     = require("../middleware/auth");
 
 const CLIENT_ID     = process.env.LINKEDIN_CLIENT_ID;
 const CLIENT_SECRET = process.env.LINKEDIN_CLIENT_SECRET;
 const REDIRECT_URI  = process.env.LINKEDIN_REDIRECT_URI || "http://localhost:3000/auth/linkedin/callback";
+const LI_API        = "https://api.linkedin.com/v2";
+const LI_AUTH       = "https://www.linkedin.com/oauth/v2";
 
-const LI_API  = "https://api.linkedin.com/v2";
-const LI_AUTH = "https://www.linkedin.com/oauth/v2";
+// ─── Core fetch wrapper ───────────────────────────────────────────────────────
+// Builds URL manually so List() notation is not double-encoded by URLSearchParams
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+async function liGet(path, token, params = {}) {
+  const pairs = Object.entries(params)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join("&");
+  const url = `${LI_API}${path}${pairs ? "?" + pairs : ""}`;
 
-async function liGet(path, accessToken, params = {}) {
-  const url = new URL(`${LI_API}${path}`);
-  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  const res = await fetch(url.toString(), {
+  const res  = await fetch(url, {
     headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "LinkedIn-Version": "202401",
+      Authorization: `Bearer ${token}`,
       "X-Restli-Protocol-Version": "2.0.0",
+      "LinkedIn-Version": "202401",
     },
   });
   const text = await res.text();
-  if (!res.ok) throw new Error(`LinkedIn ${res.status} on ${path}: ${text}`);
-  try { return JSON.parse(text); } catch { return text; }
+  if (!res.ok) throw new Error(`LI ${res.status} [${path}]: ${text.slice(0, 300)}`);
+  try { return JSON.parse(text); } catch { return {}; }
+}
+
+// ugcPosts authors param must NOT be double-encoded (List(...) is restli syntax)
+async function liGetRaw(path, token, rawQuery) {
+  const url = `${LI_API}${path}?${rawQuery}`;
+  const res  = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Restli-Protocol-Version": "2.0.0",
+      "LinkedIn-Version": "202401",
+    },
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`LI ${res.status} [${path}]: ${text.slice(0, 300)}`);
+  try { return JSON.parse(text); } catch { return {}; }
 }
 
 async function getStoredToken() {
   const { data, error } = await supabase
-    .from("linkedin_tokens")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .single();
-  if (error || !data) throw new Error("LinkedIn not connected. Please authenticate first.");
-  if (data.expires_at && new Date(data.expires_at) < new Date()) {
-    throw new Error("LinkedIn access token expired. Please re-authenticate.");
-  }
+    .from("linkedin_tokens").select("*")
+    .order("created_at", { ascending: false }).limit(1).single();
+  if (error || !data) throw new Error("LinkedIn not connected.");
+  if (data.expires_at && new Date(data.expires_at) < new Date())
+    throw new Error("LinkedIn token expired. Please re-authenticate.");
   return data;
 }
 
-function toDateStr(epochOrStr) {
-  if (!epochOrStr) return null;
-  const d = typeof epochOrStr === "number" ? new Date(epochOrStr) : new Date(epochOrStr);
+function toDate(epoch) {
+  if (!epoch) return null;
+  const d = new Date(typeof epoch === "number" ? epoch : Number(epoch));
   if (isNaN(d.getTime())) return null;
   return d.toISOString().split("T")[0];
 }
 
-function epochMs(daysAgo) {
+function daysAgoMs(n) {
   const d = new Date();
-  d.setDate(d.getDate() - daysAgo);
+  d.setDate(d.getDate() - n);
   d.setHours(0, 0, 0, 0);
   return d.getTime();
 }
 
-// ─── 1. Exchange code for access token — returns all admin pages ───────────────
+// ─── 1. Exchange code → store token + all orgs ───────────────────────────────
 
 router.post("/exchange-token", async (req, res) => {
   const { code } = req.body;
@@ -66,14 +80,13 @@ router.post("/exchange-token", async (req, res) => {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
-        grant_type:    "authorization_code",
+        grant_type: "authorization_code",
         code,
         redirect_uri:  REDIRECT_URI,
         client_id:     CLIENT_ID,
         client_secret: CLIENT_SECRET,
       }),
     });
-
     if (!tokenRes.ok) {
       const err = await tokenRes.text();
       return res.status(400).json({ message: "Token exchange failed", detail: err });
@@ -82,90 +95,74 @@ router.post("/exchange-token", async (req, res) => {
     const { access_token, expires_in } = await tokenRes.json();
     const expiresAt = new Date(Date.now() + (expires_in || 5184000) * 1000);
 
-    // Fetch ALL admin orgs (not just the first)
+    // Fetch ALL admin orgs
     let orgs = [];
     try {
-      const orgAcls = await liGet("/organizationAcls", access_token, {
-        q:      "roleAssignee",
-        role:   "ADMINISTRATOR",
-        state:  "APPROVED",
-        count:  10,
+      const aclData = await liGet("/organizationAcls", access_token, {
+        q: "roleAssignee", role: "ADMINISTRATOR", state: "APPROVED", count: 10,
       });
-
-      for (const el of orgAcls?.elements || []) {
-        const urn = el.organization;
-        const id  = urn?.split(":").pop();
-        let name  = `Organization ${id}`;
+      for (const el of aclData?.elements || []) {
+        const urn  = el.organization;
+        const id   = urn?.split(":").pop();
+        let name   = `Org ${id}`;
         try {
           const info = await liGet(`/organizations/${id}`, access_token);
           name = info?.localizedName || info?.name?.localized?.en_US || name;
-        } catch { /* use default name */ }
+        } catch { /* keep default name */ }
         orgs.push({ id, name, urn });
       }
     } catch (e) {
-      console.warn("Could not fetch org list:", e.message);
+      console.warn("Org fetch warn:", e.message);
     }
 
-    // Save token without org yet (org selected next step)
+    // Persist — wipe old, insert new
     await supabase.from("linkedin_tokens").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-    const { error: insertError } = await supabase.from("linkedin_tokens").insert({
+    const { error: insertErr } = await supabase.from("linkedin_tokens").insert({
       access_token,
       expires_at: expiresAt.toISOString(),
-      org_id:   orgs[0]?.id   || null,
-      org_name: orgs[0]?.name || null,
-      org_urn:  orgs[0]?.urn  || null,
+      org_id:    orgs[0]?.id   || null,
+      org_name:  orgs[0]?.name || null,
+      org_urn:   orgs[0]?.urn  || null,
+      all_orgs:  orgs,
     });
 
-    if (insertError) {
-      console.error("Supabase insert error:", insertError);
-      return res.status(500).json({
-        message: "Token saved failed",
-        detail: insertError.message,
-      });
+    if (insertErr) {
+      return res.status(500).json({ message: "Failed to save token", detail: insertErr.message });
     }
 
-    // If multiple orgs, let frontend show a picker
     res.json({ success: true, orgs, needsPicker: orgs.length > 1 });
   } catch (err) {
-    console.error("LinkedIn token exchange error:", err);
+    console.error("exchange-token:", err.message);
     res.status(500).json({ message: err.message });
   }
 });
 
-// ─── 2. Select which org page to use ─────────────────────────────────────────
+// ─── 2. Select org (after picker) ────────────────────────────────────────────
 
 router.post("/select-org", async (req, res) => {
   const { orgId, orgName, orgUrn } = req.body;
   if (!orgId) return res.status(400).json({ message: "orgId required" });
-
   try {
-    const { error } = await supabase
-      .from("linkedin_tokens")
+    await supabase.from("linkedin_tokens")
       .update({ org_id: orgId, org_name: orgName, org_urn: orgUrn })
-      .order("created_at", { ascending: false })
-      .limit(1);
-
-    if (error) return res.status(500).json({ message: error.message });
+      .order("created_at", { ascending: false }).limit(1);
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+  } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-// ─── 3. Connection status ─────────────────────────────────────────────────────
+// ─── 3. Status ───────────────────────────────────────────────────────────────
 
 router.get("/status", async (req, res) => {
   try {
-    const token = await getStoredToken();
+    const t = await getStoredToken();
     res.json({
       connected: true,
-      orgName:   token.org_name,
-      orgId:     token.org_id,
-      expiresAt: token.expires_at,
+      orgName:   t.org_name,
+      orgId:     t.org_id,
+      allOrgs:   t.all_orgs || [],
+      expiresAt: t.expires_at,
     });
-  } catch {
-    res.json({ connected: false });
-  }
+  } catch { res.json({ connected: false }); }
 });
 
 // ─── 4. Disconnect ────────────────────────────────────────────────────────────
@@ -175,245 +172,184 @@ router.delete("/disconnect", auth, async (req, res) => {
   res.json({ success: true });
 });
 
-// ─── 5. Debug — see raw LinkedIn API response for chosen org ─────────────────
+// ─── 5. Debug — raw API response for one org ─────────────────────────────────
 
 router.get("/debug", auth, async (req, res) => {
   try {
-    const token = await getStoredToken();
-    const { access_token, org_id, org_urn } = token;
-    if (!org_id) return res.status(400).json({ message: "No org selected" });
+    const t      = await getStoredToken();
+    const token  = t.access_token;
+    const allOrgs = t.all_orgs?.length ? t.all_orgs : [{ id: t.org_id, urn: t.org_urn, name: t.org_name }];
+    const orgId  = req.query.orgId || allOrgs[0]?.id;
+    const org    = allOrgs.find(o => o.id === orgId) || allOrgs[0];
+    const orgUrn = org?.urn || `urn:li:organization:${org?.id}`;
 
-    const orgUrn   = org_urn || `urn:li:organization:${org_id}`;
-    const start    = epochMs(30);
-    const end      = Date.now();
-    const timeP    = {
+    const start = daysAgoMs(30);
+    const end   = Date.now();
+    const timeP = {
       "timeIntervals.timeGranularityType": "DAY",
       "timeIntervals.timeRange.start": start,
       "timeIntervals.timeRange.end":   end,
     };
 
-    const [follower, page, posts] = await Promise.allSettled([
-      liGet("/organizationalEntityFollowerStatistics", access_token, { q: "organizationalEntity", organizationalEntity: orgUrn, ...timeP }),
-      liGet("/organizationPageStatistics",             access_token, { q: "organization",         organization: orgUrn,         ...timeP }),
-      liGet("/ugcPosts", access_token, { q: "authors", authors: `List(${orgUrn})`, count: 3 }),
+    const [follower, page, posts, shareStats] = await Promise.allSettled([
+      liGet("/organizationalEntityFollowerStatistics", token, { q: "organizationalEntity", organizationalEntity: orgUrn, ...timeP }),
+      liGet("/organizationPageStatistics",             token, { q: "organization",         organization: orgUrn, ...timeP }),
+      liGetRaw("/ugcPosts", token, `q=authors&authors=List(${encodeURIComponent(orgUrn)})&sortBy=LAST_MODIFIED&count=3`),
+      liGet("/organizationalEntityShareStatistics",    token, { q: "organizationalEntity", organizationalEntity: orgUrn, ...timeP }),
     ]);
 
     res.json({
-      orgId:      org_id,
-      orgUrn,
-      follower:   follower.status === "fulfilled" ? follower.value : { error: follower.reason?.message },
-      page:       page.status    === "fulfilled" ? page.value    : { error: page.reason?.message },
-      posts:      posts.status   === "fulfilled" ? posts.value   : { error: posts.reason?.message },
+      org, orgUrn,
+      follower:    follower.status  === "fulfilled" ? { elements: follower.value?.elements?.length,  sample: follower.value?.elements?.[0] }  : { error: follower.reason?.message },
+      page:        page.status      === "fulfilled" ? { elements: page.value?.elements?.length,      sample: page.value?.elements?.[0] }      : { error: page.reason?.message },
+      posts:       posts.status     === "fulfilled" ? { elements: posts.value?.elements?.length,     sample: posts.value?.elements?.[0]?.id } : { error: posts.reason?.message },
+      shareStats:  shareStats.status === "fulfilled" ? { elements: shareStats.value?.elements?.length, sample: shareStats.value?.elements?.[0] } : { error: shareStats.reason?.message },
     });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+  } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-// ─── 6. Sync all data ─────────────────────────────────────────────────────────
+// ─── 6. Sync — loops ALL orgs ─────────────────────────────────────────────────
 
 router.post("/sync", auth, async (req, res) => {
   try {
-    const token = await getStoredToken();
-    const { access_token, org_id, org_urn } = token;
-    if (!org_id) return res.status(400).json({ message: "No organization selected. Please re-connect and choose a page." });
+    const t      = await getStoredToken();
+    const token  = t.access_token;
+    const allOrgs = t.all_orgs?.length
+      ? t.all_orgs
+      : [{ id: t.org_id, name: t.org_name, urn: t.org_urn }];
 
-    const orgUrn     = org_urn || `urn:li:organization:${org_id}`;
-    const startEpoch = epochMs(90);
-    const endEpoch   = Date.now();
-    const timeParams = {
+    if (!allOrgs.length || !allOrgs[0]?.id) {
+      return res.status(400).json({ message: "No organizations found. Please reconnect." });
+    }
+
+    const start = daysAgoMs(90);
+    const end   = Date.now();
+    const timeP = {
       "timeIntervals.timeGranularityType": "DAY",
-      "timeIntervals.timeRange.start":     startEpoch,
-      "timeIntervals.timeRange.end":       endEpoch,
+      "timeIntervals.timeRange.start": start,
+      "timeIntervals.timeRange.end":   end,
     };
 
-    const results = { follower: 0, page: 0, posts: 0, ads: 0, errors: [] };
+    const summary = {};
 
-    // ── Follower statistics ──────────────────────────────────────────────────
-    try {
-      const raw = await liGet("/organizationalEntityFollowerStatistics", access_token, {
-        q: "organizationalEntity",
-        organizationalEntity: orgUrn,
-        ...timeParams,
-      });
+    for (const org of allOrgs) {
+      const orgId  = org.id;
+      const orgUrn = org.urn || `urn:li:organization:${orgId}`;
+      const orgName = org.name || orgId;
+      const r = { follower: 0, page: 0, posts: 0, errors: [] };
 
-      const rows = (raw?.elements || []).map((el) => {
-        // totalFollowerCounts holds cumulative totals per day
-        const tc = el.totalFollowerCounts || {};
-        return {
-          date:              toDateStr(el.timeRange?.start),
-          total_followers:   (tc.organicFollowerCount || 0) + (tc.paidFollowerCount || 0),
-          organic_followers:  tc.organicFollowerCount || 0,
-          paid_followers:     tc.paidFollowerCount    || 0,
-        };
-      }).filter(r => r.date);
+      // ── Follower stats ───────────────────────────────────────────────────
+      try {
+        const raw = await liGet("/organizationalEntityFollowerStatistics", token, {
+          q: "organizationalEntity", organizationalEntity: orgUrn, ...timeP,
+        });
+        const rows = (raw?.elements || []).map(el => ({
+          date:              toDate(el.timeRange?.start),
+          org_id:            orgId,
+          org_name:          orgName,
+          total_followers:   (el.totalFollowerCounts?.organicFollowerCount || 0) + (el.totalFollowerCounts?.paidFollowerCount || 0),
+          organic_followers:  el.totalFollowerCounts?.organicFollowerCount || 0,
+          paid_followers:     el.totalFollowerCounts?.paidFollowerCount    || 0,
+        })).filter(x => x.date);
 
-      if (rows.length > 0) {
-        const { error } = await supabase.from("linkedin_follower_stats").upsert(rows, { onConflict: "date" });
-        if (!error) results.follower = rows.length;
-        else results.errors.push(`Follower upsert: ${error.message}`);
-      } else {
-        results.errors.push("Follower: API returned 0 elements");
-      }
-    } catch (e) {
-      results.errors.push(`Follower: ${e.message}`);
-    }
+        if (rows.length) {
+          const { error } = await supabase.from("linkedin_follower_stats").upsert(rows, { onConflict: "date,org_id" });
+          if (error) r.errors.push(`Follower upsert: ${error.message}`);
+          else r.follower = rows.length;
+        } else {
+          r.errors.push(`Follower: 0 elements returned. Raw keys: ${Object.keys(raw || {}).join(",")}`);
+        }
+      } catch (e) { r.errors.push(`Follower: ${e.message}`); }
 
-    // ── Page statistics ──────────────────────────────────────────────────────
-    try {
-      const raw = await liGet("/organizationPageStatistics", access_token, {
-        q:            "organization",
-        organization: orgUrn,
-        ...timeParams,
-      });
-
-      const rows = (raw?.elements || []).map((el) => {
-        const views = el.totalPageStatistics?.views || {};
-        return {
-          date:            toDateStr(el.timeRange?.start),
-          page_views:      views.allPageViews?.pageViews       || 0,
-          unique_visitors: views.allPageViews?.uniquePageViews || 0,
+      // ── Page views ───────────────────────────────────────────────────────
+      try {
+        const raw = await liGet("/organizationPageStatistics", token, {
+          q: "organization", organization: orgUrn, ...timeP,
+        });
+        const rows = (raw?.elements || []).map(el => ({
+          date:            toDate(el.timeRange?.start),
+          org_id:          orgId,
+          org_name:        orgName,
+          page_views:      el.totalPageStatistics?.views?.allPageViews?.pageViews       || 0,
+          unique_visitors: el.totalPageStatistics?.views?.allPageViews?.uniquePageViews || 0,
           impressions:     0,
           clicks:          0,
-        };
-      }).filter(r => r.date);
+        })).filter(x => x.date);
 
-      if (rows.length > 0) {
-        const { error } = await supabase.from("linkedin_page_analytics").upsert(rows, { onConflict: "date" });
-        if (!error) results.page = rows.length;
-        else results.errors.push(`Page upsert: ${error.message}`);
-      } else {
-        results.errors.push("Page: API returned 0 elements");
-      }
-    } catch (e) {
-      results.errors.push(`Page: ${e.message}`);
-    }
-
-    // ── Posts + per-post share stats ─────────────────────────────────────────
-    try {
-      const ugcRaw = await liGet("/ugcPosts", access_token, {
-        q:      "authors",
-        authors: `List(${orgUrn})`,
-        sortBy: "LAST_MODIFIED",
-        count:  50,
-      });
-
-      const postElements = ugcRaw?.elements || [];
-      if (postElements.length === 0) {
-        results.errors.push("Posts: API returned 0 UGC posts");
-      }
-
-      const postRows = [];
-      for (const post of postElements) {
-        const postUrn     = post.id;
-        const postDate    = toDateStr(post.created?.time);
-        const textContent = post.specificContent?.["com.linkedin.ugc.ShareContent"]
-                            ?.shareCommentary?.text || "";
-
-        let impressions = 0, clicks = 0, reactions = 0, comments = 0, shares = 0;
-        try {
-          // Use the ugcPost URN directly — not converted to share URN
-          const stats = await liGet("/organizationalEntityShareStatistics", access_token, {
-            q:                    "organizationalEntity",
-            organizationalEntity: orgUrn,
-            "ugcPosts[0]":        postUrn,
-          });
-          const el = stats?.elements?.[0]?.totalShareStatistics;
-          if (el) {
-            impressions = el.impressionCount || 0;
-            clicks      = el.clickCount      || 0;
-            reactions   = el.likeCount       || 0;
-            comments    = el.commentCount    || 0;
-            shares      = el.shareCount      || 0;
-          }
-        } catch { /* per-post stats unavailable */ }
-
-        const totalEngagements = reactions + comments + shares + clicks;
-        const engagementRate   = impressions > 0 ? (totalEngagements / impressions) * 100 : 0;
-
-        postRows.push({
-          post_id:         postUrn,
-          post_date:       postDate,
-          text_preview:    textContent.slice(0, 300),
-          impressions,
-          clicks,
-          reactions,
-          comments,
-          shares,
-          engagement_rate: parseFloat(engagementRate.toFixed(4)),
-        });
-      }
-
-      if (postRows.length > 0) {
-        const { error } = await supabase.from("linkedin_post_analytics").upsert(postRows, { onConflict: "post_id" });
-        if (!error) results.posts = postRows.length;
-        else results.errors.push(`Posts upsert: ${error.message}`);
-      }
-    } catch (e) {
-      results.errors.push(`Posts: ${e.message}`);
-    }
-
-    // ── Ad analytics (requires r_ads_reporting scope) ────────────────────────
-    try {
-      const adAccounts = await liGet("/adAccountsV2", access_token, {
-        q: "search",
-        "search.status.values[0]": "ACTIVE",
-        count: 10,
-      });
-
-      for (const acct of adAccounts?.elements || []) {
-        const startDate = new Date(startEpoch);
-        const endDate   = new Date();
-
-        const adAnalytics = await liGet("/adAnalyticsV2", access_token, {
-          q: "analytics",
-          pivot: "CAMPAIGN",
-          "dateRange.start.day":   startDate.getDate(),
-          "dateRange.start.month": startDate.getMonth() + 1,
-          "dateRange.start.year":  startDate.getFullYear(),
-          "dateRange.end.day":     endDate.getDate(),
-          "dateRange.end.month":   endDate.getMonth() + 1,
-          "dateRange.end.year":    endDate.getFullYear(),
-          timeGranularity:         "DAILY",
-          accounts:                acct.id,
-          fields: "externalWebsiteConversions,clicks,impressions,costInLocalCurrency,dateRange,pivotValues",
-        });
-
-        const adRows = (adAnalytics?.elements || []).map((el) => {
-          const dr = el.dateRange?.start;
-          return {
-            date:          dr ? `${dr.year}-${String(dr.month).padStart(2,"0")}-${String(dr.day).padStart(2,"0")}` : null,
-            campaign_id:   el.pivotValues?.[0]?.split(":").pop() || "unknown",
-            campaign_name: el.pivotValues?.[0] || "Unknown Campaign",
-            spend:         parseFloat(el.costInLocalCurrency || 0),
-            impressions:   parseInt(el.impressions || 0),
-            clicks:        parseInt(el.clicks || 0),
-            conversions:   parseInt(el.externalWebsiteConversions || 0),
-          };
-        }).filter(r => r.date);
-
-        if (adRows.length > 0) {
-          const { error } = await supabase.from("linkedin_ad_analytics").upsert(adRows, { onConflict: "date,campaign_id" });
-          if (!error) results.ads += adRows.length;
-          else results.errors.push(`Ad upsert: ${error.message}`);
+        if (rows.length) {
+          const { error } = await supabase.from("linkedin_page_analytics").upsert(rows, { onConflict: "date,org_id" });
+          if (error) r.errors.push(`Page upsert: ${error.message}`);
+          else r.page = rows.length;
+        } else {
+          r.errors.push(`Page: 0 elements returned. Raw keys: ${Object.keys(raw || {}).join(",")}`);
         }
-      }
-    } catch (e) {
-      results.errors.push(`Ads (needs r_ads_reporting): ${e.message}`);
+      } catch (e) { r.errors.push(`Page: ${e.message}`); }
+
+      // ── Posts ────────────────────────────────────────────────────────────
+      try {
+        const ugcRaw = await liGetRaw(
+          "/ugcPosts", token,
+          `q=authors&authors=List(${encodeURIComponent(orgUrn)})&sortBy=LAST_MODIFIED&count=50`
+        );
+        const posts = ugcRaw?.elements || [];
+        if (!posts.length) r.errors.push("Posts: 0 UGC posts returned");
+
+        // Bulk share stats (all at once, not per-post)
+        let shareMap = {};
+        try {
+          const shareRaw = await liGet("/organizationalEntityShareStatistics", token, {
+            q: "organizationalEntity", organizationalEntity: orgUrn, ...timeP,
+          });
+          for (const el of shareRaw?.elements || []) {
+            const key = el.ugcPost || el.share;
+            if (key) shareMap[key] = el.totalShareStatistics || {};
+          }
+        } catch (se) { r.errors.push(`ShareStats: ${se.message}`); }
+
+        const rows = posts.map(post => {
+          const postUrn = post.id;
+          const s = shareMap[postUrn] || {};
+          const imp  = s.impressionCount || 0;
+          const eng  = (s.likeCount || 0) + (s.commentCount || 0) + (s.shareCount || 0) + (s.clickCount || 0);
+          return {
+            post_id:         postUrn,
+            org_id:          orgId,
+            org_name:        orgName,
+            post_date:       toDate(post.created?.time),
+            text_preview:    (post.specificContent?.["com.linkedin.ugc.ShareContent"]?.shareCommentary?.text || "").slice(0, 300),
+            impressions:     imp,
+            clicks:          s.clickCount    || 0,
+            reactions:       s.likeCount     || 0,
+            comments:        s.commentCount  || 0,
+            shares:          s.shareCount    || 0,
+            engagement_rate: imp > 0 ? parseFloat(((eng / imp) * 100).toFixed(4)) : 0,
+          };
+        });
+
+        if (rows.length) {
+          const { error } = await supabase.from("linkedin_post_analytics").upsert(rows, { onConflict: "post_id" });
+          if (error) r.errors.push(`Posts upsert: ${error.message}`);
+          else r.posts = rows.length;
+        }
+      } catch (e) { r.errors.push(`Posts: ${e.message}`); }
+
+      summary[orgName] = r;
     }
 
-    res.json({ success: true, synced: results, warnings: results.errors.length ? results.errors : undefined });
+    res.json({ success: true, summary });
   } catch (err) {
-    console.error("LinkedIn sync error:", err);
+    console.error("sync:", err.message);
     res.status(500).json({ message: err.message });
   }
 });
 
-// ─── 7. Data read endpoints (no auth — company-wide data) ─────────────────────
+// ─── 7. Data endpoints — filter by ?orgId= or return all ─────────────────────
 
 router.get("/follower-stats", async (req, res) => {
   try {
-    const { data, error } = await supabase.from("linkedin_follower_stats").select("*").order("date", { ascending: true });
+    let q = supabase.from("linkedin_follower_stats").select("*").order("date", { ascending: true });
+    if (req.query.orgId) q = q.eq("org_id", req.query.orgId);
+    const { data, error } = await q;
     if (error) throw error;
     res.json(data || []);
   } catch (err) { res.status(500).json({ message: err.message }); }
@@ -421,7 +357,9 @@ router.get("/follower-stats", async (req, res) => {
 
 router.get("/page-analytics", async (req, res) => {
   try {
-    const { data, error } = await supabase.from("linkedin_page_analytics").select("*").order("date", { ascending: true });
+    let q = supabase.from("linkedin_page_analytics").select("*").order("date", { ascending: true });
+    if (req.query.orgId) q = q.eq("org_id", req.query.orgId);
+    const { data, error } = await q;
     if (error) throw error;
     res.json(data || []);
   } catch (err) { res.status(500).json({ message: err.message }); }
@@ -429,7 +367,9 @@ router.get("/page-analytics", async (req, res) => {
 
 router.get("/posts", async (req, res) => {
   try {
-    const { data, error } = await supabase.from("linkedin_post_analytics").select("*").order("post_date", { ascending: false });
+    let q = supabase.from("linkedin_post_analytics").select("*").order("post_date", { ascending: false });
+    if (req.query.orgId) q = q.eq("org_id", req.query.orgId);
+    const { data, error } = await q;
     if (error) throw error;
     res.json(data || []);
   } catch (err) { res.status(500).json({ message: err.message }); }
@@ -437,7 +377,9 @@ router.get("/posts", async (req, res) => {
 
 router.get("/ad-analytics", async (req, res) => {
   try {
-    const { data, error } = await supabase.from("linkedin_ad_analytics").select("*").order("date", { ascending: true });
+    let q = supabase.from("linkedin_ad_analytics").select("*").order("date", { ascending: true });
+    if (req.query.orgId) q = q.eq("org_id", req.query.orgId);
+    const { data, error } = await q;
     if (error) throw error;
     res.json(data || []);
   } catch (err) { res.status(500).json({ message: err.message }); }
