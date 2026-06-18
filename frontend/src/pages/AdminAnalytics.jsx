@@ -1,6 +1,6 @@
 // FILE: src/pages/AdminAnalytics.jsx
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
 import useAuthStore from "../store/authStore";
@@ -92,6 +92,80 @@ function FilterSelect({ label, value, onChange, options }) {
           <option key={o.value} value={o.value}>{o.label}</option>
         ))}
       </select>
+    </div>
+  );
+}
+
+function MultiSelectFilter({ label, selected, onChange, options }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const toggle = (val) => {
+    onChange(
+      selected.includes(val) ? selected.filter((v) => v !== val) : [...selected, val]
+    );
+  };
+
+  const clearAll = () => onChange([]);
+
+  const displayLabel =
+    selected.length === 0
+      ? "All statuses"
+      : selected.length === 1
+      ? selected[0]
+      : `${selected.length} selected`;
+
+  return (
+    <div className="flex flex-col gap-1 relative" ref={ref}>
+      <label className="text-xs text-gray-400">{label}</label>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={`text-sm border rounded-xl px-3 py-2 bg-white text-left flex items-center justify-between gap-2 focus:outline-none focus:ring-2 focus:ring-black/10 transition-colors ${
+          selected.length > 0 ? "border-black text-gray-900 font-medium" : "border-gray-200 text-gray-700"
+        }`}
+      >
+        <span className="truncate">{displayLabel}</span>
+        <svg className={`w-3.5 h-3.5 flex-shrink-0 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-xl shadow-lg py-1 min-w-[190px]">
+          {selected.length > 0 && (
+            <button
+              onClick={clearAll}
+              className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 border-b border-gray-100"
+            >
+              Clear selection
+            </button>
+          )}
+          {options.map((o) => {
+            const checked = selected.includes(o.value);
+            return (
+              <label
+                key={o.value}
+                className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm text-gray-700"
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggle(o.value)}
+                  className="rounded border-gray-300 text-black focus:ring-black w-3.5 h-3.5 flex-shrink-0"
+                />
+                {o.label}
+              </label>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -346,7 +420,7 @@ export default function AdminAnalytics() {
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [overdueFilter, setOverdueFilter]   = useState("All");
   const [monthFilter, setMonthFilter]       = useState("All");
-  const [statusFilter, setStatusFilter]     = useState("All");
+  const [statusFilter, setStatusFilter]     = useState([]);
 
   // ========== REMOVED ACCESS DENIED BLOCK ==========
 
@@ -382,7 +456,7 @@ export default function AdminAnalytics() {
       if (overdueFilter === "Overdue" && !isOverdue(t)) return false;
       if (overdueFilter === "NonOverdue" && isOverdue(t)) return false;
       if (monthFilter !== "All" && getMonthLabel(t.due_date) !== monthFilter) return false;
-      if (statusFilter !== "All" && t.status !== statusFilter) return false;
+      if (statusFilter.length > 0 && !statusFilter.includes(t.status)) return false;
       return true;
     });
 
@@ -533,14 +607,13 @@ export default function AdminAnalytics() {
               options={divisions.map((d) => ({ label: d, value: d }))} />
             <FilterSelect label="Category" value={categoryFilter} onChange={setCategoryFilter}
               options={categories.map((c) => ({ label: c, value: c }))} />
-            <FilterSelect label="Status" value={statusFilter} onChange={setStatusFilter}
+            <MultiSelectFilter label="Status" selected={statusFilter} onChange={setStatusFilter}
               options={[
-                { label: "All statuses",        value: "All" },
-                { label: "Open",                value: "Open" },
-                { label: "In Progress",         value: "In Progress" },
-                { label: "Waiting For Approval",value: "Waiting For Approval" },
-                { label: "Completed",           value: "Completed" },
-                { label: "Closed",              value: "Closed" },
+                { label: "Open",                 value: "Open" },
+                { label: "In Progress",          value: "In Progress" },
+                { label: "Waiting For Approval", value: "Waiting For Approval" },
+                { label: "Completed",            value: "Completed" },
+                { label: "Closed",               value: "Closed" },
               ]} />
             <FilterSelect label="Overdue status" value={overdueFilter} onChange={setOverdueFilter}
               options={[{ label: "All tasks", value: "All" }, { label: "Overdue only", value: "Overdue" }, { label: "Non-overdue", value: "NonOverdue" }]} />
