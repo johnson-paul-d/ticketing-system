@@ -518,6 +518,7 @@ function AdsSection({ data }) {
 // ─── Sync banner ──────────────────────────────────────────────────────────────
 
 function SyncBanner({ result }) {
+  const [open, setOpen] = useState(false);
   if (!result) return null;
   if (result.error) return (
     <span className="text-xs px-3 py-1.5 rounded-full font-medium bg-red-50 text-red-600">
@@ -525,18 +526,35 @@ function SyncBanner({ result }) {
     </span>
   );
   if (result.summary) {
+    const allErrors = Object.entries(result.summary).flatMap(([name, r]) =>
+      (r.errors || []).map(e => `[${name}] ${e}`)
+    );
     const lines = Object.entries(result.summary).map(([name, r]) => {
       const parts = [];
-      if (r.follower) parts.push(`${r.follower} follower`);
-      if (r.page)     parts.push(`${r.page} page`);
+      if (r.follower) parts.push(`${r.follower}f`);
+      if (r.page)     parts.push(`${r.page}p`);
       if (r.posts)    parts.push(`${r.posts} posts`);
-      const errs = r.errors?.filter(e => !e.startsWith("ShareStats:")).length;
-      return `${name}: ${parts.join(", ") || "no data"}${errs ? ` (${errs} issues)` : ""}`;
+      return `${name}: ${parts.join(", ") || "no data"}`;
     });
     return (
-      <span className="text-xs px-3 py-1.5 rounded-full font-medium bg-green-50 text-green-700">
-        ✓ {lines.join(" · ")}
-      </span>
+      <div className="flex flex-col items-end gap-1">
+        <div className="flex items-center gap-2">
+          <span className="text-xs px-3 py-1.5 rounded-full font-medium bg-green-50 text-green-700">
+            ✓ {lines.join(" · ")}
+          </span>
+          {allErrors.length > 0 && (
+            <button onClick={() => setOpen(o => !o)}
+              className="text-xs text-red-400 underline underline-offset-2 hover:text-red-600">
+              {allErrors.length} errors {open ? "▲" : "▼"}
+            </button>
+          )}
+        </div>
+        {open && (
+          <div className="bg-gray-900 text-green-400 text-xs rounded-xl p-4 max-w-2xl w-full font-mono space-y-1 text-left max-h-64 overflow-y-auto">
+            {allErrors.map((e, i) => <p key={i}>{e}</p>)}
+          </div>
+        )}
+      </div>
     );
   }
   return null;

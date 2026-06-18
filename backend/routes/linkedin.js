@@ -12,36 +12,36 @@ const LI_AUTH       = "https://www.linkedin.com/oauth/v2";
 // ─── Core fetch wrapper ───────────────────────────────────────────────────────
 // Builds URL manually so List() notation is not double-encoded by URLSearchParams
 
-async function liGet(path, token, params = {}) {
+// withVersion=true → sends LinkedIn-Version: 202401 (needed for ugcPosts)
+// withVersion=false → classic v2 without version header (used for analytics endpoints)
+async function liGet(path, token, params = {}, withVersion = false) {
   const pairs = Object.entries(params)
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
     .join("&");
   const url = `${LI_API}${path}${pairs ? "?" + pairs : ""}`;
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    "X-Restli-Protocol-Version": "2.0.0",
+  };
+  if (withVersion) headers["LinkedIn-Version"] = "202401";
 
-  const res  = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "X-Restli-Protocol-Version": "2.0.0",
-      "LinkedIn-Version": "202401",
-    },
-  });
+  const res  = await fetch(url, { headers });
   const text = await res.text();
-  if (!res.ok) throw new Error(`LI ${res.status} [${path}]: ${text.slice(0, 300)}`);
+  if (!res.ok) throw new Error(`LI ${res.status} [${path}]: ${text.slice(0, 400)}`);
   try { return JSON.parse(text); } catch { return {}; }
 }
 
-// ugcPosts authors param must NOT be double-encoded (List(...) is restli syntax)
-async function liGetRaw(path, token, rawQuery) {
+async function liGetRaw(path, token, rawQuery, withVersion = false) {
   const url = `${LI_API}${path}?${rawQuery}`;
-  const res  = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "X-Restli-Protocol-Version": "2.0.0",
-      "LinkedIn-Version": "202401",
-    },
-  });
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    "X-Restli-Protocol-Version": "2.0.0",
+  };
+  if (withVersion) headers["LinkedIn-Version"] = "202401";
+
+  const res  = await fetch(url, { headers });
   const text = await res.text();
-  if (!res.ok) throw new Error(`LI ${res.status} [${path}]: ${text.slice(0, 300)}`);
+  if (!res.ok) throw new Error(`LI ${res.status} [${path}]: ${text.slice(0, 400)}`);
   try { return JSON.parse(text); } catch { return {}; }
 }
 
@@ -191,26 +191,32 @@ router.get("/debug", auth, async (req, res) => {
       "timeIntervals.timeRange.end":   end,
     };
 
-    const [follower, followerSnap, page, posts, shareWithTime, shareNoTime] = await Promise.allSettled([
+    // Get 3 posts first so we can test share stats with real URNs
+    const ugcRaw   = await liGetRaw("/ugcPosts", token, `q=authors&authors=List(${encodeURIComponent(orgUrn)})&sortBy=LAST_MODIFIED&count=3`, true).catch(e => ({ elements: [], _err: e.message }));
+    const postUrns = (ugcRaw?.elements || []).map(p => p.id).filter(Boolean);
+    const ugcList  = postUrns.map(u => encodeURIComponent(u)).join(",");
+
+    const [follower, followerSnap, page, shareList] = await Promise.allSettled([
       liGet("/organizationalEntityFollowerStatistics", token, { q: "organizationalEntity", organizationalEntity: orgUrn, ...timeP }),
       liGet("/organizationalEntityFollowerStatistics", token, { q: "organizationalEntity", organizationalEntity: orgUrn }),
       liGet("/organizationPageStatistics",             token, { q: "organization", organization: orgUrn, ...timeP }),
-      liGetRaw("/ugcPosts", token, `q=authors&authors=List(${encodeURIComponent(orgUrn)})&sortBy=LAST_MODIFIED&count=3`),
-      liGet("/organizationalEntityShareStatistics",    token, { q: "organizationalEntity", organizationalEntity: orgUrn, ...timeP }),
-      liGet("/organizationalEntityShareStatistics",    token, { q: "organizationalEntity", organizationalEntity: orgUrn }),
+      ugcList.length
+        ? liGetRaw("/organizationalEntityShareStatistics", token,
+            `q=organizationalEntity&organizationalEntity=${encodeURIComponent(orgUrn)}&ugcPosts=List(${ugcList})`)
+        : Promise.resolve({ elements: [], _note: "no posts to test" }),
     ]);
 
     const ok  = r => r.status === "fulfilled" ? r.value : { error: r.reason?.message };
-    const cnt = r => r.status === "fulfilled" ? r.value?.elements?.length : null;
+    const cnt = r => r.status === "fulfilled" ? r.value?.elements?.length : `err: ${r.reason?.message?.slice(0,120)}`;
 
     res.json({
       org, orgUrn,
-      follower_timeseries: { elements: cnt(follower),     sample: ok(follower)?.elements?.[0] },
-      follower_snapshot:   { elements: cnt(followerSnap), sample: ok(followerSnap)?.elements?.[0] },
-      page:                { elements: cnt(page),         sample: ok(page)?.elements?.[0] },
-      posts:               { elements: cnt(posts),        sample: ok(posts)?.elements?.[0]?.id },
-      share_with_time:     { elements: cnt(shareWithTime), sample: ok(shareWithTime)?.elements?.[0] },
-      share_no_time:       { elements: cnt(shareNoTime),   sample: ok(shareNoTime)?.elements?.[0] },
+      follower_timeseries: { elements: cnt(follower),     sample: ok(follower)?.elements?.[0],    error: ok(follower)?.error },
+      follower_snapshot:   { elements: cnt(followerSnap), sample: ok(followerSnap)?.elements?.[0], error: ok(followerSnap)?.error },
+      page_timeseries:     { elements: cnt(page),         sample: ok(page)?.elements?.[0],         error: ok(page)?.error },
+      posts:               { elements: ugcRaw?.elements?.length, sample: ugcRaw?.elements?.[0]?.id, error: ugcRaw?._err },
+      share_with_ugclist:  { elements: cnt(shareList),    sample: ok(shareList)?.elements?.[0],    error: ok(shareList)?.error,
+                             tested_urns: postUrns },
     });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
@@ -337,7 +343,8 @@ router.post("/sync", auth, async (req, res) => {
       try {
         const ugcRaw = await liGetRaw(
           "/ugcPosts", token,
-          `q=authors&authors=List(${encodeURIComponent(orgUrn)})&sortBy=LAST_MODIFIED&count=50`
+          `q=authors&authors=List(${encodeURIComponent(orgUrn)})&sortBy=LAST_MODIFIED&count=50`,
+          true  // needs LinkedIn-Version header
         );
         const posts = ugcRaw?.elements || [];
         if (!posts.length) r.errors.push("Posts: 0 UGC posts returned");
