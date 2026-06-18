@@ -56,12 +56,17 @@ export default function useLinkedInData() {
   }, [fetchData]);
 
   const disconnect = useCallback(async () => {
-    await api.delete("/linkedin/disconnect");
+    try { await api.delete("/linkedin/disconnect"); } catch { /* ignore */ }
     setStatus({ connected: false });
     setFollowerStats([]);
     setPageAnalytics([]);
     setPosts([]);
     setAdAnalytics([]);
+  }, []);
+
+  const debug = useCallback(async () => {
+    const res = await api.get("/linkedin/debug");
+    return res.data;
   }, []);
 
   useEffect(() => {
@@ -85,6 +90,7 @@ export default function useLinkedInData() {
     error,
     sync,
     disconnect,
+    debug,
     refetch: fetchData,
   };
 }
