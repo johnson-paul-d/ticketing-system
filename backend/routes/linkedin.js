@@ -346,7 +346,7 @@ router.post("/sync", auth, async (req, res) => {
 
 // ─── 5. Data endpoints ────────────────────────────────────────────────────────
 
-router.get("/follower-stats", auth, async (req, res) => {
+router.get("/follower-stats", async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("linkedin_follower_stats")
@@ -359,7 +359,7 @@ router.get("/follower-stats", auth, async (req, res) => {
   }
 });
 
-router.get("/page-analytics", auth, async (req, res) => {
+router.get("/page-analytics", async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("linkedin_page_analytics")
@@ -372,7 +372,7 @@ router.get("/page-analytics", auth, async (req, res) => {
   }
 });
 
-router.get("/posts", auth, async (req, res) => {
+router.get("/posts", async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("linkedin_post_analytics")
@@ -385,7 +385,7 @@ router.get("/posts", auth, async (req, res) => {
   }
 });
 
-router.get("/ad-analytics", auth, async (req, res) => {
+router.get("/ad-analytics", async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("linkedin_ad_analytics")
