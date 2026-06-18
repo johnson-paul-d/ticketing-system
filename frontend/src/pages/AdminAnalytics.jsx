@@ -37,7 +37,7 @@ const formatDate = (dateString) => {
 
 const isOverdue = (ticket) => {
   if (!ticket.due_date) return false;
-  return new Date(ticket.due_date) < new Date() && ticket.status !== "Completed";
+  return new Date(ticket.due_date) < new Date() && ticket.status !== "Completed" && ticket.status !== "Closed";
 };
 
 const getInitials = (name = "") =>
@@ -57,6 +57,7 @@ const STATUS_CONFIG = {
   "In Progress":           { dot: "bg-blue-500",   badge: "bg-blue-50 text-blue-700" },
   "Waiting For Approval":  { dot: "bg-purple-400", badge: "bg-purple-50 text-purple-700" },
   Completed:               { dot: "bg-green-500",  badge: "bg-green-50 text-green-700" },
+  Closed:                  { dot: "bg-gray-400",   badge: "bg-gray-100 text-gray-500" },
 };
 
 const PRIORITY_STYLES = {
@@ -96,15 +97,16 @@ function FilterSelect({ label, value, onChange, options }) {
 }
 
 // Thin coloured strip showing completion split
-function StatusBar({ open, inProgress, waiting, completed, total }) {
+function StatusBar({ open, inProgress, waiting, completed, closed, total }) {
   if (!total) return null;
   const w = (n) => `${Math.round((n / total) * 100)}%`;
   return (
     <div className="flex h-1 rounded-full overflow-hidden bg-gray-100">
-      <div className="bg-green-500" style={{ width: w(completed) }} />
-      <div className="bg-blue-500"  style={{ width: w(inProgress) }} />
+      <div className="bg-green-500"  style={{ width: w(completed) }} />
+      <div className="bg-blue-500"   style={{ width: w(inProgress) }} />
       <div className="bg-purple-400" style={{ width: w(waiting) }} />
-      <div className="bg-amber-400" style={{ width: w(open) }} />
+      <div className="bg-amber-400"  style={{ width: w(open) }} />
+      <div className="bg-gray-400"   style={{ width: w(closed) }} />
     </div>
   );
 }
@@ -200,6 +202,7 @@ function PersonCard({ group, colorIndex }) {
   const inProgCount    = all.filter((t) => t.status === "In Progress").length;
   const waitingCount   = all.filter((t) => t.status === "Waiting For Approval").length;
   const completedCount = all.filter((t) => t.status === "Completed").length;
+  const closedCount    = all.filter((t) => t.status === "Closed").length;
 
   const totalLogged   = all.reduce((s, t) => s + (t.time_entries || []).reduce((ss, e) => ss + (e.duration_minutes || 0), 0), 0);
   const totalAllotted = all.reduce((s, t) => s + (t.allotted_minutes || 0), 0);
@@ -236,16 +239,17 @@ function PersonCard({ group, colorIndex }) {
           <StatusBar
             open={openCount} inProgress={inProgCount}
             waiting={waitingCount} completed={completedCount}
-            total={all.length}
+            closed={closedCount} total={all.length}
           />
         </div>
 
         {/* Right-side summary — 4 clean numbers, always aligned */}
-        <div className="hidden sm:grid grid-cols-4 gap-6 flex-shrink-0 text-center">
+        <div className="hidden sm:grid grid-cols-5 gap-6 flex-shrink-0 text-center">
           {[
             { val: all.length,      label: "total" },
             { val: openCount,       label: "open" },
             { val: completedCount,  label: "done" },
+            { val: closedCount,     label: "closed" },
             { val: `${formatHours(totalLogged)} / ${formatHours(totalAllotted)}`, label: "time" },
           ].map(({ val, label }) => (
             <div key={label}>
@@ -317,9 +321,10 @@ function Legend() {
       <span className="text-gray-500 font-medium">Progress bar</span>
       {[
         { color: "bg-green-500",  label: "Completed" },
-        { color: "bg-blue-500",   label: "In progress" },
+        { color: "bg-blue-500",   label: "In Progress" },
         { color: "bg-purple-400", label: "Waiting" },
         { color: "bg-amber-400",  label: "Open" },
+        { color: "bg-gray-400",   label: "Closed" },
       ].map(({ color, label }) => (
         <span key={label} className="flex items-center gap-1.5">
           <span className={`w-2.5 h-2.5 rounded-full ${color}`} />
@@ -341,6 +346,7 @@ export default function AdminAnalytics() {
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [overdueFilter, setOverdueFilter]   = useState("All");
   const [monthFilter, setMonthFilter]       = useState("All");
+  const [statusFilter, setStatusFilter]     = useState("All");
 
   // ========== REMOVED ACCESS DENIED BLOCK ==========
 
@@ -376,6 +382,7 @@ export default function AdminAnalytics() {
       if (overdueFilter === "Overdue" && !isOverdue(t)) return false;
       if (overdueFilter === "NonOverdue" && isOverdue(t)) return false;
       if (monthFilter !== "All" && getMonthLabel(t.due_date) !== monthFilter) return false;
+      if (statusFilter !== "All" && t.status !== statusFilter) return false;
       return true;
     });
 
@@ -422,7 +429,7 @@ export default function AdminAnalytics() {
         .sort((a, b) => b.tickets.filter(isOverdue).length - a.tickets.filter(isOverdue).length)
         .map((g) => [g.groupName, g])
     );
-  }, [tickets, groupBy, divisionFilter, categoryFilter, overdueFilter, monthFilter, user]); // added 'user' to deps
+  }, [tickets, groupBy, divisionFilter, categoryFilter, overdueFilter, monthFilter, statusFilter, user]);
 
   const kpis = useMemo(() => {
     const all = Object.values(groupedHierarchy).flatMap((g) => g.tickets);
@@ -432,6 +439,7 @@ export default function AdminAnalytics() {
       inProgress:all.filter((t) => t.status === "In Progress").length,
       overdue:   all.filter(isOverdue).length,
       completed: all.filter((t) => t.status === "Completed").length,
+      closed:    all.filter((t) => t.status === "Closed").length,
     };
   }, [groupedHierarchy]);
 
@@ -494,10 +502,12 @@ export default function AdminAnalytics() {
         </div>
 
         {/* KPIs */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
           <KpiCard label="Total"       value={kpis.total}      variant="neutral" />
           <KpiCard label="Open"        value={kpis.open}       variant="warn" />
-          <KpiCard label="In progress" value={kpis.inProgress} variant="neutral" />
+          <KpiCard label="In Progress" value={kpis.inProgress} variant="neutral" />
+          <KpiCard label="Completed"   value={kpis.completed}  variant="success" />
+          <KpiCard label="Closed"      value={kpis.closed}     variant="neutral" />
           <KpiCard label="Overdue"     value={kpis.overdue}    variant="danger" />
         </div>
 
@@ -516,13 +526,22 @@ export default function AdminAnalytics() {
 
         {/* Filters */}
         <div className="bg-white border border-gray-100 rounded-2xl p-5 mb-6">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
             <FilterSelect label="Group by" value={groupBy} onChange={setGroupBy}
               options={[{ label: "Person", value: "user" }, { label: "Category", value: "category" }, { label: "Given by", value: "given_by" }]} />
             <FilterSelect label="Division" value={divisionFilter} onChange={setDivisionFilter}
               options={divisions.map((d) => ({ label: d, value: d }))} />
             <FilterSelect label="Category" value={categoryFilter} onChange={setCategoryFilter}
               options={categories.map((c) => ({ label: c, value: c }))} />
+            <FilterSelect label="Status" value={statusFilter} onChange={setStatusFilter}
+              options={[
+                { label: "All statuses",        value: "All" },
+                { label: "Open",                value: "Open" },
+                { label: "In Progress",         value: "In Progress" },
+                { label: "Waiting For Approval",value: "Waiting For Approval" },
+                { label: "Completed",           value: "Completed" },
+                { label: "Closed",              value: "Closed" },
+              ]} />
             <FilterSelect label="Overdue status" value={overdueFilter} onChange={setOverdueFilter}
               options={[{ label: "All tasks", value: "All" }, { label: "Overdue only", value: "Overdue" }, { label: "Non-overdue", value: "NonOverdue" }]} />
             <FilterSelect label="Month" value={monthFilter} onChange={setMonthFilter}

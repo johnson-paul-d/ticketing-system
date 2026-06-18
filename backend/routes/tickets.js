@@ -382,8 +382,9 @@ router.put('/:id', auth, async (req, res) => {
     // =====================================================
     // 4. VALIDATE TIME LOG BEFORE STATUS CHANGE
     // =====================================================
-    const approvalTriggers = ['Completed', 'Waiting For Sources', 'Waiting For Resources'];
-    if (status && approvalTriggers.includes(status)) {
+    const approvalTriggers = ['Completed', 'Waiting For Sources', 'Waiting For Resources', 'Closed'];
+    const timeLogRequired   = ['Completed', 'Waiting For Sources', 'Waiting For Resources'];
+    if (status && timeLogRequired.includes(status)) {
       const { data: timeEntries, error: timeError } = await supabase
         .from('ticket_time_entries')
         .select('id')

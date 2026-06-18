@@ -208,18 +208,20 @@ export default function TicketDetails() {
     }
     try {
       const closedOn = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-      const closureNote = `\n\n---\nClosed by ${user?.name || "Admin"} on ${closedOn}\nReason: ${closeReason.trim()}`;
+      const closureNote = `\n\n---\nClose requested by ${user?.name || "Admin"} on ${closedOn}\nReason: ${closeReason.trim()}`;
       const updatedDescription = (ticket.description || "") + closureNote;
       await api.put(`/tickets/${ticket.id}`, {
         status: "Closed",
         description: updatedDescription,
-        comment: `Ticket closed — Reason: ${closeReason.trim()}`,
+        comment: `Close requested — Reason: ${closeReason.trim()}`,
       });
       setShowCloseModal(false);
       setCloseReason("");
       fetchTicket();
+      alert("Close request submitted. Waiting for admin approval.");
     } catch (err) {
-      alert("Failed to close ticket");
+      const msg = err?.response?.data?.message || "Failed to submit close request";
+      alert(msg);
     }
   };
 
@@ -875,10 +877,10 @@ export default function TicketDetails() {
     {showCloseModal && (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
         <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-lg mx-4">
-          <h2 className="text-2xl font-bold text-red-600">Close Ticket</h2>
+          <h2 className="text-2xl font-bold text-red-600">Request Ticket Closure</h2>
           <p className="text-gray-500 mt-2">
             Provide a reason for closing <span className="font-semibold text-black">"{ticket?.title}"</span>.
-            This will be appended to the ticket description.
+            This will be sent for admin approval before the ticket is closed.
           </p>
           <textarea
             value={closeReason}
@@ -892,7 +894,7 @@ export default function TicketDetails() {
               onClick={closeTicket}
               className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold px-6 py-3 rounded-2xl"
             >
-              Close Ticket
+              Request Closure
             </button>
             <button
               onClick={() => { setShowCloseModal(false); setCloseReason(""); setStatus(ticket?.status || "Open"); }}
