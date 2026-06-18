@@ -463,14 +463,35 @@ router.get("/ad-analytics", async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-// ─── AI helper: call Gemini Flash (free tier) ────────────────────────────────
+// ─── AI helper: call Gemini (tries models in order, throws on all failures) ───
+
+const GEMINI_MODELS = [
+  "gemini-2.0-flash-lite",   // lowest quota cost, try first
+  "gemini-2.0-flash",
+  "gemini-1.5-flash-8b",     // smaller model, separate quota pool
+  "gemini-1.5-pro",
+];
 
 async function geminiGenerate(prompt) {
+  if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not set");
   const { GoogleGenerativeAI } = require("@google/generative-ai");
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-  const result = await model.generateContent(prompt);
-  return result.response.text();
+
+  let lastErr;
+  for (const modelName of GEMINI_MODELS) {
+    try {
+      const model  = genAI.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent(prompt);
+      return result.response.text();
+    } catch (e) {
+      lastErr = e;
+      const msg = e?.message || "";
+      // Only fall through to next model on quota/not-found errors
+      if (msg.includes("429") || msg.includes("404") || msg.includes("not found")) continue;
+      throw e; // non-quota error — surface immediately
+    }
+  }
+  throw lastErr;
 }
 
 // ─── AI: Classify posts via Gemini Flash ─────────────────────────────────────
@@ -512,7 +533,14 @@ router.post("/ai-classify", async (req, res) => {
 
     res.json({ classifications, aiPowered: true });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    const isQuota = (err?.message || "").includes("429");
+    res.json({
+      classifications: {},
+      aiPowered: false,
+      message: isQuota
+        ? "Gemini quota exceeded — using keyword classifier instead"
+        : err.message,
+    });
   }
 });
 
@@ -560,7 +588,17 @@ router.get("/ai-insights", async (req, res) => {
     const insights = match ? JSON.parse(match[0]) : [];
     res.json({ aiPowered: true, insights, posts: pp, followers: ff });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    const isQuota = (err?.message || "").includes("429");
+    // Return rule-based fallback instead of crashing
+    res.json({
+      aiPowered: false,
+      insights: [],
+      posts: [],
+      followers: [],
+      message: isQuota
+        ? "Gemini quota exceeded — showing rule-based insights"
+        : err.message,
+    });
   }
 });
 
