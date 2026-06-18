@@ -95,21 +95,24 @@ router.post("/exchange-token", async (req, res) => {
     const { access_token, expires_in } = await tokenRes.json();
     const expiresAt = new Date(Date.now() + (expires_in || 5184000) * 1000);
 
-    // Fetch ALL admin orgs
+    // Fetch ALL admin orgs (any role — ADMINISTRATOR, CONTENT_ADMIN, etc.)
     let orgs = [];
     try {
       const aclData = await liGet("/organizationAcls", access_token, {
-        q: "roleAssignee", role: "ADMINISTRATOR", state: "APPROVED", count: 10,
+        q: "roleAssignee", count: 50,
       });
+      const seen = new Set();
       for (const el of aclData?.elements || []) {
-        const urn  = el.organization;
-        const id   = urn?.split(":").pop();
-        let name   = `Org ${id}`;
+        const urn = el.organization;
+        const id  = urn?.split(":").pop();
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        let name = `Org ${id}`;
         try {
           const info = await liGet(`/organizations/${id}`, access_token);
           name = info?.localizedName || info?.name?.localized?.en_US || name;
         } catch { /* keep default name */ }
-        orgs.push({ id, name, urn });
+        orgs.push({ id, name, urn, role: el.role });
       }
     } catch (e) {
       console.warn("Org fetch warn:", e.message);
@@ -137,7 +140,42 @@ router.post("/exchange-token", async (req, res) => {
   }
 });
 
-// ─── 2. Select org (after picker) ────────────────────────────────────────────
+// ─── 2. Refresh org list (re-query ACLs without re-authorizing) ──────────────
+
+router.post("/refresh-orgs", async (req, res) => {
+  try {
+    const t     = await getStoredToken();
+    const token = t.access_token;
+
+    const aclData = await liGet("/organizationAcls", token, { q: "roleAssignee", count: 50 });
+    const seen = new Set();
+    const orgs = [];
+    for (const el of aclData?.elements || []) {
+      const urn = el.organization;
+      const id  = urn?.split(":").pop();
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      let name = `Org ${id}`;
+      try {
+        const info = await liGet(`/organizations/${id}`, token);
+        name = info?.localizedName || info?.name?.localized?.en_US || name;
+      } catch { /* keep default */ }
+      orgs.push({ id, name, urn, role: el.role });
+    }
+
+    const { error } = await supabase
+      .from("linkedin_tokens")
+      .update({ all_orgs: orgs })
+      .eq("id", t.id);
+
+    if (error) return res.status(500).json({ message: error.message });
+    res.json({ success: true, orgs, count: orgs.length });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ─── 3. Select org (after picker) ────────────────────────────────────────────
 
 router.post("/select-org", async (req, res) => {
   const { orgId, orgName, orgUrn } = req.body;

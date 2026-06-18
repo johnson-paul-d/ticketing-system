@@ -837,11 +837,13 @@ export default function LinkedInDashboard() {
   const {
     status, allOrgs, selectedOrgId, selectOrg,
     followerStats, pageAnalytics, posts, adAnalytics,
-    loading, dataLoading, syncing, syncResult, sync, disconnect,
+    loading, dataLoading, syncing, syncResult, sync, refreshOrgs, disconnect,
   } = useLinkedInData();
 
-  const [tab,      setTab]      = useState("Overview");
-  const [dateRange, setDateRange] = useState(30);
+  const [tab,           setTab]          = useState("Overview");
+  const [dateRange,     setDateRange]     = useState(30);
+  const [refreshing,    setRefreshing]    = useState(false);
+  const [refreshMsg,    setRefreshMsg]    = useState(null);
 
   // All hooks before early returns
   const cutoff = useMemo(() => cutoffDate(dateRange), [dateRange]);
@@ -919,6 +921,24 @@ export default function LinkedInDashboard() {
                 </svg>Syncing…</>
               ) : "↻ Sync Data"}
             </button>
+            <button
+              onClick={async () => {
+                setRefreshing(true);
+                setRefreshMsg(null);
+                const r = await refreshOrgs();
+                setRefreshing(false);
+                setRefreshMsg(r.success
+                  ? `Found ${r.count} page${r.count !== 1 ? "s" : ""}`
+                  : (r.error || "Failed"));
+                setTimeout(() => setRefreshMsg(null), 4000);
+              }}
+              disabled={refreshing}
+              className="text-xs text-gray-500 hover:text-blue-600 px-3 py-2 rounded-xl hover:bg-blue-50 transition-colors disabled:opacity-50">
+              {refreshing ? "Refreshing…" : "⟳ Refresh Pages"}
+            </button>
+            {refreshMsg && (
+              <span className="text-xs text-green-600 font-medium">{refreshMsg}</span>
+            )}
             <button onClick={disconnect} className="text-xs text-gray-400 hover:text-red-500 px-3 py-2 rounded-xl hover:bg-red-50 transition-colors">
               Disconnect
             </button>

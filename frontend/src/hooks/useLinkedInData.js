@@ -68,6 +68,17 @@ export default function useLinkedInData() {
     }
   }, [fetchData, selectedOrgId]);
 
+  const refreshOrgs = useCallback(async () => {
+    try {
+      const res = await api.post("/linkedin/refresh-orgs");
+      const orgs = res.data.orgs || [];
+      setAllOrgs(orgs);
+      return { success: true, count: orgs.length };
+    } catch (e) {
+      return { success: false, error: e?.response?.data?.message || e.message };
+    }
+  }, []);
+
   const disconnect = useCallback(async () => {
     try { await api.delete("/linkedin/disconnect"); } catch { /* ignore */ }
     setStatus({ connected: false });
@@ -108,6 +119,7 @@ export default function useLinkedInData() {
     syncResult,
     error,
     sync,
+    refreshOrgs,
     disconnect,
     debug,
     refetch: () => fetchData(selectedOrgId),
