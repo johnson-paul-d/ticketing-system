@@ -254,7 +254,16 @@ function AiBadge({ powered }) {
 
 function FollowerTrendChart({ rows, forecastDays }) {
   const { chartData, forecastData } = useMemo(() => {
-    const sorted = [...rows].sort((a,b) => a.date > b.date ? 1 : -1);
+    // Aggregate all orgs by date so multi-org "All Pages" shows a clean combined line
+    const byDate = {};
+    rows.forEach(r => {
+      if (!r.date) return;
+      if (!byDate[r.date]) byDate[r.date] = { date: r.date, total_followers: 0, organic_followers: 0, paid_followers: 0 };
+      byDate[r.date].total_followers    += r.total_followers    || 0;
+      byDate[r.date].organic_followers  += r.organic_followers  || 0;
+      byDate[r.date].paid_followers     += r.paid_followers     || 0;
+    });
+    const sorted = Object.values(byDate).sort((a,b) => a.date > b.date ? 1 : -1);
     const chartData = sorted.map(r => ({
       date:      shortDate(r.date),
       Followers: r.total_followers || 0,
@@ -306,12 +315,20 @@ function FollowerTrendChart({ rows, forecastDays }) {
 }
 
 function OrgSponChart({ rows }) {
-  const data = useMemo(() =>
-    [...rows].sort((a,b)=>a.date>b.date?1:-1).map(r => ({
+  const data = useMemo(() => {
+    const byDate = {};
+    rows.forEach(r => {
+      if (!r.date) return;
+      if (!byDate[r.date]) byDate[r.date] = { date: r.date, organic_followers: 0, paid_followers: 0 };
+      byDate[r.date].organic_followers += r.organic_followers || 0;
+      byDate[r.date].paid_followers    += r.paid_followers    || 0;
+    });
+    return Object.values(byDate).sort((a,b)=>a.date>b.date?1:-1).map(r => ({
       date:    shortDate(r.date),
       Organic: r.organic_followers || 0,
       Paid:    r.paid_followers    || 0,
-    })), [rows]);
+    }));
+  }, [rows]);
 
   if (!data.length) return <Empty label="No follower breakdown data" />;
 
@@ -572,14 +589,21 @@ function OverviewSection({ posts, followerRows, pageRows, prevPosts, prevFollowe
 function FollowerSection({ rows, filtRows }) {
   const [forecastDays, setForecastDays] = useState(30);
 
-  // Monthly breakdown uses all-time data for richer history
+  // Monthly breakdown — aggregate all orgs by date first, then bucket by month
   const monthlyData = useMemo(() => {
-    const byMonth = {};
+    // Step 1: sum all orgs per date
+    const byDate = {};
     rows.forEach(r => {
-      const m = r.date?.slice(0,7);
-      if (!m) return;
-      if (!byMonth[m]) byMonth[m] = { month:m, start:r.total_followers||0, end:r.total_followers||0 };
-      byMonth[m].end = r.total_followers || 0;
+      if (!r.date) return;
+      if (!byDate[r.date]) byDate[r.date] = { date: r.date, total: 0 };
+      byDate[r.date].total += r.total_followers || 0;
+    });
+    // Step 2: bucket into months, tracking first/last value per month
+    const byMonth = {};
+    Object.values(byDate).sort((a,b)=>a.date>b.date?1:-1).forEach(r => {
+      const m = r.date.slice(0,7);
+      if (!byMonth[m]) byMonth[m] = { month:m, start:r.total, end:r.total };
+      byMonth[m].end = r.total;
     });
     return Object.values(byMonth).map(m => ({
       month: new Date(m.month+"-01").toLocaleDateString("en-US",{month:"short",year:"2-digit"}),
@@ -998,7 +1022,14 @@ function StrategySection({ posts, followerRows }) {
   }, [bestDay, topCats]);
 
   const forecastRows = useMemo(()=>{
-    const sorted = [...followerRows].sort((a,b)=>a.date>b.date?1:-1);
+    // Aggregate orgs per date before forecasting
+    const byDate = {};
+    followerRows.forEach(r => {
+      if (!r.date) return;
+      if (!byDate[r.date]) byDate[r.date] = { date:r.date, total_followers:0 };
+      byDate[r.date].total_followers += r.total_followers || 0;
+    });
+    const sorted = Object.values(byDate).sort((a,b)=>a.date>b.date?1:-1);
     const fc30  = linearForecast(sorted, 30);
     const fc60  = linearForecast(sorted, 60);
     const fc90  = linearForecast(sorted, 90);
