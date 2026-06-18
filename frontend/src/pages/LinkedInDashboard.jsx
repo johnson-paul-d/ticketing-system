@@ -1653,6 +1653,14 @@ export default function LinkedInDashboard() {
     setTimeout(()=>setRefreshMsg(null), 4000);
   }, [refreshOrgs]);
 
+  const handleToggleMetric = useCallback(id => {
+    setSelectedMetrics(prev => {
+      if (prev.includes(id)) return prev.filter(m => m !== id);
+      if (prev.length >= 2)  return [prev[1], id];
+      return [...prev, id];
+    });
+  }, []);
+
   if (loading) {
     return (
       <MainLayout>
@@ -1667,14 +1675,6 @@ export default function LinkedInDashboard() {
   }
 
   if (!status?.connected) return <ConnectScreen />;
-
-  const handleToggleMetric = useCallback(id => {
-    setSelectedMetrics(prev => {
-      if (prev.includes(id)) return prev.filter(m => m !== id);
-      if (prev.length >= 2)  return [prev[1], id];
-      return [...prev, id];
-    });
-  }, []);
 
   const GA_BLUE = "#1a73e8";
 
