@@ -332,6 +332,7 @@ export default function TicketDetails() {
   if (!ticket) return <MainLayout>Loading...</MainLayout>;
 
   return (
+    <>
     <MainLayout>
       <div className="bg-white rounded-3xl shadow-sm p-8">
         {/* HEADER */}
@@ -903,5 +904,6 @@ export default function TicketDetails() {
         </div>
       </div>
     )}
+    </>
   );
 }
