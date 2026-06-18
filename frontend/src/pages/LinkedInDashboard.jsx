@@ -252,64 +252,143 @@ function AiBadge({ powered }) {
 
 // ─── Chart Components ─────────────────────────────────────────────────────────
 
-function FollowerTrendChart({ rows, forecastDays }) {
-  const { chartData, forecastData } = useMemo(() => {
-    // Aggregate all orgs by date so multi-org "All Pages" shows a clean combined line
-    const byDate = {};
-    rows.forEach(r => {
-      if (!r.date) return;
-      if (!byDate[r.date]) byDate[r.date] = { date: r.date, total_followers: 0, organic_followers: 0, paid_followers: 0 };
-      byDate[r.date].total_followers    += r.total_followers    || 0;
-      byDate[r.date].organic_followers  += r.organic_followers  || 0;
-      byDate[r.date].paid_followers     += r.paid_followers     || 0;
-    });
-    const sorted = Object.values(byDate).sort((a,b) => a.date > b.date ? 1 : -1);
-    const chartData = sorted.map(r => ({
-      date:      shortDate(r.date),
-      Followers: r.total_followers || 0,
-      Organic:   r.organic_followers || 0,
-      Paid:      r.paid_followers    || 0,
-    }));
-    const fc = linearForecast(sorted, forecastDays);
-    const forecastData = fc.map((f, i) => ({
-      date:      f.date,
-      Predicted: f.predicted,
-      idx:       sorted.length + i,
-    }));
-    return { chartData, forecastData };
-  }, [rows, forecastDays]);
+// Fills every calendar day in the range with an interpolated follower total,
+// then computes the daily gain (today - yesterday). Actual sync dates are
+// shown in solid green/red; interpolated days in a lighter shade.
+function buildDailyFollowerData(allRows, cutoffDate) {
+  // 1. Sum all orgs per actual sync date
+  const byDate = {};
+  allRows.forEach(r => {
+    if (!r.date) return;
+    if (!byDate[r.date]) byDate[r.date] = { date: r.date, total: 0 };
+    byDate[r.date].total += r.total_followers || 0;
+  });
+  const syncPoints = Object.values(byDate).sort((a, b) => (a.date > b.date ? 1 : -1));
+  if (!syncPoints.length) return [];
 
-  if (!chartData.length) return <Empty label="No follower data yet" />;
+  // 2. Calendar range: from cutoffDate (or first sync) to today
+  const startStr = cutoffDate || syncPoints[0].date;
+  const today    = new Date();
+  today.setHours(0, 0, 0, 0);
+  const cur = new Date(startStr + "T00:00:00");
 
-  const combined = [
-    ...chartData.map((d,i) => ({ ...d, idx:i })),
-    ...forecastData.map(f => ({ ...f, Followers: undefined })),
-  ];
+  const calDays = [];
+  while (cur <= today) {
+    calDays.push(cur.toISOString().split("T")[0]);
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  // 3. For each calendar day, linearly interpolate total followers
+  const withTotals = calDays.map(date => {
+    const before = [...syncPoints].reverse().find(p => p.date <= date);
+    const after  = syncPoints.find(p => p.date >= date);
+
+    let total, isSynced;
+    if (!before && !after) {
+      total = 0; isSynced = false;
+    } else if (!before) {
+      total = after.total; isSynced = after.date === date;
+    } else if (!after || before.date === after.date) {
+      total = before.total; isSynced = before.date === date;
+    } else {
+      const t1    = new Date(before.date + "T00:00:00").getTime();
+      const t2    = new Date(after.date  + "T00:00:00").getTime();
+      const t     = new Date(date        + "T00:00:00").getTime();
+      const ratio = (t - t1) / (t2 - t1);
+      total    = Math.round(before.total + ratio * (after.total - before.total));
+      isSynced = (before.date === date || after.date === date);
+    }
+    return { date, total, isSynced };
+  });
+
+  // 4. Daily gain = today's total − yesterday's total
+  return withTotals.map((d, i) => ({
+    date:     shortDate(d.date),
+    rawDate:  d.date,
+    gained:   i > 0 ? d.total - withTotals[i - 1].total : 0,
+    total:    d.total,
+    isSynced: d.isSynced,
+  }));
+}
+
+function FollowerGainsChart({ allRows, cutoffDate }) {
+  const data = useMemo(
+    () => buildDailyFollowerData(allRows, cutoffDate),
+    [allRows, cutoffDate]
+  );
+
+  if (!data.length) return <Empty label="No follower data in this period" sub="Sync your pages to start tracking daily gains." />;
+
+  const totalGained = data.reduce((s, d) => s + d.gained, 0);
+  const bestDay     = [...data].sort((a, b) => b.gained - a.gained)[0];
 
   return (
-    <div className="h-72">
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={combined} margin={{ top:8, right:16, left:0, bottom:0 }}>
-          <defs>
-            <linearGradient id="fGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%"  stopColor={LI_BLUE} stopOpacity={0.18}/>
-              <stop offset="95%" stopColor={LI_BLUE} stopOpacity={0.02}/>
-            </linearGradient>
-          </defs>
-          <CartesianGrid stroke="#F3F4F6" strokeDasharray="3 3" />
-          <XAxis dataKey="date" tick={{ fontSize:10, fill:"#9CA3AF" }} tickLine={false} />
-          <YAxis tick={{ fontSize:10, fill:"#9CA3AF" }} tickLine={false} axisLine={false} tickFormatter={v=>fmt(v)} />
-          <Tooltip contentStyle={TTStyle} formatter={v=>[fmt(v)]} />
-          <Legend wrapperStyle={{ fontSize:11, paddingTop:8 }} />
-          <Area type="monotone" dataKey="Followers" stroke={LI_BLUE} fill="url(#fGrad)" strokeWidth={2} dot={false} connectNulls={false} />
-          {forecastData.length > 0 && (
-            <Line type="monotone" dataKey="Predicted" stroke={LI_BLUE} strokeWidth={2} strokeDasharray="6 4" dot={false} connectNulls />
-          )}
-          {forecastData.length > 0 && (
-            <ReferenceLine x={chartData.at(-1)?.date} stroke="#D1D5DB" strokeDasharray="4 4" label={{ value:"Now", fontSize:10, fill:"#9CA3AF" }} />
-          )}
-        </AreaChart>
-      </ResponsiveContainer>
+    <div>
+      <div className="flex gap-8 mb-5 flex-wrap">
+        <div>
+          <p className="text-xs text-gray-400 mb-0.5">Total gained in period</p>
+          <p className="text-2xl font-bold" style={{ color: totalGained >= 0 ? "#10B981" : "#EF4444" }}>
+            {totalGained >= 0 ? "+" : ""}{fmt(totalGained)}
+          </p>
+        </div>
+        {bestDay?.gained > 0 && (
+          <div>
+            <p className="text-xs text-gray-400 mb-0.5">Best day</p>
+            <p className="text-2xl font-bold text-gray-800">+{fmt(bestDay.gained)}</p>
+            <p className="text-xs text-gray-400">{bestDay.date}</p>
+          </div>
+        )}
+        <div>
+          <p className="text-xs text-gray-400 mb-0.5">Current followers</p>
+          <p className="text-2xl font-bold text-gray-800">{fmt(data.at(-1)?.total || 0)}</p>
+        </div>
+      </div>
+
+      <div className="h-64">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{ top:4, right:16, left:0, bottom:0 }}>
+            <CartesianGrid stroke="#F3F4F6" strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="date" tick={{ fontSize:10, fill:"#9CA3AF" }} tickLine={false}
+              interval={Math.floor(data.length / 8)} />
+            <YAxis tick={{ fontSize:10, fill:"#9CA3AF" }} tickLine={false} axisLine={false}
+              tickFormatter={v => (v > 0 ? "+" : "") + fmt(v)} />
+            <ReferenceLine y={0} stroke="#E5E7EB" />
+            <Tooltip contentStyle={TTStyle}
+              content={({ active, payload }) => {
+                if (!active || !payload?.[0]) return null;
+                const d = payload[0].payload;
+                return (
+                  <div style={TTStyle}>
+                    <p className="text-xs font-semibold text-gray-700 mb-1">{d.date}</p>
+                    <p className="text-sm font-bold mb-0.5"
+                      style={{ color: d.gained >= 0 ? "#10B981" : "#EF4444" }}>
+                      {d.gained >= 0 ? "+" : ""}{fmt(d.gained)} followers
+                    </p>
+                    <p className="text-xs text-gray-400">Running total: {fmt(d.total)}</p>
+                    {!d.isSynced && <p className="text-xs text-amber-500 mt-1">⚡ Estimated (between syncs)</p>}
+                  </div>
+                );
+              }} />
+            <Bar dataKey="gained" radius={[3,3,0,0]} maxBarSize={32}>
+              {data.map((d, i) => (
+                <Cell key={i}
+                  fill={d.gained >= 0 ? "#10B981" : "#EF4444"}
+                  fillOpacity={d.isSynced ? 1 : 0.35} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div className="flex items-center gap-5 mt-3 pt-3 border-t border-gray-100 text-xs text-gray-400 flex-wrap">
+        <span className="flex items-center gap-1.5">
+          <span className="w-3 h-3 rounded-sm inline-block bg-green-500"></span> Actual sync data
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-3 h-3 rounded-sm inline-block bg-green-200"></span> Estimated (between syncs)
+        </span>
+        <span className="ml-auto">Sync daily for accurate per-day figures</span>
+      </div>
     </div>
   );
 }
@@ -586,8 +665,7 @@ function OverviewSection({ posts, followerRows, pageRows, prevPosts, prevFollowe
 
 // ─── Follower Growth Section ──────────────────────────────────────────────────
 
-function FollowerSection({ rows, filtRows }) {
-  const [forecastDays, setForecastDays] = useState(30);
+function FollowerSection({ rows, filtRows, cutoff }) {
 
   // Monthly breakdown — aggregate all orgs by date first, then bucket by month
   const monthlyData = useMemo(() => {
@@ -614,26 +692,10 @@ function FollowerSection({ rows, filtRows }) {
 
   return (
     <div className="space-y-6">
-      <Section title="Follower Growth Trend"
-        sub={`All historical data (${rows.length} data points) + forecast projection`}
-        action={
-          <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
-            {[30,60,90].map(d => (
-              <button key={d} onClick={()=>setForecastDays(d)}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${forecastDays===d ? "bg-white shadow-sm text-gray-900" : "text-gray-500"}`}>
-                +{d}d
-              </button>
-            ))}
-          </div>
-        }>
+      <Section title="Daily Follower Growth"
+        sub="Followers gained per calendar day (estimated between syncs)">
         <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
-          <FollowerTrendChart rows={rows} forecastDays={forecastDays} />
-          {rows.length >= 2 && (
-            <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2 text-xs text-gray-400">
-              <span className="inline-block w-6 border-t-2 border-dashed border-blue-400"></span>
-              Forecast (linear projection · not guaranteed)
-            </div>
-          )}
+          <FollowerGainsChart allRows={rows} cutoffDate={cutoff} />
         </div>
       </Section>
 
@@ -1348,7 +1410,7 @@ export default function LinkedInDashboard() {
               />
             )}
             {section === "followers" && (
-              <FollowerSection rows={followerStats} filtRows={filtFollower} />
+              <FollowerSection rows={followerStats} filtRows={filtFollower} cutoff={cutoff} />
             )}
             {section === "content" && (
               <ContentSection posts={filtPosts} showPage={showPage} />
