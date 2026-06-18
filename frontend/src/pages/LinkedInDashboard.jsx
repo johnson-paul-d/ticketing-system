@@ -2,22 +2,25 @@ import { useMemo, useState } from "react";
 import MainLayout from "../layouts/MainLayout";
 import useLinkedInData from "../hooks/useLinkedInData";
 import {
-  LineChart, Line, BarChart, Bar,
+  LineChart, Line, BarChart, Bar, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 
-const LI_BLUE  = "#0077B5";
+const LI_BLUE   = "#0077B5";
+const LI_DARK   = "#004471";
+const GREEN      = "#10B981";
+const AMBER      = "#F59E0B";
+const RED        = "#EF4444";
+const SLATE      = "#64748B";
 
 const OAUTH_SCOPES = [
-  "r_organization_social", "rw_organization_admin",
-  "r_ads_reporting", "r_ads",
+  "r_organization_social", "rw_organization_admin", "r_ads_reporting", "r_ads",
 ].join("%20");
 
 function buildAuthUrl(clientId, redirectUri) {
   return (
-    `https://www.linkedin.com/oauth/v2/authorization` +
-    `?response_type=code&client_id=${clientId}` +
-    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+    `https://www.linkedin.com/oauth/v2/authorization?response_type=code` +
+    `&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}` +
     `&scope=${OAUTH_SCOPES}&state=${Math.random().toString(36).slice(2)}`
   );
 }
@@ -26,55 +29,84 @@ function buildAuthUrl(clientId, redirectUri) {
 
 function fmt(n, opts = {}) {
   if (n == null || isNaN(n)) return "—";
+  if (opts.pct)      return `${Number(n).toFixed(2)}%`;
   if (opts.currency) return `₹${Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
-  if (opts.pct) return `${Number(n).toFixed(2)}%`;
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000)     return `${(n / 1_000).toFixed(1)}K`;
   return Number(n).toLocaleString();
 }
 
+function pctChange(current, previous) {
+  if (!previous) return null;
+  return ((current - previous) / previous) * 100;
+}
+
 function shortDate(str) {
   if (!str) return "";
-  const d = new Date(str);
-  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+  return new Date(str).toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+}
+
+function cutoffDate(days) {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString().split("T")[0];
 }
 
 function mergeByDate(rows, keys) {
   const map = {};
   rows.forEach(r => {
-    if (!map[r.date]) {
-      map[r.date] = { date: r.date };
-      keys.forEach(k => (map[r.date][k] = 0));
-    }
-    keys.forEach(k => (map[r.date][k] += r[k] || 0));
+    if (!map[r.date]) { map[r.date] = { date: r.date }; keys.forEach(k => (map[r.date][k] = 0)); }
+    keys.forEach(k => (map[r.date][k] += Number(r[k]) || 0));
   });
   return Object.values(map).sort((a, b) => (a.date > b.date ? 1 : -1));
 }
 
 const TTStyle = {
-  background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12,
-  padding: "10px 14px", fontSize: 12, boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
+  background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10,
+  padding: "8px 12px", fontSize: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
 };
+
+// ─── Trend badge ──────────────────────────────────────────────────────────────
+
+function Trend({ pct, inverse = false }) {
+  if (pct == null) return null;
+  const positive = inverse ? pct < 0 : pct > 0;
+  const color = pct === 0 ? "text-gray-400" : positive ? "text-green-600" : "text-red-500";
+  const arrow = pct > 0 ? "↑" : pct < 0 ? "↓" : "→";
+  return (
+    <span className={`text-xs font-semibold ${color} ml-1`}>
+      {arrow} {Math.abs(pct).toFixed(1)}%
+    </span>
+  );
+}
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 
-function KPICard({ label, value, sub, icon }) {
+function KPICard({ label, value, sub, icon, trend }) {
   return (
     <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
-      <div className="flex items-start justify-between mb-3">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{label}</p>
-        <span className="text-lg">{icon}</span>
+      <div className="flex items-start justify-between mb-2">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider leading-4">{label}</p>
+        <span className="text-xl">{icon}</span>
       </div>
-      <p className="text-3xl font-bold text-gray-900 tabular-nums">{value}</p>
-      {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
+      <p className="text-3xl font-bold text-gray-900 tabular-nums mt-1">{value}</p>
+      <div className="flex items-center mt-1 flex-wrap gap-1">
+        {sub && <p className="text-xs text-gray-400">{sub}</p>}
+        {trend != null && <Trend pct={trend} />}
+      </div>
     </div>
   );
 }
 
-function Section({ title, children }) {
+// ─── Section wrapper ──────────────────────────────────────────────────────────
+
+function Section({ title, action, children }) {
   return (
     <div className="mb-8">
-      <h2 className="text-sm font-bold uppercase tracking-widest text-gray-400 mb-4">{title}</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400">{title}</h2>
+        {action}
+      </div>
       {children}
     </div>
   );
@@ -82,53 +114,68 @@ function Section({ title, children }) {
 
 function EmptyState({ label, sub }) {
   return (
-    <div className="bg-gray-50 border border-dashed border-gray-200 rounded-2xl py-12 text-center">
+    <div className="bg-gray-50 border border-dashed border-gray-200 rounded-2xl py-10 text-center">
       <p className="text-sm text-gray-400 font-medium">{label}</p>
       {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
     </div>
   );
 }
 
-// ─── Page selector tabs ───────────────────────────────────────────────────────
+// ─── Page selector ────────────────────────────────────────────────────────────
 
 function PageSelector({ allOrgs, selectedOrgId, onSelect, dataLoading }) {
   if (!allOrgs.length) return null;
+  const opts = [{ id: null, name: "All Pages" }, ...allOrgs];
   return (
-    <div className="flex items-center gap-2 mb-6 flex-wrap">
-      <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-1">Page</span>
-      <button
-        onClick={() => onSelect(null)}
-        disabled={dataLoading}
-        className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-          selectedOrgId === null
-            ? "text-white border-transparent"
-            : "bg-white text-gray-500 border-gray-200 hover:border-gray-400"
-        }`}
-        style={selectedOrgId === null ? { background: LI_BLUE } : {}}
-      >
-        All Pages
-      </button>
-      {allOrgs.map(org => (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Page</span>
+      {opts.map(o => (
         <button
-          key={org.id}
-          onClick={() => onSelect(org.id)}
+          key={o.id ?? "all"}
+          onClick={() => onSelect(o.id)}
           disabled={dataLoading}
-          className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-            selectedOrgId === org.id
+          className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${
+            selectedOrgId === o.id
               ? "text-white border-transparent"
               : "bg-white text-gray-500 border-gray-200 hover:border-gray-400"
           }`}
-          style={selectedOrgId === org.id ? { background: LI_BLUE } : {}}
+          style={selectedOrgId === o.id ? { background: LI_BLUE } : {}}
         >
-          {org.name || `Page ${org.id}`}
+          {o.name}
         </button>
       ))}
       {dataLoading && (
-        <svg className="animate-spin w-3.5 h-3.5 text-gray-400 ml-1" fill="none" viewBox="0 0 24 24">
+        <svg className="animate-spin w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
         </svg>
       )}
+    </div>
+  );
+}
+
+// ─── Date range filter ────────────────────────────────────────────────────────
+
+const DATE_RANGES = [
+  { label: "7D",  days: 7 },
+  { label: "30D", days: 30 },
+  { label: "90D", days: 90 },
+];
+
+function DateRangePicker({ value, onChange }) {
+  return (
+    <div className="flex gap-1 bg-gray-100 p-0.5 rounded-xl">
+      {DATE_RANGES.map(r => (
+        <button
+          key={r.days}
+          onClick={() => onChange(r.days)}
+          className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+            value === r.days ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          {r.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -139,94 +186,94 @@ function ConnectScreen() {
   const clientId    = import.meta.env.VITE_LINKEDIN_CLIENT_ID;
   const redirectUri = import.meta.env.VITE_LINKEDIN_REDIRECT_URI || "http://localhost:3000/auth/linkedin/callback";
   const authUrl     = buildAuthUrl(clientId, redirectUri);
-
   return (
     <MainLayout>
       <div className="flex items-center justify-center min-h-[70vh]">
         <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-12 max-w-md w-full text-center">
           <div className="w-16 h-16 rounded-2xl mx-auto mb-6 flex items-center justify-center" style={{ background: LI_BLUE }}>
             <svg viewBox="0 0 24 24" className="w-9 h-9 fill-white">
-              <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+              <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
             </svg>
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">LinkedIn Analytics</h1>
-          <p className="text-gray-500 text-sm mb-8">
-            Connect your LinkedIn company pages to pull follower growth, post performance, and page analytics.
-          </p>
-          <a
-            href={authUrl}
-            className="inline-flex items-center gap-2 text-white font-semibold px-8 py-3 rounded-2xl text-sm hover:opacity-90"
-            style={{ background: LI_BLUE }}
-          >
-            <svg viewBox="0 0 24 24" className="w-4 h-4 fill-white">
-              <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
-            </svg>
+          <p className="text-gray-500 text-sm mb-8">Connect your LinkedIn company pages to track follower growth, content performance, and page analytics.</p>
+          <a href={authUrl} className="inline-flex items-center gap-2 text-white font-semibold px-8 py-3 rounded-2xl text-sm hover:opacity-90" style={{ background: LI_BLUE }}>
             Connect LinkedIn Pages
           </a>
-          <p className="text-xs text-gray-400 mt-5">
-            Requires page admin access · scopes: r_organization_social, r_ads_reporting
-          </p>
+          <p className="text-xs text-gray-400 mt-4">Requires page admin access · scopes: r_organization_social, r_ads_reporting</p>
         </div>
       </div>
     </MainLayout>
   );
 }
 
-// ─── Follower Growth Chart ────────────────────────────────────────────────────
+// ─── Follower chart ───────────────────────────────────────────────────────────
 
-function FollowerGrowthChart({ data }) {
-  const chartData = useMemo(() =>
-    mergeByDate(data, ["total_followers", "organic_followers", "paid_followers"])
-      .map(d => ({
-        date:     shortDate(d.date),
-        Total:    d.total_followers,
-        Organic:  d.organic_followers,
-        Paid:     d.paid_followers,
-      })),
-    [data]
-  );
+function FollowerChart({ data, allOrgs, selectedOrgId }) {
+  const showMulti = !selectedOrgId && allOrgs.length > 1;
 
-  if (!chartData.length) return <EmptyState label="No follower data synced yet. Click Sync Data to pull from LinkedIn." />;
+  const chartData = useMemo(() => {
+    if (!showMulti) {
+      return mergeByDate(data, ["total_followers", "organic_followers", "paid_followers"])
+        .map(d => ({ date: shortDate(d.date), Total: d.total_followers, Organic: d.organic_followers, Paid: d.paid_followers }));
+    }
+    // Multi-org: one series per org by date
+    const map = {};
+    data.forEach(r => {
+      if (!map[r.date]) map[r.date] = { date: r.date };
+      map[r.date][r.org_name || r.org_id] = (map[r.date][r.org_name || r.org_id] || 0) + (r.total_followers || 0);
+    });
+    return Object.values(map).sort((a, b) => a.date > b.date ? 1 : -1)
+      .map(d => ({ ...d, date: shortDate(d.date) }));
+  }, [data, showMulti]);
+
+  if (!chartData.length) return <EmptyState label="No follower data yet — sync to pull from LinkedIn" />;
+
+  const orgKeys = showMulti ? allOrgs.map(o => o.name || o.id) : ["Total", "Organic", "Paid"];
+  const colors  = showMulti ? [LI_BLUE, GREEN, AMBER, RED] : [LI_BLUE, GREEN, AMBER];
 
   return (
     <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
       <h3 className="text-sm font-semibold text-gray-700 mb-4">Follower Growth</h3>
       <div className="h-64">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+          <AreaChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+            <defs>
+              {orgKeys.map((k, i) => (
+                <linearGradient key={k} id={`grad${i}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={colors[i]} stopOpacity={0.15} />
+                  <stop offset="95%" stopColor={colors[i]} stopOpacity={0.01} />
+                </linearGradient>
+              ))}
+            </defs>
             <CartesianGrid stroke="#F3F4F6" strokeDasharray="3 3" />
             <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#9CA3AF" }} tickLine={false} />
             <YAxis tick={{ fontSize: 10, fill: "#9CA3AF" }} tickLine={false} axisLine={false} tickFormatter={v => fmt(v)} />
-            <Tooltip contentStyle={TTStyle} formatter={(v) => [fmt(v)]} />
+            <Tooltip contentStyle={TTStyle} formatter={(v, n) => [fmt(v), n]} />
             <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
-            <Line type="monotone" dataKey="Total"   stroke={LI_BLUE}  strokeWidth={2.5} dot={false} />
-            <Line type="monotone" dataKey="Organic" stroke="#10B981"  strokeWidth={1.5} dot={false} strokeDasharray="4 4" />
-            <Line type="monotone" dataKey="Paid"    stroke="#F59E0B"  strokeWidth={1.5} dot={false} strokeDasharray="4 4" />
-          </LineChart>
+            {orgKeys.map((k, i) => (
+              <Area key={k} type="monotone" dataKey={k} stroke={colors[i]} strokeWidth={2}
+                fill={`url(#grad${i})`} dot={false} />
+            ))}
+          </AreaChart>
         </ResponsiveContainer>
       </div>
     </div>
   );
 }
 
-// ─── Page Analytics Chart ─────────────────────────────────────────────────────
+// ─── Page views chart ─────────────────────────────────────────────────────────
 
-function PageAnalyticsChart({ data }) {
+function PageViewsChart({ data }) {
   const chartData = useMemo(() =>
     mergeByDate(data, ["page_views", "unique_visitors"])
-      .map(d => ({
-        date:              shortDate(d.date),
-        "Page Views":      d.page_views,
-        "Unique Visitors": d.unique_visitors,
-      })),
+      .map(d => ({ date: shortDate(d.date), "Page Views": d.page_views, "Unique Visitors": d.unique_visitors })),
     [data]
   );
-
-  if (!chartData.length) return <EmptyState label="No page analytics synced yet." />;
-
+  if (!chartData.length) return <EmptyState label="No page analytics yet" />;
   return (
     <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
-      <h3 className="text-sm font-semibold text-gray-700 mb-4">Page Views & Unique Visitors</h3>
+      <h3 className="text-sm font-semibold text-gray-700 mb-4">Page Views</h3>
       <div className="h-64">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
@@ -244,16 +291,112 @@ function PageAnalyticsChart({ data }) {
   );
 }
 
-// ─── Post Performance Table ───────────────────────────────────────────────────
+// ─── Page comparison cards (director view) ────────────────────────────────────
 
-function PostPerformanceTable({ posts, showPage }) {
+function PageCompare({ allOrgs, followerStats, pageAnalytics, posts }) {
+  if (allOrgs.length < 2) return null;
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {allOrgs.map((org, idx) => {
+        const fStats = followerStats.filter(r => r.org_id === org.id);
+        const pStats = pageAnalytics.filter(r => r.org_id === org.id);
+        const pPosts = posts.filter(r => r.org_id === org.id);
+
+        const latestF = fStats.at(-1)?.total_followers || 0;
+        const firstF  = fStats[0]?.total_followers || 0;
+        const fGrowth = latestF - firstF;
+
+        const totalViews = pStats.reduce((s, r) => s + (r.page_views || 0), 0);
+        const totalImp   = pPosts.reduce((s, p) => s + (p.impressions || 0), 0);
+        const totalEng   = pPosts.reduce((s, p) => s + (p.reactions || 0) + (p.clicks || 0) + (p.comments || 0) + (p.shares || 0), 0);
+        const engRate    = totalImp > 0 ? (totalEng / totalImp) * 100 : 0;
+
+        const dotColor = [LI_BLUE, GREEN][idx] || SLATE;
+
+        return (
+          <div key={org.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                style={{ background: dotColor }}>
+                {(org.name || "L")[0].toUpperCase()}
+              </div>
+              <h3 className="font-semibold text-gray-900 text-sm leading-tight">{org.name || org.id}</h3>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: "Followers",    value: fmt(latestF),              sub: fGrowth >= 0 ? `+${fmt(fGrowth)} growth` : fmt(fGrowth) },
+                { label: "Page Views",   value: fmt(totalViews),           sub: `${pStats.length} days` },
+                { label: "Impressions",  value: fmt(totalImp),             sub: `${pPosts.length} posts` },
+                { label: "Eng. Rate",    value: fmt(engRate, { pct: true }), sub: "avg per post" },
+              ].map(m => (
+                <div key={m.label} className="bg-gray-50 rounded-xl p-3">
+                  <p className="text-xs text-gray-400 font-medium mb-1">{m.label}</p>
+                  <p className="text-xl font-bold text-gray-900 tabular-nums">{m.value}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{m.sub}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Top posts ────────────────────────────────────────────────────────────────
+
+function TopPosts({ posts, showPage, limit = 5 }) {
+  const top = useMemo(() =>
+    [...posts].sort((a, b) => (b.impressions || 0) - (a.impressions || 0)).slice(0, limit),
+    [posts, limit]
+  );
+  if (!top.length) return <EmptyState label="No posts synced yet" />;
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="divide-y divide-gray-50">
+        {top.map((p, i) => {
+          const engRate = p.engagement_rate || 0;
+          return (
+            <div key={p.post_id || i} className="px-5 py-4 flex items-start gap-4 hover:bg-gray-50 transition-colors">
+              <span className="text-xs font-bold text-gray-300 w-5 flex-shrink-0 mt-0.5">#{i + 1}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-gray-800 leading-snug line-clamp-2">{p.text_preview || "—"}</p>
+                <div className="flex items-center gap-3 mt-2 flex-wrap">
+                  <span className="text-xs text-gray-400">{shortDate(p.post_date)}</span>
+                  {showPage && <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{p.org_name}</span>}
+                  <span className="text-xs text-gray-400">👁 {fmt(p.impressions)}</span>
+                  <span className="text-xs text-gray-400">❤️ {fmt(p.reactions)}</span>
+                  <span className="text-xs text-gray-400">💬 {fmt(p.comments)}</span>
+                  <span className="text-xs text-gray-400">↗️ {fmt(p.shares)}</span>
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                    engRate >= 3 ? "bg-green-100 text-green-700"
+                    : engRate >= 1 ? "bg-yellow-100 text-yellow-700"
+                    : "bg-gray-100 text-gray-500"
+                  }`}>
+                    {fmt(engRate, { pct: true })} eng.
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Full post table ──────────────────────────────────────────────────────────
+
+function PostTable({ posts, showPage }) {
   const [sort, setSort] = useState("impressions");
   const sorted = useMemo(() =>
     [...posts].sort((a, b) => (b[sort] || 0) - (a[sort] || 0)),
     [posts, sort]
   );
 
-  if (!posts.length) return <EmptyState label="No posts synced yet." />;
+  if (!posts.length) return <EmptyState label="No posts synced yet" />;
 
   const cols = [
     { key: "impressions",     label: "Impressions" },
@@ -267,19 +410,14 @@ function PostPerformanceTable({ posts, showPage }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
       <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
-        <h3 className="text-sm font-semibold text-gray-700">Post Performance</h3>
+        <h3 className="text-sm font-semibold text-gray-700">All Posts</h3>
         <div className="flex gap-2 flex-wrap">
           {cols.map(c => (
-            <button
-              key={c.key}
-              onClick={() => setSort(c.key)}
+            <button key={c.key} onClick={() => setSort(c.key)}
               className={`text-xs px-3 py-1 rounded-full font-medium border transition-all ${
-                sort === c.key
-                  ? "text-white border-transparent"
-                  : "bg-white text-gray-500 border-gray-200 hover:border-gray-400"
+                sort === c.key ? "text-white border-transparent" : "bg-white text-gray-500 border-gray-200 hover:border-gray-400"
               }`}
-              style={sort === c.key ? { background: LI_BLUE } : {}}
-            >
+              style={sort === c.key ? { background: LI_BLUE } : {}}>
               {c.label}
             </button>
           ))}
@@ -289,26 +427,20 @@ function PostPerformanceTable({ posts, showPage }) {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-gray-100">
             <tr>
-              <th className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide w-16">Date</th>
+              <th className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Date</th>
               {showPage && <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Page</th>}
               <th className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Post</th>
               {cols.map(c => (
-                <th key={c.key} className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                  {c.label}
-                </th>
+                <th key={c.key} className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">{c.label}</th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {sorted.slice(0, 30).map((p, i) => (
+            {sorted.slice(0, 50).map((p, i) => (
               <tr key={p.post_id || i} className="hover:bg-gray-50">
                 <td className="px-5 py-3 text-xs text-gray-400 whitespace-nowrap">{shortDate(p.post_date)}</td>
-                {showPage && (
-                  <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{p.org_name || "—"}</td>
-                )}
-                <td className="px-5 py-3 text-gray-700 max-w-xs">
-                  <p className="truncate text-xs">{p.text_preview || "—"}</p>
-                </td>
+                {showPage && <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{p.org_name || "—"}</td>}
+                <td className="px-5 py-3 text-gray-700 max-w-xs"><p className="truncate text-xs">{p.text_preview || "—"}</p></td>
                 <td className="px-4 py-3 text-right text-gray-800 font-medium tabular-nums">{fmt(p.impressions)}</td>
                 <td className="px-4 py-3 text-right text-gray-800 font-medium tabular-nums">{fmt(p.clicks)}</td>
                 <td className="px-4 py-3 text-right text-gray-800 font-medium tabular-nums">{fmt(p.reactions)}</td>
@@ -319,9 +451,7 @@ function PostPerformanceTable({ posts, showPage }) {
                     p.engagement_rate >= 3 ? "bg-green-100 text-green-700"
                     : p.engagement_rate >= 1 ? "bg-yellow-100 text-yellow-700"
                     : "bg-gray-100 text-gray-500"
-                  }`}>
-                    {fmt(p.engagement_rate, { pct: true })}
-                  </span>
+                  }`}>{fmt(p.engagement_rate, { pct: true })}</span>
                 </td>
               </tr>
             ))}
@@ -332,9 +462,9 @@ function PostPerformanceTable({ posts, showPage }) {
   );
 }
 
-// ─── Ad Analytics ─────────────────────────────────────────────────────────────
+// ─── Ads section ──────────────────────────────────────────────────────────────
 
-function AdAnalyticsSection({ data }) {
+function AdsSection({ data }) {
   const chartData = useMemo(() => {
     const byDate = {};
     data.forEach(d => {
@@ -346,20 +476,15 @@ function AdAnalyticsSection({ data }) {
   }, [data]);
 
   const totals = useMemo(() => data.reduce((acc, d) => ({
-    spend:       acc.spend       + Number(d.spend || 0),
+    spend: acc.spend + Number(d.spend || 0),
     impressions: acc.impressions + Number(d.impressions || 0),
-    clicks:      acc.clicks      + Number(d.clicks || 0),
+    clicks: acc.clicks + Number(d.clicks || 0),
     conversions: acc.conversions + Number(d.conversions || 0),
   }), { spend: 0, impressions: 0, clicks: 0, conversions: 0 }), [data]);
 
   const ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
 
-  if (!data.length) return (
-    <EmptyState
-      label="No ad data synced"
-      sub="Requires r_ads_reporting scope and LinkedIn Marketing API access."
-    />
-  );
+  if (!data.length) return <EmptyState label="No ad data synced" sub="Requires r_ads_reporting scope and LinkedIn Marketing API access." />;
 
   return (
     <div className="space-y-4">
@@ -371,18 +496,17 @@ function AdAnalyticsSection({ data }) {
         <KPICard label="CTR"         value={fmt(ctr, { pct: true })}              icon="📊" />
       </div>
       <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
-        <h3 className="text-sm font-semibold text-gray-700 mb-4">Daily Ad Spend & Clicks</h3>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
               <CartesianGrid stroke="#F3F4F6" strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#9CA3AF" }} tickLine={false} />
-              <YAxis yAxisId="spend"  tick={{ fontSize: 10, fill: "#9CA3AF" }} tickLine={false} axisLine={false} tickFormatter={v => `₹${fmt(v)}`} />
-              <YAxis yAxisId="clicks" orientation="right" tick={{ fontSize: 10, fill: "#9CA3AF" }} tickLine={false} axisLine={false} />
+              <YAxis yAxisId="spend"  tick={{ fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={v => `₹${fmt(v)}`} />
+              <YAxis yAxisId="clicks" orientation="right" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
               <Tooltip contentStyle={TTStyle} />
               <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
               <Bar yAxisId="spend"  dataKey="Spend"  fill={LI_BLUE} radius={[4,4,0,0]} maxBarSize={20} />
-              <Bar yAxisId="clicks" dataKey="Clicks" fill="#F59E0B" radius={[4,4,0,0]} maxBarSize={20} />
+              <Bar yAxisId="clicks" dataKey="Clicks" fill={AMBER}   radius={[4,4,0,0]} maxBarSize={20} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -391,25 +515,23 @@ function AdAnalyticsSection({ data }) {
   );
 }
 
-// ─── Sync result banner ───────────────────────────────────────────────────────
+// ─── Sync banner ──────────────────────────────────────────────────────────────
 
 function SyncBanner({ result }) {
   if (!result) return null;
-  if (result.error) {
-    return (
-      <span className="text-xs px-3 py-1 rounded-full font-medium bg-red-50 text-red-600">
-        Sync error: {result.error}
-      </span>
-    );
-  }
+  if (result.error) return (
+    <span className="text-xs px-3 py-1.5 rounded-full font-medium bg-red-50 text-red-600">
+      ✗ {result.error}
+    </span>
+  );
   if (result.summary) {
     const lines = Object.entries(result.summary).map(([name, r]) => {
       const parts = [];
-      if (r.follower) parts.push(`${r.follower} follower days`);
-      if (r.page)     parts.push(`${r.page} page days`);
+      if (r.follower) parts.push(`${r.follower} follower`);
+      if (r.page)     parts.push(`${r.page} page`);
       if (r.posts)    parts.push(`${r.posts} posts`);
-      const errs = r.errors?.length ? ` (${r.errors.length} errors)` : "";
-      return `${name}: ${parts.join(", ") || "no data"}${errs}`;
+      const errs = r.errors?.filter(e => !e.startsWith("ShareStats:")).length;
+      return `${name}: ${parts.join(", ") || "no data"}${errs ? ` (${errs} issues)` : ""}`;
     });
     return (
       <span className="text-xs px-3 py-1.5 rounded-full font-medium bg-green-50 text-green-700">
@@ -422,7 +544,7 @@ function SyncBanner({ result }) {
 
 // ─── Main dashboard ───────────────────────────────────────────────────────────
 
-const TABS = ["Overview", "Posts", "Ads"];
+const TABS = ["Overview", "Pages", "Posts", "Ads"];
 
 export default function LinkedInDashboard() {
   const {
@@ -431,164 +553,188 @@ export default function LinkedInDashboard() {
     loading, dataLoading, syncing, syncResult, sync, disconnect,
   } = useLinkedInData();
 
-  const [tab, setTab] = useState("Overview");
+  const [tab,      setTab]      = useState("Overview");
+  const [dateRange, setDateRange] = useState(30);
 
-  // All hooks must run before any early return
-  const latestFollowers = useMemo(() => {
-    const byDate = mergeByDate(followerStats, ["total_followers"]);
-    return byDate.at(-1)?.total_followers || 0;
-  }, [followerStats]);
+  // All hooks before early returns
+  const cutoff = useMemo(() => cutoffDate(dateRange), [dateRange]);
+  const prevCutoff = useMemo(() => cutoffDate(dateRange * 2), [dateRange]);
 
-  const firstFollowers = useMemo(() => {
-    const byDate = mergeByDate(followerStats, ["total_followers"]);
-    return byDate[0]?.total_followers || 0;
-  }, [followerStats]);
+  // Current period data
+  const filtFollower = useMemo(() => followerStats.filter(r => r.date >= cutoff), [followerStats, cutoff]);
+  const filtPage     = useMemo(() => pageAnalytics.filter(r => r.date >= cutoff), [pageAnalytics, cutoff]);
+  const filtPosts    = useMemo(() => posts.filter(r => !r.post_date || r.post_date >= cutoff), [posts, cutoff]);
 
-  const totalImpressions = useMemo(() => posts.reduce((s, p) => s + (p.impressions || 0), 0), [posts]);
-  const totalEngagements = useMemo(() => posts.reduce((s, p) =>
-    s + (p.reactions || 0) + (p.clicks || 0) + (p.comments || 0) + (p.shares || 0), 0), [posts]);
-  const avgEngRate     = totalImpressions > 0 ? (totalEngagements / totalImpressions) * 100 : 0;
-  const totalPageViews = useMemo(() => pageAnalytics.reduce((s, p) => s + (p.page_views || 0), 0), [pageAnalytics]);
+  // Previous period data for % change
+  const prevFollower = useMemo(() => followerStats.filter(r => r.date >= prevCutoff && r.date < cutoff), [followerStats, prevCutoff, cutoff]);
+  const prevPosts    = useMemo(() => posts.filter(r => r.post_date && r.post_date >= prevCutoff && r.post_date < cutoff), [posts, prevCutoff, cutoff]);
 
-  if (loading) {
-    return (
-      <MainLayout>
-        <div className="p-8 text-gray-400 text-sm animate-pulse">Loading LinkedIn data…</div>
-      </MainLayout>
-    );
-  }
+  // KPI calculations
+  const latestFollowers = useMemo(() => mergeByDate(filtFollower, ["total_followers"]).at(-1)?.total_followers || 0, [filtFollower]);
+  const prevFollowers   = useMemo(() => mergeByDate(prevFollower, ["total_followers"]).at(-1)?.total_followers || 0, [prevFollower]);
+
+  const totalImpressions = useMemo(() => filtPosts.reduce((s, p) => s + (p.impressions || 0), 0), [filtPosts]);
+  const prevImpressions  = useMemo(() => prevPosts.reduce((s, p) => s + (p.impressions || 0), 0), [prevPosts]);
+
+  const totalEngagements = useMemo(() => filtPosts.reduce((s, p) =>
+    s + (p.reactions || 0) + (p.clicks || 0) + (p.comments || 0) + (p.shares || 0), 0), [filtPosts]);
+  const avgEngRate = totalImpressions > 0 ? (totalEngagements / totalImpressions) * 100 : 0;
+
+  const prevTotalEng  = useMemo(() => prevPosts.reduce((s, p) =>
+    s + (p.reactions || 0) + (p.clicks || 0) + (p.comments || 0) + (p.shares || 0), 0), [prevPosts]);
+  const prevEngRate   = prevImpressions > 0 ? (prevTotalEng / prevImpressions) * 100 : 0;
+
+  const totalPageViews = useMemo(() => filtPage.reduce((s, p) => s + (p.page_views || 0), 0), [filtPage]);
+
+  if (loading) return (
+    <MainLayout>
+      <div className="p-8 text-gray-400 text-sm animate-pulse">Loading LinkedIn data…</div>
+    </MainLayout>
+  );
 
   if (!status?.connected) return <ConnectScreen />;
 
   const headerLabel = selectedOrgId
     ? (allOrgs.find(o => o.id === selectedOrgId)?.name || selectedOrgId)
-    : allOrgs.length > 1 ? "All Pages Combined" : (status.orgName || "LinkedIn Analytics");
+    : allOrgs.length > 1 ? "All Pages" : (status.orgName || "LinkedIn Analytics");
+
+  const showPage = !selectedOrgId && allOrgs.length > 1;
 
   return (
     <MainLayout>
       <div className="p-4 lg:p-8 max-w-7xl mx-auto">
 
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
           <div className="flex items-center gap-4">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: LI_BLUE }}>
               <svg viewBox="0 0 24 24" className="w-5 h-5 fill-white">
-                <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+                <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
               </svg>
             </div>
             <div>
               <h1 className="text-2xl font-bold text-gray-900">{headerLabel}</h1>
               <p className="text-xs text-gray-400 mt-0.5">
-                Last 90 days · {followerStats.length} rows · {allOrgs.length} page{allOrgs.length !== 1 ? "s" : ""} connected
+                {allOrgs.length} page{allOrgs.length !== 1 ? "s" : ""} · {filtPosts.length} posts · {filtFollower.length} data points
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
             <SyncBanner result={syncResult} />
-            <button
-              onClick={sync}
-              disabled={syncing}
+            <button onClick={sync} disabled={syncing}
               className="inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-xl text-white hover:opacity-90 disabled:opacity-50"
-              style={{ background: LI_BLUE }}
-            >
+              style={{ background: LI_BLUE }}>
               {syncing ? (
-                <>
-                  <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Syncing all pages…
-                </>
+                <><svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                </svg>Syncing…</>
               ) : "↻ Sync Data"}
             </button>
-            <button
-              onClick={disconnect}
-              className="text-xs text-gray-400 hover:text-red-500 px-3 py-2 rounded-xl hover:bg-red-50 transition-colors"
-            >
+            <button onClick={disconnect} className="text-xs text-gray-400 hover:text-red-500 px-3 py-2 rounded-xl hover:bg-red-50 transition-colors">
               Disconnect
             </button>
           </div>
         </div>
 
-        {/* Page filter */}
-        <PageSelector
-          allOrgs={allOrgs}
-          selectedOrgId={selectedOrgId}
-          onSelect={selectOrg}
-          dataLoading={dataLoading}
-        />
+        {/* Filters row */}
+        <div className="flex flex-wrap items-center gap-4 mb-6">
+          <DateRangePicker value={dateRange} onChange={setDateRange} />
+          <div className="w-px h-5 bg-gray-200 hidden sm:block" />
+          <PageSelector allOrgs={allOrgs} selectedOrgId={selectedOrgId} onSelect={selectOrg} dataLoading={dataLoading} />
+        </div>
 
         {/* Tabs */}
         <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-2xl w-fit">
-          {TABS.map(t => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
+          {TABS.filter(t => t !== "Pages" || allOrgs.length > 1).map(t => (
+            <button key={t} onClick={() => setTab(t)}
               className={`px-5 py-2 rounded-xl text-sm font-semibold transition-all ${
                 tab === t ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              {t}
-            </button>
+              }`}>{t}</button>
           ))}
         </div>
 
         {/* ── Overview ─────────────────────────────────────────────────────── */}
         {tab === "Overview" && (
           <>
-            <Section title="Key Metrics">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Section title="Performance Summary">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <KPICard
                   label="Total Followers"
                   value={fmt(latestFollowers)}
-                  sub={latestFollowers > firstFollowers
-                    ? `+${fmt(latestFollowers - firstFollowers)} in period`
-                    : `${fmt(latestFollowers - firstFollowers)} in period`}
+                  sub="current count"
                   icon="👥"
+                  trend={pctChange(latestFollowers, prevFollowers)}
                 />
                 <KPICard
                   label="Post Impressions"
                   value={fmt(totalImpressions)}
-                  sub={`${posts.length} posts`}
+                  sub={`${filtPosts.length} posts`}
                   icon="👁"
+                  trend={pctChange(totalImpressions, prevImpressions)}
                 />
                 <KPICard
-                  label="Avg Engagement"
+                  label="Avg Engagement Rate"
                   value={fmt(avgEngRate, { pct: true })}
-                  sub="Reactions + clicks + comments + shares"
+                  sub="reactions + clicks + comments"
                   icon="📈"
+                  trend={pctChange(avgEngRate, prevEngRate)}
                 />
                 <KPICard
                   label="Page Views"
                   value={fmt(totalPageViews)}
-                  sub="Last 90 days"
+                  sub={`last ${dateRange} days`}
                   icon="🏠"
                 />
               </div>
             </Section>
 
-            <Section title="Follower Growth">
-              <FollowerGrowthChart data={followerStats} />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
+              <FollowerChart data={filtFollower} allOrgs={allOrgs} selectedOrgId={selectedOrgId} />
+              <PageViewsChart data={filtPage} />
+            </div>
+
+            <Section title={`Top Posts — Last ${dateRange} Days`}>
+              <TopPosts posts={filtPosts} showPage={showPage} limit={5} />
+            </Section>
+          </>
+        )}
+
+        {/* ── Pages comparison ─────────────────────────────────────────────── */}
+        {tab === "Pages" && allOrgs.length > 1 && (
+          <>
+            <Section title="Page Comparison">
+              <PageCompare
+                allOrgs={allOrgs}
+                followerStats={filtFollower}
+                pageAnalytics={filtPage}
+                posts={filtPosts}
+              />
             </Section>
 
-            <Section title="Page Analytics">
-              <PageAnalyticsChart data={pageAnalytics} />
+            <Section title="Follower Growth — Both Pages">
+              <FollowerChart data={filtFollower} allOrgs={allOrgs} selectedOrgId={null} />
             </Section>
           </>
         )}
 
         {/* ── Posts ────────────────────────────────────────────────────────── */}
         {tab === "Posts" && (
-          <Section title="Post Performance">
-            <PostPerformanceTable posts={posts} showPage={!selectedOrgId && allOrgs.length > 1} />
-          </Section>
+          <>
+            <Section title="Top 5 Posts by Impressions">
+              <TopPosts posts={filtPosts} showPage={showPage} limit={5} />
+            </Section>
+            <Section title={`All Posts — Last ${dateRange} Days`}>
+              <PostTable posts={filtPosts} showPage={showPage} />
+            </Section>
+          </>
         )}
 
         {/* ── Ads ──────────────────────────────────────────────────────────── */}
         {tab === "Ads" && (
           <Section title="Ad Analytics">
-            <AdAnalyticsSection data={adAnalytics} />
+            <AdsSection data={adAnalytics} />
           </Section>
         )}
 

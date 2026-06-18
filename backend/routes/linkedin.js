@@ -342,19 +342,25 @@ router.post("/sync", auth, async (req, res) => {
         const posts = ugcRaw?.elements || [];
         if (!posts.length) r.errors.push("Posts: 0 UGC posts returned");
 
-        // Share stats WITHOUT time range = per-post lifetime engagement
-        // (with time range it returns time-bucketed aggregates, not per-post)
+        // Per-post engagement via ugcPosts=List(...) — batch 20 at a time
+        // LinkedIn share stats API requires explicit ugcPost URNs to return per-post metrics
         let shareMap = {};
-        try {
-          const shareRaw = await liGet("/organizationalEntityShareStatistics", token, {
-            q: "organizationalEntity", organizationalEntity: orgUrn,
-          });
-          for (const el of shareRaw?.elements || []) {
-            const key = el.ugcPost || el.share;
-            if (key) shareMap[key] = el.totalShareStatistics || {};
-          }
-          r.errors.push(`ShareStats: ${Object.keys(shareMap).length} posts mapped`);
-        } catch (se) { r.errors.push(`ShareStats: ${se.message}`); }
+        const BATCH = 20;
+        for (let bi = 0; bi < posts.length; bi += BATCH) {
+          const batch = posts.slice(bi, bi + BATCH);
+          const ugcList = batch.map(p => encodeURIComponent(p.id)).join(",");
+          try {
+            const batchRaw = await liGetRaw("/organizationalEntityShareStatistics", token,
+              `q=organizationalEntity&organizationalEntity=${encodeURIComponent(orgUrn)}&ugcPosts=List(${ugcList})`
+            );
+            for (const el of batchRaw?.elements || []) {
+              const key = el.ugcPost || el.share;
+              if (key) shareMap[key] = el.totalShareStatistics || {};
+            }
+          } catch (be) { r.errors.push(`ShareBatch[${bi}]: ${be.message}`); }
+        }
+        const mapped = Object.keys(shareMap).length;
+        if (mapped === 0 && posts.length > 0) r.errors.push(`ShareStats: 0/${posts.length} posts got metrics`);
 
         const rows = posts.map(post => {
           const postUrn = post.id;
