@@ -564,4 +564,113 @@ router.get("/ai-insights", async (req, res) => {
   }
 });
 
+// ─── Import historical follower data from LinkedIn CSV/Excel export ───────────
+const multer = require("multer");
+const XLSX   = require("xlsx");
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+router.post("/import-followers", auth, upload.single("file"), async (req, res) => {
+  try {
+    const { orgId, orgName } = req.body;
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    if (!orgId)   return res.status(400).json({ error: "orgId is required" });
+
+    // Parse workbook (handles both .csv and .xlsx)
+    const wb    = XLSX.read(req.file.buffer, { type: "buffer", cellDates: true });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const raw   = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: "" });
+
+    // Find the header row (the row that contains "Date")
+    let headerIdx = -1;
+    let headers   = [];
+    for (let i = 0; i < raw.length; i++) {
+      const row = raw[i] || [];
+      const idx = row.findIndex(c => String(c).toLowerCase().trim() === "date");
+      if (idx !== -1) { headerIdx = i; headers = row.map(c => String(c).toLowerCase().trim()); break; }
+    }
+    if (headerIdx === -1) return res.status(400).json({ error: "Could not find a 'Date' column in the file. Please export directly from LinkedIn Analytics → Followers → Export." });
+
+    // Detect organic/paid/total columns
+    const dateCol    = headers.findIndex(h => h === "date");
+    const organicCol = headers.findIndex(h => h.includes("organic"));
+    const paidCol    = headers.findIndex(h => h.includes("paid") || h.includes("sponsor"));
+    const newTotalCol= headers.findIndex(h => (h.includes("new") || h.includes("total")) && !h.includes("organic") && !h.includes("paid"));
+
+    // Parse data rows
+    const dataRows = raw.slice(headerIdx + 1).filter(r => r && String(r[dateCol] || "").trim());
+
+    const parsed = dataRows.map(row => {
+      const rawDate = String(row[dateCol] || "").trim();
+      if (!rawDate) return null;
+
+      let dateISO;
+      try {
+        // Handle various date formats
+        const d = new Date(rawDate);
+        if (isNaN(d.getTime())) return null;
+        dateISO = d.toISOString().split("T")[0];
+      } catch { return null; }
+
+      const organic = Math.abs(parseInt(organicCol >= 0 ? row[organicCol] : (newTotalCol >= 0 ? row[newTotalCol] : 0)) || 0);
+      const paid    = Math.abs(parseInt(paidCol    >= 0 ? row[paidCol]    : 0) || 0);
+
+      return { date: dateISO, organic, paid };
+    }).filter(Boolean).sort((a, b) => a.date > b.date ? 1 : -1);
+
+    if (!parsed.length) return res.status(400).json({ error: "No valid data rows found. Ensure the file has Date + follower columns." });
+
+    // Build running cumulative totals
+    let runOrg = 0, runPaid = 0;
+    const daily = parsed.map(r => {
+      runOrg  += r.organic;
+      runPaid += r.paid;
+      return { date: r.date, runOrg, runPaid, runTotal: runOrg + runPaid };
+    });
+
+    // Anchor the cumulative total to the latest known DB value for this org
+    const { data: latestDB } = await supabase
+      .from("linkedin_follower_stats")
+      .select("total_followers, date")
+      .eq("org_id", orgId)
+      .order("date", { ascending: false })
+      .limit(1);
+
+    const knownTotal   = latestDB?.[0]?.total_followers || 0;
+    const lastRunTotal = daily.at(-1)?.runTotal || 0;
+    const offset       = knownTotal > 0 ? knownTotal - lastRunTotal : 0;
+
+    // Build upsert rows
+    const upsertRows = daily.map(r => ({
+      date:              r.date,
+      org_id:            orgId,
+      org_name:          orgName || orgId,
+      organic_followers: r.runOrg,
+      paid_followers:    r.runPaid,
+      total_followers:   r.runTotal + offset,
+    }));
+
+    // Upsert in batches of 100 (don't overwrite existing sync rows if they're newer)
+    let inserted = 0;
+    for (let i = 0; i < upsertRows.length; i += 100) {
+      const batch = upsertRows.slice(i, i + 100);
+      const { error } = await supabase
+        .from("linkedin_follower_stats")
+        .upsert(batch, { onConflict: "date,org_id" });
+      if (!error) inserted += batch.length;
+      else console.error("import-followers upsert error:", error.message);
+    }
+
+    res.json({
+      success:   true,
+      inserted,
+      dateRange: { from: daily[0]?.date, to: daily.at(-1)?.date },
+      offset,
+      knownTotal,
+    });
+  } catch (e) {
+    console.error("import-followers error:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

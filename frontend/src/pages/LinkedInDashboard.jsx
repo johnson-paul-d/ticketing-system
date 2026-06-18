@@ -252,60 +252,62 @@ function AiBadge({ powered }) {
 
 // ─── Chart Components ─────────────────────────────────────────────────────────
 
-// Fills every calendar day in the range with an interpolated follower total,
-// then computes the daily gain (today - yesterday). Actual sync dates are
-// shown in solid green/red; interpolated days in a lighter shade.
+// Fills every calendar day with interpolated organic + paid follower totals,
+// then returns daily deltas — one entry per calendar day in the range.
 function buildDailyFollowerData(allRows, cutoffDate) {
   // 1. Sum all orgs per actual sync date
   const byDate = {};
   allRows.forEach(r => {
     if (!r.date) return;
-    if (!byDate[r.date]) byDate[r.date] = { date: r.date, total: 0 };
-    byDate[r.date].total += r.total_followers || 0;
+    if (!byDate[r.date]) byDate[r.date] = { date: r.date, total: 0, organic: 0, paid: 0 };
+    byDate[r.date].total   += r.total_followers   || 0;
+    byDate[r.date].organic += r.organic_followers || 0;
+    byDate[r.date].paid    += r.paid_followers    || 0;
   });
   const syncPoints = Object.values(byDate).sort((a, b) => (a.date > b.date ? 1 : -1));
   if (!syncPoints.length) return [];
 
-  // 2. Calendar range: from cutoffDate (or first sync) to today
+  // 2. Calendar range
   const startStr = cutoffDate || syncPoints[0].date;
-  const today    = new Date();
+  const today = new Date();
   today.setHours(0, 0, 0, 0);
   const cur = new Date(startStr + "T00:00:00");
-
   const calDays = [];
   while (cur <= today) {
     calDays.push(cur.toISOString().split("T")[0]);
     cur.setDate(cur.getDate() + 1);
   }
 
-  // 3. For each calendar day, linearly interpolate total followers
-  const withTotals = calDays.map(date => {
+  // 3. Linear interpolation for a given field on a given date
+  function interp(field, date) {
     const before = [...syncPoints].reverse().find(p => p.date <= date);
     const after  = syncPoints.find(p => p.date >= date);
+    if (!before && !after) return { v: 0, isSynced: false };
+    if (!before) return { v: after[field], isSynced: after.date === date };
+    if (!after || before.date === after.date) return { v: before[field], isSynced: before.date === date };
+    const t1 = new Date(before.date + "T00:00:00").getTime();
+    const t2 = new Date(after.date  + "T00:00:00").getTime();
+    const t  = new Date(date        + "T00:00:00").getTime();
+    const ratio = (t - t1) / (t2 - t1);
+    return {
+      v: Math.round(before[field] + ratio * (after[field] - before[field])),
+      isSynced: before.date === date || after.date === date,
+    };
+  }
 
-    let total, isSynced;
-    if (!before && !after) {
-      total = 0; isSynced = false;
-    } else if (!before) {
-      total = after.total; isSynced = after.date === date;
-    } else if (!after || before.date === after.date) {
-      total = before.total; isSynced = before.date === date;
-    } else {
-      const t1    = new Date(before.date + "T00:00:00").getTime();
-      const t2    = new Date(after.date  + "T00:00:00").getTime();
-      const t     = new Date(date        + "T00:00:00").getTime();
-      const ratio = (t - t1) / (t2 - t1);
-      total    = Math.round(before.total + ratio * (after.total - before.total));
-      isSynced = (before.date === date || after.date === date);
-    }
-    return { date, total, isSynced };
+  const withTotals = calDays.map(date => {
+    const tot = interp("total",   date);
+    const org = interp("organic", date);
+    const pai = interp("paid",    date);
+    return { date, total: tot.v, organic: org.v, paid: pai.v, isSynced: tot.isSynced };
   });
 
-  // 4. Daily gain = today's total − yesterday's total
+  // 4. Daily delta per field
   return withTotals.map((d, i) => ({
-    date:     shortDate(d.date),
-    rawDate:  d.date,
-    gained:   i > 0 ? d.total - withTotals[i - 1].total : 0,
+    date:     d.date,
+    label:    shortDate(d.date),
+    organic:  i > 0 ? Math.max(0, d.organic - withTotals[i - 1].organic) : 0,
+    paid:     i > 0 ? Math.max(0, d.paid    - withTotals[i - 1].paid)    : 0,
     total:    d.total,
     isSynced: d.isSynced,
   }));
@@ -317,77 +319,134 @@ function FollowerGainsChart({ allRows, cutoffDate }) {
     [allRows, cutoffDate]
   );
 
-  if (!data.length) return <Empty label="No follower data in this period" sub="Sync your pages to start tracking daily gains." />;
+  if (!data.length) return <Empty label="No follower data in this period" sub="Sync your pages to start tracking follower metrics." />;
 
-  const totalGained = data.reduce((s, d) => s + d.gained, 0);
-  const bestDay     = [...data].sort((a, b) => b.gained - a.gained)[0];
+  const totalFollowers   = data.at(-1)?.total || 0;
+  const newInPeriod      = data.slice(1).reduce((s, d) => s + d.organic + d.paid, 0);
+  const prevPeriodData   = data.slice(0, Math.max(1, Math.floor(data.length / 2)));
+  const prevNew          = prevPeriodData.slice(1).reduce((s, d) => s + d.organic + d.paid, 0);
+  const pctChange        = prevNew > 0 ? Math.round(((newInPeriod - prevNew) / prevNew) * 100) : null;
+
+  const tickInterval = Math.max(1, Math.floor(data.length / 6));
+
+  const fmtFullDate = raw => {
+    try {
+      return new Date(raw + "T00:00:00").toLocaleDateString("en-US", {
+        weekday: "long", month: "long", day: "numeric", year: "numeric",
+      });
+    } catch { return raw; }
+  };
 
   return (
     <div>
-      <div className="flex gap-8 mb-5 flex-wrap">
+      {/* Header KPIs matching LinkedIn layout */}
+      <div className="flex gap-12 mb-6 flex-wrap">
         <div>
-          <p className="text-xs text-gray-400 mb-0.5">Total gained in period</p>
-          <p className="text-2xl font-bold" style={{ color: totalGained >= 0 ? "#10B981" : "#EF4444" }}>
-            {totalGained >= 0 ? "+" : ""}{fmt(totalGained)}
-          </p>
+          <p className="text-3xl font-bold text-gray-900">{fmt(totalFollowers)}</p>
+          <p className="text-sm text-gray-500 mt-0.5">Total followers</p>
         </div>
-        {bestDay?.gained > 0 && (
-          <div>
-            <p className="text-xs text-gray-400 mb-0.5">Best day</p>
-            <p className="text-2xl font-bold text-gray-800">+{fmt(bestDay.gained)}</p>
-            <p className="text-xs text-gray-400">{bestDay.date}</p>
-          </div>
-        )}
         <div>
-          <p className="text-xs text-gray-400 mb-0.5">Current followers</p>
-          <p className="text-2xl font-bold text-gray-800">{fmt(data.at(-1)?.total || 0)}</p>
+          <p className="text-3xl font-bold text-gray-900">{fmt(newInPeriod)}</p>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            {pctChange !== null && (
+              <span className={`text-sm font-semibold flex items-center gap-0.5 ${pctChange >= 0 ? "text-green-600" : "text-red-500"}`}>
+                {pctChange >= 0 ? "▲" : "▼"} {Math.abs(pctChange)}%
+              </span>
+            )}
+            <p className="text-sm text-gray-500">New followers in this period</p>
+          </div>
         </div>
       </div>
 
-      <div className="h-64">
+      {/* Chart */}
+      <div className="h-56">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{ top:4, right:16, left:0, bottom:0 }}>
-            <CartesianGrid stroke="#F3F4F6" strokeDasharray="3 3" vertical={false} />
-            <XAxis dataKey="date" tick={{ fontSize:10, fill:"#9CA3AF" }} tickLine={false}
-              interval={Math.floor(data.length / 8)} />
-            <YAxis tick={{ fontSize:10, fill:"#9CA3AF" }} tickLine={false} axisLine={false}
-              tickFormatter={v => (v > 0 ? "+" : "") + fmt(v)} />
-            <ReferenceLine y={0} stroke="#E5E7EB" />
-            <Tooltip contentStyle={TTStyle}
+          <LineChart data={data} margin={{ top:8, right:16, left:0, bottom:0 }}>
+            <CartesianGrid stroke="#E5E7EB" strokeDasharray="" vertical={false} />
+            <XAxis
+              dataKey="label"
+              tick={{ fontSize:11, fill:"#6B7280" }}
+              tickLine={false}
+              axisLine={false}
+              interval={tickInterval}
+            />
+            <YAxis
+              tick={{ fontSize:11, fill:"#6B7280" }}
+              tickLine={false}
+              axisLine={false}
+              tickFormatter={v => fmt(v)}
+              width={36}
+            />
+            <Tooltip
+              cursor={{ stroke: "#D1D5DB", strokeWidth: 1 }}
               content={({ active, payload }) => {
-                if (!active || !payload?.[0]) return null;
+                if (!active || !payload?.length) return null;
                 const d = payload[0].payload;
+                const orgPrev  = data[data.indexOf(d) - 1];
+                const pctOrg   = orgPrev && orgPrev.organic > 0
+                  ? Math.round(((d.organic - orgPrev.organic) / orgPrev.organic) * 100)
+                  : null;
                 return (
-                  <div style={TTStyle}>
-                    <p className="text-xs font-semibold text-gray-700 mb-1">{d.date}</p>
-                    <p className="text-sm font-bold mb-0.5"
-                      style={{ color: d.gained >= 0 ? "#10B981" : "#EF4444" }}>
-                      {d.gained >= 0 ? "+" : ""}{fmt(d.gained)} followers
-                    </p>
-                    <p className="text-xs text-gray-400">Running total: {fmt(d.total)}</p>
-                    {!d.isSynced && <p className="text-xs text-amber-500 mt-1">⚡ Estimated (between syncs)</p>}
+                  <div style={{ ...TTStyle, minWidth: 220 }}>
+                    <p className="text-xs font-semibold text-gray-700 mb-2">{fmtFullDate(d.date)}</p>
+                    <div className="flex items-center justify-between gap-4 mb-1">
+                      <span className="flex items-center gap-1.5 text-xs text-gray-600">
+                        <span className="inline-block w-5 border-t-2 border-dashed border-green-500"></span> Organic
+                      </span>
+                      <span className="text-xs font-bold text-gray-800">{fmt(d.organic)}</span>
+                      {pctOrg !== null && (
+                        <span className={`text-xs font-semibold ${pctOrg >= 0 ? "text-green-600" : "text-red-500"}`}>
+                          {pctOrg >= 0 ? "▲" : "▼"} {Math.abs(pctOrg)}% previous day
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="flex items-center gap-1.5 text-xs text-gray-600">
+                        <span className="inline-block w-5 border-t-2 border-solid border-blue-500"></span> Sponsored
+                      </span>
+                      <span className="text-xs font-bold text-gray-800">{fmt(d.paid)}</span>
+                    </div>
+                    {!d.isSynced && (
+                      <p className="text-xs text-amber-500 mt-2 pt-2 border-t border-gray-100">⚡ Estimated between syncs</p>
+                    )}
                   </div>
                 );
-              }} />
-            <Bar dataKey="gained" radius={[3,3,0,0]} maxBarSize={32}>
-              {data.map((d, i) => (
-                <Cell key={i}
-                  fill={d.gained >= 0 ? "#10B981" : "#EF4444"}
-                  fillOpacity={d.isSynced ? 1 : 0.35} />
-              ))}
-            </Bar>
-          </BarChart>
+              }}
+            />
+            <Line
+              type="monotone"
+              dataKey="organic"
+              name="Organic"
+              stroke="#22C55E"
+              strokeWidth={2}
+              strokeDasharray="6 4"
+              dot={false}
+              activeDot={{ r: 4, fill: "#22C55E", strokeWidth: 0 }}
+            />
+            <Line
+              type="monotone"
+              dataKey="paid"
+              name="Sponsored"
+              stroke="#3B82F6"
+              strokeWidth={1.5}
+              dot={false}
+              activeDot={{ r: 4, fill: "#3B82F6", strokeWidth: 0 }}
+            />
+          </LineChart>
         </ResponsiveContainer>
       </div>
 
-      <div className="flex items-center gap-5 mt-3 pt-3 border-t border-gray-100 text-xs text-gray-400 flex-wrap">
-        <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-sm inline-block bg-green-500"></span> Actual sync data
+      {/* Legend */}
+      <div className="flex items-center gap-6 mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500 flex-wrap">
+        <span className="flex items-center gap-2">
+          <svg width="24" height="10"><line x1="0" y1="5" x2="24" y2="5" stroke="#22C55E" strokeWidth="2" strokeDasharray="6 4"/></svg>
+          Organic
         </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-sm inline-block bg-green-200"></span> Estimated (between syncs)
+        <span className="flex items-center gap-2">
+          <svg width="24" height="10"><line x1="0" y1="5" x2="24" y2="5" stroke="#3B82F6" strokeWidth="1.5"/></svg>
+          Sponsored
         </span>
-        <span className="ml-auto">Sync daily for accurate per-day figures</span>
+        <span className="ml-auto text-gray-400">Sync daily for accurate per-day figures</span>
       </div>
     </div>
   );
@@ -665,7 +724,127 @@ function OverviewSection({ posts, followerRows, pageRows, prevPosts, prevFollowe
 
 // ─── Follower Growth Section ──────────────────────────────────────────────────
 
-function FollowerSection({ rows, filtRows, cutoff }) {
+function ImportHistoricalPanel({ allOrgs, onImported }) {
+  const [open,      setOpen]      = useState(false);
+  const [orgId,     setOrgId]     = useState(allOrgs[0]?.id || "");
+  const [file,      setFile]      = useState(null);
+  const [loading,   setLoading]   = useState(false);
+  const [result,    setResult]    = useState(null);
+  const [error,     setError]     = useState(null);
+
+  const orgName = allOrgs.find(o => o.id === orgId)?.name || orgId;
+
+  const handleImport = async () => {
+    if (!file || !orgId) return;
+    setLoading(true); setResult(null); setError(null);
+    try {
+      const fd = new FormData();
+      fd.append("file",    file);
+      fd.append("orgId",   orgId);
+      fd.append("orgName", orgName);
+      const { data } = await api.post("/linkedin/import-followers", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setResult(data);
+      if (onImported) onImported();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <div className="flex justify-end">
+        <button onClick={() => setOpen(true)}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-xl"
+          style={{ background: LI_BLUE }}>
+          ⬆ Import Historical Data
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-blue-100 shadow-sm p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="font-semibold text-gray-800">Import LinkedIn Follower Export</h3>
+          <p className="text-xs text-gray-400 mt-0.5">Go to LinkedIn Page → Analytics → Followers → Export (CSV)</p>
+        </div>
+        <button onClick={() => { setOpen(false); setResult(null); setError(null); setFile(null); }}
+          className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        {/* Org selector */}
+        <div>
+          <label className="text-xs font-medium text-gray-500 mb-1 block">LinkedIn Page</label>
+          <select value={orgId} onChange={e => { setOrgId(e.target.value); setResult(null); setError(null); }}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-200">
+            {allOrgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+          </select>
+        </div>
+
+        {/* File picker */}
+        <div>
+          <label className="text-xs font-medium text-gray-500 mb-1 block">Export File (.csv or .xlsx)</label>
+          <input type="file" accept=".csv,.xlsx,.xls"
+            onChange={e => { setFile(e.target.files[0]); setResult(null); setError(null); }}
+            className="w-full text-sm text-gray-600 border border-gray-200 rounded-lg px-3 py-1.5
+              file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0
+              file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700
+              hover:file:bg-blue-100 cursor-pointer" />
+        </div>
+      </div>
+
+      {/* Step guide */}
+      <div className="bg-blue-50 rounded-xl p-3 mb-4 text-xs text-blue-700 space-y-1">
+        <p className="font-semibold mb-1">How to export from LinkedIn:</p>
+        <p>1. Go to your LinkedIn Company Page</p>
+        <p>2. Click <strong>Analytics</strong> → <strong>Followers</strong></p>
+        <p>3. Set date range (up to 1 year)</p>
+        <p>4. Click <strong>Export</strong> button (top right)</p>
+        <p>5. Upload the downloaded file here</p>
+      </div>
+
+      {/* Import button */}
+      <div className="flex items-center gap-3">
+        <button onClick={handleImport} disabled={!file || !orgId || loading}
+          className="px-5 py-2 text-sm font-semibold text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+          style={{ background: LI_BLUE }}>
+          {loading ? "Importing…" : "Import Data"}
+        </button>
+        {file && <span className="text-xs text-gray-400">{file.name}</span>}
+      </div>
+
+      {/* Results */}
+      {result && (
+        <div className="mt-4 bg-green-50 border border-green-100 rounded-xl p-4">
+          <p className="text-sm font-semibold text-green-700 mb-1">✓ Import successful</p>
+          <p className="text-xs text-gray-600">{fmt(result.inserted)} days imported for <strong>{orgName}</strong></p>
+          <p className="text-xs text-gray-500">
+            Date range: {result.dateRange?.from} → {result.dateRange?.to}
+          </p>
+          {result.knownTotal > 0 && (
+            <p className="text-xs text-gray-500">Anchored to current total: {fmt(result.knownTotal)} followers</p>
+          )}
+          <p className="text-xs text-green-600 mt-1">Refresh the page to see updated charts.</p>
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-4 bg-red-50 border border-red-100 rounded-xl p-4">
+          <p className="text-sm font-semibold text-red-700">Import failed</p>
+          <p className="text-xs text-red-500 mt-1">{error}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FollowerSection({ rows, filtRows, cutoff, allOrgs }) {
 
   // Monthly breakdown — aggregate all orgs by date first, then bucket by month
   const monthlyData = useMemo(() => {
@@ -692,6 +871,10 @@ function FollowerSection({ rows, filtRows, cutoff }) {
 
   return (
     <div className="space-y-6">
+      {allOrgs?.length > 0 && (
+        <ImportHistoricalPanel allOrgs={allOrgs} onImported={() => window.location.reload()} />
+      )}
+
       <Section title="Daily Follower Growth"
         sub="Followers gained per calendar day (estimated between syncs)">
         <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
@@ -1410,7 +1593,7 @@ export default function LinkedInDashboard() {
               />
             )}
             {section === "followers" && (
-              <FollowerSection rows={followerStats} filtRows={filtFollower} cutoff={cutoff} />
+              <FollowerSection rows={followerStats} filtRows={filtFollower} cutoff={cutoff} allOrgs={allOrgs} />
             )}
             {section === "content" && (
               <ContentSection posts={filtPosts} showPage={showPage} />
