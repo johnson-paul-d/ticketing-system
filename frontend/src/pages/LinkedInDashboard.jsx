@@ -178,16 +178,16 @@ function KPICard({ label, value, sub, icon, trend, accent = LI_BLUE }) {
   const pos = trend != null && trend >= 0;
   const showTrend = trend != null && isFinite(trend);
   return (
-    <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex flex-col gap-2">
+    <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-5 border border-gray-100 shadow-sm flex flex-col gap-1.5 sm:gap-2 min-h-[80px]">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">{label}</span>
-        <span className="text-xl">{icon}</span>
+        <span className="text-xs font-medium text-gray-400 uppercase tracking-wide leading-tight">{label}</span>
+        <span className="text-base sm:text-xl">{icon}</span>
       </div>
-      <div className="text-2xl font-bold text-gray-900">{value}</div>
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="text-xl sm:text-2xl font-bold text-gray-900">{value}</div>
+      <div className="flex items-center gap-1.5 flex-wrap">
         {sub && <span className="text-xs text-gray-400">{sub}</span>}
         {showTrend && (
-          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${pos ? "bg-green-50 text-green-600" : "bg-red-50 text-red-500"}`}>
+          <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${pos ? "bg-green-50 text-green-600" : "bg-red-50 text-red-500"}`}>
             {pos ? "▲" : "▼"} {Math.abs(trend).toFixed(1)}%
           </span>
         )}
@@ -209,10 +209,10 @@ function CatBadge({ name, small = false }) {
 
 function Section({ title, sub, children, action }) {
   return (
-    <div className="mb-8">
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+    <div className="mb-5 sm:mb-8">
+      <div className="flex items-center justify-between mb-3 sm:mb-4 flex-wrap gap-2">
         <div>
-          <h2 className="text-base font-bold text-gray-900">{title}</h2>
+          <h2 className="text-sm sm:text-base font-bold text-gray-900">{title}</h2>
           {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
         </div>
         {action}
@@ -359,9 +359,9 @@ function FollowerGainsChart({ allRows, cutoffDate }) {
       </div>
 
       {/* Chart */}
-      <div className="h-56">
+      <div className="h-44 sm:h-56">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top:8, right:16, left:0, bottom:0 }}>
+          <LineChart data={data} margin={{ top:8, right:8, left:0, bottom:0 }}>
             <CartesianGrid stroke="#E5E7EB" strokeDasharray="" vertical={false} />
             <XAxis
               dataKey="label"
@@ -471,7 +471,7 @@ function OrgSponChart({ rows }) {
   if (!data.length) return <Empty label="No follower breakdown data" />;
 
   return (
-    <div className="h-64">
+    <div className="h-48 sm:h-64">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top:8, right:16, left:0, bottom:0 }}>
           <defs>
@@ -512,7 +512,7 @@ function EngagementTrendChart({ posts }) {
   if (!data.length) return <Empty label="No post performance data" />;
 
   return (
-    <div className="h-64">
+    <div className="h-48 sm:h-64">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top:8, right:16, left:0, bottom:0 }}>
           <defs>
@@ -585,7 +585,7 @@ function CategoryDonut({ catStats }) {
   if (!data.length) return <Empty label="Classify posts to see category distribution" />;
 
   return (
-    <div className="h-64">
+    <div className="h-48 sm:h-64">
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
           <Pie data={data} cx="50%" cy="50%" innerRadius={55} outerRadius={90}
@@ -610,22 +610,24 @@ function DayHeatmap({ posts }) {
   const maxEng = Math.max(...data.map(d=>d.avgEng), 1);
 
   return (
-    <div className="grid grid-cols-7 gap-2">
-      {data.map(d => {
-        const intensity = d.posts ? d.avgEng / maxEng : 0;
-        const bg = intensity > 0.7 ? "#0077B5" : intensity > 0.4 ? "#3D9BD4" : intensity > 0.1 ? "#BDD9F2" : "#F3F4F6";
-        const textColor = intensity > 0.7 ? "text-white" : "text-gray-700";
-        return (
-          <div key={d.day} className={`rounded-xl p-3 text-center transition-all ${textColor}`} style={{ background: bg }}>
-            <div className="text-xs font-bold mb-1">{d.day}</div>
-            <div className={`text-xs ${intensity > 0.7 ? "text-blue-100" : "text-gray-400"}`}>{d.posts}p</div>
-            {d.posts > 0 && <div className="text-xs font-semibold mt-0.5">{fmt(d.avgEng)}</div>}
-          </div>
-        );
-      })}
-      <div className="col-span-7 flex items-center justify-between mt-1">
-        <span className="text-xs text-gray-400">Lighter = lower avg engagement</span>
-        <span className="text-xs text-gray-400">Darker = higher avg engagement</span>
+    <div>
+      <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+        {data.map(d => {
+          const intensity = d.posts ? d.avgEng / maxEng : 0;
+          const bg = intensity > 0.7 ? "#0077B5" : intensity > 0.4 ? "#3D9BD4" : intensity > 0.1 ? "#BDD9F2" : "#F3F4F6";
+          const textColor = intensity > 0.7 ? "text-white" : "text-gray-700";
+          return (
+            <div key={d.day} className={`rounded-lg sm:rounded-xl p-2 sm:p-3 text-center transition-all ${textColor}`} style={{ background: bg }}>
+              <div className="text-xs font-bold mb-0.5">{d.day.slice(0,3)}</div>
+              <div className={`text-xs ${intensity > 0.7 ? "text-blue-100" : "text-gray-400"}`}>{d.posts}p</div>
+              {d.posts > 0 && <div className="text-xs font-semibold mt-0.5 hidden sm:block">{fmt(d.avgEng)}</div>}
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex items-center justify-between mt-2">
+        <span className="text-xs text-gray-400">Lighter = lower engagement</span>
+        <span className="text-xs text-gray-400">Darker = higher</span>
       </div>
     </div>
   );
@@ -674,7 +676,7 @@ function OverviewSection({ posts, followerRows, pageRows, prevPosts, prevFollowe
       </div>
 
       {topPost && (
-        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+        <div className="bg-white rounded-2xl p-3 sm:p-5 border border-gray-100 shadow-sm">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">🏆 Top Performing Post</p>
           <p className="text-sm text-gray-800 font-medium mb-3 leading-relaxed">{topPost.text_preview || "—"}</p>
           <div className="flex flex-wrap gap-4">
@@ -697,7 +699,7 @@ function OverviewSection({ posts, followerRows, pageRows, prevPosts, prevFollowe
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {bestDay && (
-          <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+          <div className="bg-white rounded-2xl p-3 sm:p-5 border border-gray-100 shadow-sm">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">📅 Best Posting Day</p>
             <p className="text-2xl font-bold text-gray-900 mb-1">{bestDay.full}</p>
             <p className="text-sm text-gray-500">{fmt(bestDay.avgEng)} avg engagements · {bestDay.posts} post{bestDay.posts !== 1 ? "s" : ""}</p>
@@ -710,7 +712,7 @@ function OverviewSection({ posts, followerRows, pageRows, prevPosts, prevFollowe
           })).filter(c=>c.count>0).sort((a,b)=>b.count-a.count);
           const top = cats[0];
           return top ? (
-            <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+            <div className="bg-white rounded-2xl p-3 sm:p-5 border border-gray-100 shadow-sm">
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">🏷️ Most Published Category</p>
               <p className="text-2xl font-bold text-gray-900 mb-1">{top.icon} {top.name}</p>
               <p className="text-sm text-gray-500">{top.count} of {posts.length} posts ({Math.round(top.count/posts.length*100)}%)</p>
@@ -877,21 +879,21 @@ function FollowerSection({ rows, filtRows, cutoff, allOrgs }) {
 
       <Section title="Daily Follower Growth"
         sub="Followers gained per calendar day (estimated between syncs)">
-        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+        <div className="bg-white rounded-2xl p-3 sm:p-5 border border-gray-100 shadow-sm">
           <FollowerGainsChart allRows={rows} cutoffDate={cutoff} />
         </div>
       </Section>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Section title="Organic vs Paid Growth" sub="All-time follower source breakdown">
-          <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+          <div className="bg-white rounded-2xl p-3 sm:p-5 border border-gray-100 shadow-sm">
             <OrgSponChart rows={rows} />
           </div>
         </Section>
         <Section title="Net Followers by Month" sub="Monthly growth delta">
-          <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+          <div className="bg-white rounded-2xl p-3 sm:p-5 border border-gray-100 shadow-sm">
             {monthlyData.length ? (
-              <div className="h-64">
+              <div className="h-48 sm:h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={monthlyData} margin={{ top:4, right:8, left:0, bottom:0 }}>
                     <CartesianGrid stroke="#F3F4F6" strokeDasharray="3 3" />
@@ -936,19 +938,19 @@ function ContentSection({ posts, showPage }) {
   return (
     <div className="space-y-6">
       <Section title="Impressions & Engagement Over Time" sub="Combined across all posts by publish date">
-        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+        <div className="bg-white rounded-2xl p-3 sm:p-5 border border-gray-100 shadow-sm">
           <EngagementTrendChart posts={posts} />
         </div>
       </Section>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Section title="Top 10 Posts by Impressions" sub="Most reached content">
-          <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+          <div className="bg-white rounded-2xl p-3 sm:p-5 border border-gray-100 shadow-sm">
             <Top10Chart posts={posts} metric="impressions" label="Impressions" />
           </div>
         </Section>
         <Section title="Top 10 Posts by Engagement Rate" sub="Best converting content">
-          <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+          <div className="bg-white rounded-2xl p-3 sm:p-5 border border-gray-100 shadow-sm">
             <Top10Chart posts={posts} metric="engagement_rate" label="Eng. Rate %" />
           </div>
         </Section>
@@ -1031,15 +1033,15 @@ function CategorySection({ posts, classifications, onClassifyAI, classifying, ai
               </button>
             </div>
           }>
-          <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+          <div className="bg-white rounded-2xl p-3 sm:p-5 border border-gray-100 shadow-sm">
             <CategoryDonut catStats={catStats} />
           </div>
         </Section>
 
         <Section title="Category Performance" sub="Avg metrics per content type">
-          <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+          <div className="bg-white rounded-2xl p-3 sm:p-5 border border-gray-100 shadow-sm">
             {catStats.filter(c=>c.count>0).length ? (
-              <div className="h-64">
+              <div className="h-48 sm:h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={catStats.filter(c=>c.count>0)} layout="vertical"
                     margin={{ top:4, right:16, left:8, bottom:0 }}>
@@ -1178,7 +1180,7 @@ function InsightsSection({ posts, followerRows, orgId, dateRange }) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {insights.map((ins, i) => (
-          <div key={i} className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm"
+          <div key={i} className="bg-white rounded-2xl p-3 sm:p-5 border border-gray-100 shadow-sm"
             style={{ borderLeft: `4px solid ${ins.color || "#0077B5"}` }}>
             <div className="flex items-start gap-3">
               <span className="text-2xl flex-shrink-0">{ins.icon || typeIcon[ins.type] || "💡"}</span>
@@ -1289,7 +1291,7 @@ function StrategySection({ posts, followerRows }) {
   return (
     <div className="space-y-6">
       <Section title="Best Day & Time to Post" sub="Based on average engagement by weekday">
-        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+        <div className="bg-white rounded-2xl p-3 sm:p-5 border border-gray-100 shadow-sm">
           <DayHeatmap posts={posts} />
         </div>
       </Section>
@@ -1297,23 +1299,23 @@ function StrategySection({ posts, followerRows }) {
       {calendarWeeks.length > 0 && (
         <Section title="Suggested Monthly Content Calendar"
           sub={`Based on your ${bestDay?.full || "best"} posting day + top-performing categories`}>
-          <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm space-y-3">
-            <div className="grid grid-cols-7 gap-1 mb-2">
+          <div className="bg-white rounded-2xl p-3 sm:p-5 border border-gray-100 shadow-sm space-y-2 overflow-x-auto" style={{ WebkitOverflowScrolling:"touch" }}>
+            <div className="grid gap-1 mb-2" style={{ gridTemplateColumns:"repeat(7,minmax(40px,1fr))" }}>
               {WEEK_DAYS.map(d=>(
                 <div key={d} className="text-center text-xs font-semibold text-gray-400">{d.slice(0,3)}</div>
               ))}
             </div>
             {calendarWeeks.map((week, wi) => (
-              <div key={wi} className="grid grid-cols-7 gap-1">
+              <div key={wi} className="grid gap-1" style={{ gridTemplateColumns:"repeat(7,minmax(40px,1fr))" }}>
                 {week.map((day, di) => (
-                  <div key={di} className={`rounded-xl p-2 min-h-[60px] flex flex-col items-center justify-center text-center border ${
+                  <div key={di} className={`rounded-lg p-1.5 sm:p-2 min-h-[50px] sm:min-h-[60px] flex flex-col items-center justify-center text-center border ${
                     day.empty ? "border-gray-100 bg-gray-50" : "border-transparent"}`}
                     style={!day.empty ? { background: day.cat.color+"15", borderColor: day.cat.color+"30" } : {}}>
-                    <div className="text-xs text-gray-400 mb-1">W{wi+1}</div>
+                    <div className="text-xs text-gray-400 mb-0.5">W{wi+1}</div>
                     {!day.empty && (
                       <>
-                        <div className="text-base">{day.cat.icon}</div>
-                        <div className="text-[10px] font-semibold mt-1 leading-tight" style={{ color:day.cat.color }}>
+                        <div className="text-sm sm:text-base">{day.cat.icon}</div>
+                        <div className="text-[9px] sm:text-[10px] font-semibold mt-0.5 leading-tight" style={{ color:day.cat.color }}>
                           {day.cat.name.split(" ")[0]}
                         </div>
                       </>
@@ -1331,7 +1333,7 @@ function StrategySection({ posts, followerRows }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Section title="Follower Growth Forecast" sub="Linear projection based on historical trend">
-          <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+          <div className="bg-white rounded-2xl p-3 sm:p-5 border border-gray-100 shadow-sm">
             {forecastRows.some(f=>f.predicted>0) ? (
               <div className="space-y-3">
                 {forecastRows.map(f => (
@@ -1484,45 +1486,51 @@ function MetricSelectorChart({ followerStats, pageRows, posts, prevFollower, cut
   return (
     <div className="bg-white rounded-lg border overflow-hidden" style={{ borderColor:"#dadce0" }}>
       {/* Metric selector cards */}
-      <div className="flex divide-x" style={{ borderColor:"#dadce0" }}>
-        {GA_METRICS.map(m => {
-          const s       = stat(m.id);
-          const active  = selectedMetrics.includes(m.id);
-          const idx     = selectedMetrics.indexOf(m.id);
-          return (
-            <button key={m.id} onClick={() => onToggleMetric(m.id)}
-              className="flex-1 text-left px-5 py-4 hover:bg-gray-50 transition-colors relative"
-              style={{ borderTop: active ? `3px solid ${m.color}` : "3px solid transparent" }}>
-              {/* Series indicator dot */}
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-3 h-3 rounded-sm" style={{ background: active ? m.color : "#dadce0" }} />
-                {active && idx >= 0 && (
-                  <span className="text-xs font-medium px-1.5 py-0.5 rounded" style={{ background: m.color+"22", color: m.color }}>
-                    {idx === 0 ? "Line 1" : "Line 2"}
-                  </span>
+      {/* Scrollable metric cards — 2-col on mobile, 6-col on desktop */}
+      <div className="overflow-x-auto" style={{ WebkitOverflowScrolling:"touch" }}>
+        <div className="flex divide-x" style={{ borderColor:"#dadce0", minWidth:"max-content" }}>
+          {GA_METRICS.map(m => {
+            const s       = stat(m.id);
+            const active  = selectedMetrics.includes(m.id);
+            const idx     = selectedMetrics.indexOf(m.id);
+            return (
+              <button key={m.id} onClick={() => onToggleMetric(m.id)}
+                className="text-left px-4 py-3 sm:px-5 sm:py-4 hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                style={{
+                  borderTop: active ? `3px solid ${m.color}` : "3px solid transparent",
+                  minWidth: "130px",
+                  minHeight: "44px",
+                }}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: active ? m.color : "#dadce0" }} />
+                  {active && idx >= 0 && (
+                    <span className="text-xs font-medium px-1.5 py-0.5 rounded hidden sm:inline" style={{ background: m.color+"22", color: m.color }}>
+                      {idx === 0 ? "Line 1" : "Line 2"}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs mb-0.5" style={{ color:"#5f6368" }}>{m.label}</p>
+                <p className="text-lg sm:text-xl font-medium" style={{ color:"#202124" }}>{fmtStat(s.cur)}</p>
+                {s.pct !== null && (
+                  <p className={`text-xs font-medium mt-0.5 flex items-center gap-1 ${s.pct >= 0 ? "text-green-600" : "text-red-600"}`}>
+                    {s.pct >= 0 ? "▲" : "▼"} {Math.abs(s.pct)}%
+                    <span className="hidden sm:inline" style={{ color:"#5f6368", fontWeight:400 }}>vs prev</span>
+                  </p>
                 )}
-              </div>
-              <p className="text-xs mb-1" style={{ color:"#5f6368" }}>{m.label}</p>
-              <p className="text-xl font-medium" style={{ color:"#202124" }}>{fmtStat(s.cur)}</p>
-              {s.pct !== null && (
-                <p className={`text-xs font-medium mt-0.5 flex items-center gap-1 ${s.pct >= 0 ? "text-green-600" : "text-red-600"}`}>
-                  {s.pct >= 0 ? "▲" : "▼"} {Math.abs(s.pct)}%
-                  <span style={{ color:"#5f6368", fontWeight:400 }}>vs prev. period</span>
-                </p>
-              )}
-            </button>
-          );
-        })}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Chart */}
       <div className="border-t px-4 pt-4 pb-2" style={{ borderColor:"#dadce0" }}>
         {selectedMetrics.length === 0 ? (
-          <div className="h-56 flex items-center justify-center text-sm" style={{ color:"#5f6368" }}>
+          <div className="h-40 sm:h-56 flex items-center justify-center text-sm" style={{ color:"#5f6368" }}>
             Select a metric above to display it in the chart
           </div>
         ) : (
-          <div className="h-56">
+          <div className="h-40 sm:h-56">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={data} margin={{ top:8, right:8, left:0, bottom:0 }}>
                 <defs>
@@ -1686,81 +1694,75 @@ export default function LinkedInDashboard() {
         <div className="sticky top-0 z-30 bg-white" style={{ borderBottom:"1px solid #dadce0" }}>
 
           {/* Row 1: branding + controls */}
-          <div className="flex items-center justify-between px-6 py-3 gap-4 flex-wrap">
+          <div className="flex items-center justify-between px-3 sm:px-6 py-2.5 sm:py-3 gap-2 sm:gap-4">
             {/* Left: icon + title + page pills */}
-            <div className="flex items-center gap-4 flex-wrap">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded flex items-center justify-center flex-shrink-0"
+            <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded flex items-center justify-center"
                   style={{ background: LI_BLUE }}>
-                  <svg viewBox="0 0 24 24" fill="white" className="w-4 h-4">
+                  <svg viewBox="0 0 24 24" fill="white" className="w-3.5 h-3.5 sm:w-4 sm:h-4">
                     <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
                   </svg>
                 </div>
-                <span className="text-base font-medium" style={{ color:"#202124" }}>LinkedIn Analytics</span>
+                <span className="text-sm sm:text-base font-medium truncate" style={{ color:"#202124" }}>
+                  <span className="hidden sm:inline">LinkedIn Analytics</span>
+                  <span className="sm:hidden">Analytics</span>
+                </span>
               </div>
 
-              {/* Page selector pills */}
-              <div className="flex items-center gap-1.5">
-                <button onClick={()=>selectOrg(null)}
-                  className="px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
-                  style={!selectedOrgId
-                    ? { background:"#e8f0fe", color: GA_BLUE }
-                    : { color:"#5f6368", background:"transparent" }}
-                  onMouseEnter={e=>{ if(selectedOrgId) e.currentTarget.style.background="#f1f3f4"; }}
-                  onMouseLeave={e=>{ if(selectedOrgId) e.currentTarget.style.background="transparent"; }}>
-                  All pages
-                </button>
-                {allOrgs.map(o => (
-                  <button key={o.id} onClick={()=>selectOrg(o.id)}
-                    className="px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
-                    style={selectedOrgId===o.id
+              {/* Page selector pills — scrollable on mobile */}
+              <div className="flex items-center gap-1 overflow-x-auto flex-shrink min-w-0" style={{ WebkitOverflowScrolling:"touch", scrollbarWidth:"none" }}>
+                {[{ id: null, name: "All" }, ...allOrgs.map(o => ({ id: o.id, name: o.name || o.id }))].map(o => (
+                  <button key={o.id ?? "all"} onClick={() => selectOrg(o.id)}
+                    className="px-2.5 py-1 rounded-full text-xs font-medium transition-colors whitespace-nowrap flex-shrink-0 min-h-[32px]"
+                    style={(!o.id && !selectedOrgId) || selectedOrgId === o.id
                       ? { background:"#e8f0fe", color: GA_BLUE }
-                      : { color:"#5f6368", background:"transparent" }}
-                    onMouseEnter={e=>{ if(selectedOrgId!==o.id) e.currentTarget.style.background="#f1f3f4"; }}
-                    onMouseLeave={e=>{ if(selectedOrgId!==o.id) e.currentTarget.style.background="transparent"; }}>
-                    {o.name || o.id}
+                      : { color:"#5f6368", background:"transparent" }}>
+                    {o.name}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Right: date range + actions */}
-            <div className="flex items-center gap-2 flex-wrap">
+            {/* Right: date range + sync (compact on mobile) */}
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
               {/* Date range toggle */}
               <div className="flex items-center rounded-md overflow-hidden" style={{ border:"1px solid #dadce0" }}>
-                {[{d:7,l:"7 days"},{d:30,l:"30 days"},{d:90,l:"90 days"},{d:180,l:"180 days"}].map(({d,l},i)=>(
+                {[{d:7,l:"7D",lf:"7 days"},{d:30,l:"30D",lf:"30 days"},{d:90,l:"90D",lf:"90 days"},{d:180,l:"6M",lf:"180 days"}].map(({d,l,lf},i)=>(
                   <button key={d} onClick={()=>setDateRange(d)}
-                    className="px-3 py-1.5 text-xs font-medium transition-colors"
+                    className="px-2 sm:px-3 py-1.5 text-xs font-medium transition-colors min-h-[32px]"
                     style={{
                       borderLeft: i > 0 ? "1px solid #dadce0" : "none",
                       background: dateRange===d ? GA_BLUE : "transparent",
                       color:      dateRange===d ? "#fff"   : "#5f6368",
                     }}>
-                    {l}
+                    <span className="sm:hidden">{l}</span>
+                    <span className="hidden sm:inline">{lf}</span>
                   </button>
                 ))}
               </div>
 
               {/* Sync */}
               <button onClick={sync} disabled={syncing}
-                className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-semibold text-white disabled:opacity-50 transition-opacity"
+                className="flex items-center gap-1 px-2.5 sm:px-4 py-1.5 rounded-full text-xs font-semibold text-white disabled:opacity-50 min-h-[32px]"
                 style={{ background: GA_BLUE }}>
-                {syncing ? <><Spinner sm />Syncing…</> : "↻ Sync now"}
+                {syncing ? <Spinner sm /> : "↻"}
+                <span className="hidden sm:inline">{syncing ? "Syncing…" : " Sync"}</span>
               </button>
 
-              {/* Refresh orgs */}
+              {/* Refresh — desktop only */}
               <button onClick={handleRefreshOrgs} disabled={refreshing}
-                className="px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
+                className="hidden sm:flex px-3 py-1.5 rounded-full text-xs font-medium transition-colors min-h-[32px]"
                 style={{ border:"1px solid #dadce0", color:"#5f6368" }}>
-                {refreshing ? "…" : "⟳ Refresh pages"}
+                {refreshing ? "…" : "⟳ Refresh"}
               </button>
 
-              {refreshMsg && <span className="text-xs font-medium text-green-600">{refreshMsg}</span>}
-              {syncResult?.summary && <span className="text-xs font-medium" style={{ color:"#34a853" }}>✓ Synced</span>}
-              {dataLoading && <span className="text-xs" style={{ color:"#5f6368" }}>Loading…</span>}
+              {refreshMsg && <span className="text-xs font-medium text-green-600 hidden sm:inline">{refreshMsg}</span>}
+              {syncResult?.summary && <span className="text-xs font-medium hidden sm:inline" style={{ color:"#34a853" }}>✓</span>}
+              {dataLoading && <span className="text-xs hidden sm:inline" style={{ color:"#5f6368" }}>…</span>}
 
               <button onClick={disconnect}
-                className="text-xs px-2 py-1 rounded transition-colors"
+                className="hidden sm:flex text-xs px-2 py-1 rounded transition-colors min-h-[32px]"
                 style={{ color:"#5f6368" }}
                 onMouseEnter={e=>{ e.currentTarget.style.color="#ea4335"; }}
                 onMouseLeave={e=>{ e.currentTarget.style.color="#5f6368"; }}>
@@ -1769,23 +1771,24 @@ export default function LinkedInDashboard() {
             </div>
           </div>
 
-          {/* Row 2: Tab navigation */}
-          <div className="flex px-6 overflow-x-auto">
+          {/* Row 2: Tab navigation — scrollable */}
+          <div className="flex px-2 sm:px-6 overflow-x-auto" style={{ scrollbarWidth:"none", WebkitOverflowScrolling:"touch" }}>
             {SECTIONS.map(s => (
               <button key={s.id} onClick={()=>setSection(s.id)}
-                className="flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors mr-1"
+                className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm font-medium whitespace-nowrap transition-colors flex-shrink-0 min-h-[44px]"
                 style={{
                   borderBottom: section===s.id ? `3px solid ${GA_BLUE}` : "3px solid transparent",
                   color:        section===s.id ? GA_BLUE : "#5f6368",
                 }}>
-                {s.icon} {s.label}
+                <span className="text-sm">{s.icon}</span>
+                <span className="hidden xs:inline sm:inline">{s.label}</span>
               </button>
             ))}
           </div>
         </div>
 
         {/* ══ Main content ═════════════════════════════════════════════════ */}
-        <div className="px-6 py-6 max-w-screen-2xl">
+        <div className="px-3 sm:px-6 py-4 sm:py-6 max-w-screen-2xl">
 
           {/* Metric selector + unified chart — shown on overview & followers */}
           {(section === "overview" || section === "followers") && (
