@@ -321,9 +321,9 @@ function buildDailyFollowerData(allRows, cutoffDate) {
   // 4. Daily delta (null-safe)
   return withTotals.map((d, i) => {
     const prev = i > 0 ? withTotals[i - 1] : null;
-    const orgDelta = (d.organic !== null && prev?.organic !== null)
+    const orgDelta = (prev !== null && d.organic !== null && prev.organic !== null)
       ? Math.max(0, d.organic - prev.organic) : null;
-    const paiDelta = (d.paid !== null && prev?.paid !== null)
+    const paiDelta = (prev !== null && d.paid !== null && prev.paid !== null)
       ? Math.max(0, d.paid - prev.paid) : null;
     return {
       date:     d.date,
