@@ -252,8 +252,18 @@ function AiBadge({ powered }) {
 
 // ─── Chart Components ─────────────────────────────────────────────────────────
 
-// Fills every calendar day with interpolated organic + paid follower totals,
-// then returns daily deltas — one entry per calendar day in the range.
+// Import rows: organic = running sum of new followers from CSV (much less than total).
+// Sync rows:  organic = total (our sync endpoint sets organic_followers = total_followers).
+// Threshold 80% — if organic >= 80% of total, it's treated as a sync-only row.
+function isImportRow(p) {
+  return p.total > 0 && p.organic < p.total * 0.8;
+}
+
+// Fills every calendar day with interpolated totals.
+// "total"         → interpolated from ALL rows (accurate absolute count from syncs).
+// "organic/paid"  → interpolated from import rows ONLY (real daily new-follower data).
+// Days after the last import row get organic=null so the chart line breaks cleanly
+// instead of showing a giant spike caused by mixing import sums with sync totals.
 function buildDailyFollowerData(allRows, cutoffDate) {
   // 1. Sum all orgs per actual sync date
   const byDate = {};
@@ -264,11 +274,14 @@ function buildDailyFollowerData(allRows, cutoffDate) {
     byDate[r.date].organic += r.organic_followers || 0;
     byDate[r.date].paid    += r.paid_followers    || 0;
   });
-  const syncPoints = Object.values(byDate).sort((a, b) => (a.date > b.date ? 1 : -1));
-  if (!syncPoints.length) return [];
+  const allPoints    = Object.values(byDate).sort((a, b) => (a.date > b.date ? 1 : -1));
+  if (!allPoints.length) return [];
+
+  const importPoints = allPoints.filter(isImportRow);
+  const importEnd    = importPoints.at(-1)?.date || null;
 
   // 2. Calendar range
-  const startStr = cutoffDate || syncPoints[0].date;
+  const startStr = cutoffDate || allPoints[0].date;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const cur = new Date(startStr + "T00:00:00");
@@ -278,16 +291,17 @@ function buildDailyFollowerData(allRows, cutoffDate) {
     cur.setDate(cur.getDate() + 1);
   }
 
-  // 3. Linear interpolation for a given field on a given date
-  function interp(field, date) {
-    const before = [...syncPoints].reverse().find(p => p.date <= date);
-    const after  = syncPoints.find(p => p.date >= date);
-    if (!before && !after) return { v: 0, isSynced: false };
+  // 3. Generic linear interpolation across a given point set
+  function interp(points, field, date) {
+    if (!points.length) return { v: null, isSynced: false };
+    const before = [...points].reverse().find(p => p.date <= date);
+    const after  = points.find(p => p.date >= date);
+    if (!before && !after) return { v: null, isSynced: false };
     if (!before) return { v: after[field], isSynced: after.date === date };
     if (!after || before.date === after.date) return { v: before[field], isSynced: before.date === date };
-    const t1 = new Date(before.date + "T00:00:00").getTime();
-    const t2 = new Date(after.date  + "T00:00:00").getTime();
-    const t  = new Date(date        + "T00:00:00").getTime();
+    const t1    = new Date(before.date + "T00:00:00").getTime();
+    const t2    = new Date(after.date  + "T00:00:00").getTime();
+    const t     = new Date(date        + "T00:00:00").getTime();
     const ratio = (t - t1) / (t2 - t1);
     return {
       v: Math.round(before[field] + ratio * (after[field] - before[field])),
@@ -296,21 +310,30 @@ function buildDailyFollowerData(allRows, cutoffDate) {
   }
 
   const withTotals = calDays.map(date => {
-    const tot = interp("total",   date);
-    const org = interp("organic", date);
-    const pai = interp("paid",    date);
+    const tot = interp(allPoints, "total", date);
+    // Beyond import data: no organic/paid delta — avoids spike from sync rows
+    const afterImport = importEnd && date > importEnd;
+    const org = afterImport ? { v: null } : interp(importPoints, "organic", date);
+    const pai = afterImport ? { v: null } : interp(importPoints, "paid",    date);
     return { date, total: tot.v, organic: org.v, paid: pai.v, isSynced: tot.isSynced };
   });
 
-  // 4. Daily delta per field
-  return withTotals.map((d, i) => ({
-    date:     d.date,
-    label:    shortDate(d.date),
-    organic:  i > 0 ? Math.max(0, d.organic - withTotals[i - 1].organic) : 0,
-    paid:     i > 0 ? Math.max(0, d.paid    - withTotals[i - 1].paid)    : 0,
-    total:    d.total,
-    isSynced: d.isSynced,
-  }));
+  // 4. Daily delta (null-safe)
+  return withTotals.map((d, i) => {
+    const prev = i > 0 ? withTotals[i - 1] : null;
+    const orgDelta = (d.organic !== null && prev?.organic !== null)
+      ? Math.max(0, d.organic - prev.organic) : null;
+    const paiDelta = (d.paid !== null && prev?.paid !== null)
+      ? Math.max(0, d.paid - prev.paid) : null;
+    return {
+      date:     d.date,
+      label:    shortDate(d.date),
+      organic:  orgDelta,
+      paid:     paiDelta,
+      total:    d.total,
+      isSynced: d.isSynced,
+    };
+  });
 }
 
 function FollowerGainsChart({ allRows, cutoffDate }) {
@@ -322,9 +345,9 @@ function FollowerGainsChart({ allRows, cutoffDate }) {
   if (!data.length) return <Empty label="No follower data in this period" sub="Sync your pages to start tracking follower metrics." />;
 
   const totalFollowers   = data.at(-1)?.total || 0;
-  const newInPeriod      = data.slice(1).reduce((s, d) => s + d.organic + d.paid, 0);
+  const newInPeriod      = data.slice(1).reduce((s, d) => s + (d.organic ?? 0) + (d.paid ?? 0), 0);
   const prevPeriodData   = data.slice(0, Math.max(1, Math.floor(data.length / 2)));
-  const prevNew          = prevPeriodData.slice(1).reduce((s, d) => s + d.organic + d.paid, 0);
+  const prevNew          = prevPeriodData.slice(1).reduce((s, d) => s + (d.organic ?? 0) + (d.paid ?? 0), 0);
   const pctChange        = prevNew > 0 ? Math.round(((newInPeriod - prevNew) / prevNew) * 100) : null;
 
   const tickInterval = Math.max(1, Math.floor(data.length / 6));
@@ -389,25 +412,31 @@ function FollowerGainsChart({ allRows, cutoffDate }) {
                 return (
                   <div style={{ ...TTStyle, minWidth: 220 }}>
                     <p className="text-xs font-semibold text-gray-700 mb-2">{fmtFullDate(d.date)}</p>
-                    <div className="flex items-center justify-between gap-4 mb-1">
-                      <span className="flex items-center gap-1.5 text-xs text-gray-600">
-                        <span className="inline-block w-5 border-t-2 border-dashed border-green-500"></span> Organic
-                      </span>
-                      <span className="text-xs font-bold text-gray-800">{fmt(d.organic)}</span>
-                      {pctOrg !== null && (
-                        <span className={`text-xs font-semibold ${pctOrg >= 0 ? "text-green-600" : "text-red-500"}`}>
-                          {pctOrg >= 0 ? "▲" : "▼"} {Math.abs(pctOrg)}% previous day
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center justify-between gap-4">
-                      <span className="flex items-center gap-1.5 text-xs text-gray-600">
-                        <span className="inline-block w-5 border-t-2 border-solid border-blue-500"></span> Sponsored
-                      </span>
-                      <span className="text-xs font-bold text-gray-800">{fmt(d.paid)}</span>
-                    </div>
-                    {!d.isSynced && (
-                      <p className="text-xs text-amber-500 mt-2 pt-2 border-t border-gray-100">⚡ Estimated between syncs</p>
+                    {d.organic !== null ? (
+                      <>
+                        <div className="flex items-center justify-between gap-4 mb-1">
+                          <span className="flex items-center gap-1.5 text-xs text-gray-600">
+                            <span className="inline-block w-5 border-t-2 border-dashed border-green-500"></span> Organic
+                          </span>
+                          <span className="text-xs font-bold text-gray-800">{fmt(d.organic)}</span>
+                          {pctOrg !== null && (
+                            <span className={`text-xs font-semibold ${pctOrg >= 0 ? "text-green-600" : "text-red-500"}`}>
+                              {pctOrg >= 0 ? "▲" : "▼"} {Math.abs(pctOrg)}% previous day
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="flex items-center gap-1.5 text-xs text-gray-600">
+                            <span className="inline-block w-5 border-t-2 border-solid border-blue-500"></span> Sponsored
+                          </span>
+                          <span className="text-xs font-bold text-gray-800">{fmt(d.paid)}</span>
+                        </div>
+                        {!d.isSynced && (
+                          <p className="text-xs text-amber-500 mt-2 pt-2 border-t border-gray-100">⚡ Estimated between syncs</p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-xs text-gray-400">Daily breakdown available only for imported date range</p>
                     )}
                   </div>
                 );
@@ -421,6 +450,7 @@ function FollowerGainsChart({ allRows, cutoffDate }) {
               strokeWidth={2}
               strokeDasharray="6 4"
               dot={false}
+              connectNulls={false}
               activeDot={{ r: 4, fill: "#22C55E", strokeWidth: 0 }}
             />
             <Line
@@ -430,6 +460,7 @@ function FollowerGainsChart({ allRows, cutoffDate }) {
               stroke="#3B82F6"
               strokeWidth={1.5}
               dot={false}
+              connectNulls={false}
               activeDot={{ r: 4, fill: "#3B82F6", strokeWidth: 0 }}
             />
           </LineChart>
@@ -1439,7 +1470,7 @@ function buildUnifiedDaily(allFollowerRows, pageRows, cutoff) {
   return follDaily.map(d => ({
     date:           d.date,
     label:          d.label,
-    new_followers:  d.organic + d.paid,
+    new_followers:  (d.organic ?? 0) + (d.paid ?? 0),
     total:          d.total,
     impressions:    pageByDate[d.rawDate]?.impressions  ?? null,
     page_views:     pageByDate[d.rawDate]?.page_views   ?? null,
