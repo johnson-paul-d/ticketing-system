@@ -47,7 +47,16 @@
       "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{const j=JSON.parse\\(d\\);for\\(const r of j\\)console.log\\(r.name.padEnd\\(24\\),'hc='+\\(r.linkedin?.headcount??'-'\\),'people='+\\(r.linkedin?.sample?'sample':r.linkedin?.peopleCount\\),'gAds='+\\(r.googleAds?.sample?'sample':r.googleAds?.count\\)\\)}\\)\")",
       "Bash(node probe.mjs)",
       "Bash(python3 \"C:\\\\Users\\\\mktganalyst\\\\.claude\\\\skills\\\\ui-ux-pro-max\\\\scripts\\\\search.py\" \"analytics dashboard responsive mobile\" --domain ux -n 8)",
-      "Bash(cd /d/competitor-intel-agent && rm -f probe.mjs && echo \"removed dead-API probe\")"
+      "Bash(cd /d/competitor-intel-agent && rm -f probe.mjs && echo \"removed dead-API probe\")",
+      "Bash(cd \"D:/tower-parking-landing\" && ls -la && echo \"--- assets ---\" && ls assets/ 2>/dev/null && echo \"--- renderer line ---\" && grep -n \"WebGLRenderer\" index.html | head)",
+      "PowerShell(npx skillfish add willem4130/claude-code-skills elite-powerpoint-designer)",
+      "Bash(python -c \"import pptx; print\\('pptx', pptx.__version__\\)\")",
+      "Bash(python -c \"import PIL; print\\('pillow', PIL.__version__\\)\")",
+      "Bash(python -m pip install python-pptx pillow --quiet)",
+      "Bash(ls /c/Windows/Fonts 2>/dev/null | grep -iE \"inter|montserrat|segoe\" | head -20)",
+      "Bash(python build_deck.py)",
+      "Bash(which soffice *)",
+      "PowerShell($p = Get-ItemProperty \"HKLM:\\\\SOFTWARE\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\App Paths\\\\POWERPNT.EXE\" -ErrorAction SilentlyContinue; if \\($p\\) { $p.'\\(default\\)' } else { \"NO-PPT\" })"
     ]
   }
 }

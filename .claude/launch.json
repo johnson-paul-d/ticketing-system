@@ -4,7 +4,7 @@
     {
       "name": "tower-parking",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "5599", "--directory", "tower-parking-landing"],
+      "runtimeArgs": ["-m", "http.server", "5599", "--directory", "D:/tower-parking-landing"],
       "port": 5599
     },
     {

@@ -122,6 +122,17 @@ export default function TicketDetails() {
   };
 
   const isAdmin = user?.role === "Admin" || user?.role === "Super Admin";
+  const canEditTitle = isAdmin || ticket?.assigned_to === user?.id;
+
+  const revertDueDateRequest = async () => {
+    if (!window.confirm("Cancel your due date change request?")) return;
+    try {
+      await api.put(`/tickets/${ticket.id}`, { due_date_change_status: "Reverted" });
+      fetchTicket();
+    } catch (err) {
+      alert(err?.response?.data?.message || "Failed to revert request");
+    }
+  };
 
   const updateDueDate = async () => {
     if (!dueDate) {
@@ -340,7 +351,7 @@ export default function TicketDetails() {
         {/* HEADER */}
         <div className="flex flex-col lg:flex-row justify-between lg:items-start gap-6">
           <div>
-            {user?.role === "Admin" && editingTitle ? (
+            {canEditTitle && editingTitle ? (
               <div className="flex flex-col sm:flex-row gap-4 items-start">
                 <input
                   type="text"
@@ -369,7 +380,7 @@ export default function TicketDetails() {
             ) : (
               <div className="flex items-center gap-3">
                 <h1 className="text-4xl lg:text-5xl font-bold">{ticket.title}</h1>
-                {user?.role === "Admin" && (
+                {canEditTitle && (
                   <button
                     onClick={() => {
                       setEditingTitle(true);
@@ -706,9 +717,18 @@ export default function TicketDetails() {
                 </button>
               </div>
               {!isAdmin && ticket.due_date_change_status === "Pending" && (
-                <p className="text-sm text-orange-600 mt-2">
-                  A due date change request is pending approval.
-                </p>
+                <div className="mt-2 flex items-center gap-3 flex-wrap">
+                  <p className="text-sm text-orange-600">
+                    Due date change pending approval
+                    {ticket.requested_due_date && ` → ${ticket.requested_due_date}`}.
+                  </p>
+                  <button
+                    onClick={revertDueDateRequest}
+                    className="text-sm text-red-500 hover:text-red-700 underline"
+                  >
+                    Cancel request
+                  </button>
+                </div>
               )}
             </div>
 

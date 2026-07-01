@@ -331,6 +331,21 @@ router.put('/:id', auth, async (req, res) => {
       });
     }
 
+    // Revert — non-admin cancels their own pending request
+    if (due_date_change_status === 'Reverted' && existing.due_date_change_status === 'Pending') {
+      updateData.requested_due_date = null;
+      updateData.due_date_change_status = null;
+      updateData.due_date_change_requested_by = null;
+      updateData.due_date_change_requested_at = null;
+
+      timeline.push({
+        type: 'due_date_reverted',
+        action: 'Due date change request cancelled by requester',
+        user: req.user.name,
+        created_at: getISTTime(),
+      });
+    }
+
     // =====================================================
     // 2. DIRECT DUE DATE UPDATE (Admin — no approval needed)
     // =====================================================
