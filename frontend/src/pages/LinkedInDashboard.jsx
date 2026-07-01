@@ -174,24 +174,37 @@ function buildAuthUrl(clientId, redirectUri) {
 
 // ─── Micro-components ─────────────────────────────────────────────────────────
 
-function KPICard({ label, value, sub, icon, trend, accent = LI_BLUE }) {
-  const pos = trend != null && trend >= 0;
+function KPICard({ label, value, sub, trend, color = "#1a73e8", sparkData }) {
+  const pos      = trend != null && trend >= 0;
   const showTrend = trend != null && isFinite(trend);
   return (
-    <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-5 border border-gray-100 shadow-sm flex flex-col gap-1.5 sm:gap-2 min-h-[80px]">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-gray-400 uppercase tracking-wide leading-tight">{label}</span>
-        <span className="text-base sm:text-xl">{icon}</span>
-      </div>
-      <div className="text-xl sm:text-2xl font-bold text-gray-900">{value}</div>
-      <div className="flex items-center gap-1.5 flex-wrap">
-        {sub && <span className="text-xs text-gray-400">{sub}</span>}
+    <div className="bg-white rounded-xl p-4 flex flex-col gap-1" style={{ border:"1px solid #dadce0", borderTop:`3px solid ${color}` }}>
+      <p className="text-xs font-medium uppercase tracking-wide" style={{ color:"#5f6368" }}>{label}</p>
+      <p className="text-2xl sm:text-3xl font-semibold mt-0.5" style={{ color:"#202124" }}>{value}</p>
+      <div className="flex items-center gap-2 flex-wrap mt-0.5">
         {showTrend && (
-          <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${pos ? "bg-green-50 text-green-600" : "bg-red-50 text-red-500"}`}>
+          <span className={`text-xs font-semibold flex items-center gap-0.5 ${pos ? "text-green-600" : "text-red-500"}`}>
             {pos ? "▲" : "▼"} {Math.abs(trend).toFixed(1)}%
           </span>
         )}
+        {sub && <span className="text-xs" style={{ color:"#5f6368" }}>{sub}</span>}
       </div>
+      {sparkData && sparkData.length > 1 && (
+        <div className="mt-2 h-10">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={sparkData} margin={{ top:2, right:0, left:0, bottom:0 }}>
+              <defs>
+                <linearGradient id={`spark_${label.replace(/\s+/g,"")}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%"  stopColor={color} stopOpacity={0.2} />
+                  <stop offset="95%" stopColor={color} stopOpacity={0}   />
+                </linearGradient>
+              </defs>
+              <Area type="monotone" dataKey="v" stroke={color} strokeWidth={1.5}
+                fill={`url(#spark_${label.replace(/\s+/g,"")})`} dot={false} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      )}
     </div>
   );
 }
@@ -666,87 +679,231 @@ function DayHeatmap({ posts }) {
 
 // ─── Overview Section ─────────────────────────────────────────────────────────
 
-function OverviewSection({ posts, followerRows, pageRows, prevPosts, prevFollower, dateRange }) {
-  const latestF  = useMemo(() => followerRows.at(-1)?.total_followers || 0, [followerRows]);
-  const prevF    = useMemo(() => {
-    if (!prevFollower.length) return null;
-    return prevFollower[0]?.total_followers || null;
-  }, [prevFollower]);
+function OverviewSection({ posts, followerRows, pageRows, prevPosts, prevFollower, dateRange, cutoff }) {
+  const latestF   = useMemo(() => followerRows.at(-1)?.total_followers || 0, [followerRows]);
+  const prevF     = useMemo(() => prevFollower[0]?.total_followers || null, [prevFollower]);
+  const newF      = useMemo(() => {
+    if (followerRows.length < 2) return 0;
+    return (followerRows.at(-1)?.total_followers||0) - (followerRows[0]?.total_followers||0);
+  }, [followerRows]);
 
   const totalImp  = useMemo(() => posts.reduce((s,p)=>s+(p.impressions||0),0), [posts]);
-  const totalEng  = useMemo(() => posts.reduce((s,p)=>s+(p.reactions||0)+(p.clicks||0)+(p.comments||0)+(p.shares||0),0), [posts]);
+  const totalReact = useMemo(() => posts.reduce((s,p)=>s+(p.reactions||0),0), [posts]);
+  const totalComm = useMemo(() => posts.reduce((s,p)=>s+(p.comments||0),0), [posts]);
+  const totalShare = useMemo(() => posts.reduce((s,p)=>s+(p.shares||0),0), [posts]);
+  const totalClick = useMemo(() => posts.reduce((s,p)=>s+(p.clicks||0),0), [posts]);
+  const totalEng  = totalReact + totalComm + totalShare + totalClick;
   const engRate   = totalImp > 0 ? (totalEng/totalImp)*100 : 0;
+  const ctr       = totalImp > 0 ? (totalClick/totalImp)*100 : 0;
   const totalViews = useMemo(() => pageRows.reduce((s,r)=>s+(r.page_views||0),0), [pageRows]);
+  const avgEngPost = posts.length ? totalEng/posts.length : 0;
 
   const prevImp   = useMemo(() => prevPosts.reduce((s,p)=>s+(p.impressions||0),0), [prevPosts]);
-  const prevEng   = useMemo(() => prevPosts.reduce((s,p)=>s+(p.reactions||0)+(p.clicks||0)+(p.comments||0)+(p.shares||0),0), [prevPosts]);
+  const prevReact = useMemo(() => prevPosts.reduce((s,p)=>s+(p.reactions||0),0), [prevPosts]);
+  const prevComm  = useMemo(() => prevPosts.reduce((s,p)=>s+(p.comments||0),0), [prevPosts]);
+  const prevShare = useMemo(() => prevPosts.reduce((s,p)=>s+(p.shares||0),0), [prevPosts]);
+  const prevClick = useMemo(() => prevPosts.reduce((s,p)=>s+(p.clicks||0),0), [prevPosts]);
+  const prevEng   = prevReact + prevComm + prevShare + prevClick;
   const prevEngR  = prevImp > 0 ? (prevEng/prevImp)*100 : null;
+  const prevCtr   = prevImp > 0 ? (prevClick/prevImp)*100 : null;
 
   const topPost   = useMemo(() => [...posts].sort((a,b)=>(b.impressions||0)-(a.impressions||0))[0], [posts]);
   const dayAn     = useMemo(() => bestDayAnalysis(posts), [posts]);
   const bestDay   = useMemo(() => [...dayAn].sort((a,b)=>b.avgEng-a.avgEng).find(d=>d.posts>0), [dayAn]);
 
-  const newFollowers = useMemo(() => {
-    if (followerRows.length < 2) return 0;
-    return (followerRows.at(-1)?.total_followers||0) - (followerRows[0]?.total_followers||0);
-  }, [followerRows]);
+  // Sparkline data — daily totals from posts
+  const sparkByDate = useMemo(() => {
+    const map = {};
+    posts.forEach(p => {
+      if (!p.post_date) return;
+      if (!map[p.post_date]) map[p.post_date] = { imp:0, eng:0, react:0, comm:0 };
+      map[p.post_date].imp   += p.impressions || 0;
+      map[p.post_date].eng   += (p.reactions||0)+(p.comments||0)+(p.shares||0)+(p.clicks||0);
+      map[p.post_date].react += p.reactions || 0;
+      map[p.post_date].comm  += p.comments  || 0;
+    });
+    return Object.entries(map).sort(([a],[b])=>a>b?1:-1).map(([,v])=>v);
+  }, [posts]);
+  const sparkImp   = sparkByDate.map(d=>({ v:d.imp }));
+  const sparkEng   = sparkByDate.map(d=>({ v:d.eng }));
+  const sparkReact = sparkByDate.map(d=>({ v:d.react }));
+
+  // Engagement type breakdown for donut
+  const engBreakdown = [
+    { name:"Reactions", value:totalReact, color:"#ec4899" },
+    { name:"Comments",  value:totalComm,  color:"#14b8a6" },
+    { name:"Shares",    value:totalShare, color:"#6366f1" },
+    { name:"Clicks",    value:totalClick, color:"#ff6d00" },
+  ].filter(e=>e.value>0);
+
+  // Top 5 posts for performance table
+  const top5 = useMemo(() =>
+    [...posts].sort((a,b)=>(b.impressions||0)-(a.impressions||0)).slice(0,5),
+    [posts]);
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <KPICard label="Total Followers"   value={fmt(latestF)}   icon="👥" sub="current count"               trend={pctChange(latestF, prevF)} />
-        <KPICard label="New Followers"     value={`${newFollowers >= 0 ? "+" : ""}${fmt(newFollowers)}`} icon="📈" sub={`last ${dateRange} days`} />
-        <KPICard label="Total Impressions" value={fmt(totalImp)}  icon="👁"  sub={`${posts.length} posts`}     trend={pctChange(totalImp, prevImp)} />
-        <KPICard label="Page Views"        value={fmt(totalViews)} icon="🏠" sub="all page sections" />
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <KPICard label="Total Engagements"  value={fmt(totalEng)}        icon="❤️"  sub="reactions+clicks+comments"  trend={pctChange(totalEng, prevEng)} />
-        <KPICard label="Engagement Rate"    value={fmt(engRate,{pct:true})} icon="📊" sub="eng / impressions"           trend={pctChange(engRate, prevEngR)} />
-        <KPICard label="Posts Published"    value={fmt(posts.length)}    icon="📝"  sub={`last ${dateRange} days`} />
-        <KPICard label="Avg Eng / Post"     value={fmt(posts.length ? totalEng/posts.length : 0, {dec:1})} icon="⚡" sub="per post" />
+    <div className="space-y-5">
+
+      {/* KPI Row 1 — reach & audience */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KPICard label="Total Followers"   value={fmt(latestF)}
+          trend={pctChange(latestF, prevF)} color="#1a73e8"
+          sub={`+${fmt(newF)} this period`}
+          sparkData={followerRows.slice(-14).map(r=>({ v:r.total_followers||0 }))} />
+        <KPICard label="Impressions"       value={fmt(totalImp)}
+          trend={pctChange(totalImp, prevImp)} color="#fbbc04"
+          sub={`${posts.length} posts`}
+          sparkData={sparkImp} />
+        <KPICard label="Page Views"        value={fmt(totalViews)}
+          color="#ea4335" sub="all page sections" />
+        <KPICard label="Posts Published"   value={fmt(posts.length)}
+          color="#34a853" sub={`last ${dateRange} days`} />
       </div>
 
-      {topPost && (
-        <div className="bg-white rounded-2xl p-3 sm:p-5 border border-gray-100 shadow-sm">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">🏆 Top Performing Post</p>
-          <p className="text-sm text-gray-800 font-medium mb-3 leading-relaxed">{topPost.text_preview || "—"}</p>
-          <div className="flex flex-wrap gap-4">
-            {[
-              { label:"Impressions", val: fmt(topPost.impressions) },
-              { label:"Reactions",   val: fmt(topPost.reactions)   },
-              { label:"Comments",    val: fmt(topPost.comments)    },
-              { label:"Shares",      val: fmt(topPost.shares)      },
-              { label:"Eng. Rate",   val: fmt(topPost.engagement_rate,{pct:true}) },
-            ].map(m => (
-              <div key={m.label} className="text-center">
-                <div className="text-base font-bold text-gray-900">{m.val}</div>
-                <div className="text-xs text-gray-400">{m.label}</div>
+      {/* KPI Row 2 — engagement */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KPICard label="Total Engagements" value={fmt(totalEng)}
+          trend={pctChange(totalEng, prevEng)} color="#9c27b0"
+          sub="react+comments+shares+clicks"
+          sparkData={sparkEng} />
+        <KPICard label="Engagement Rate"   value={`${fmt(engRate,{dec:2})}%`}
+          trend={pctChange(engRate, prevEngR)} color="#8b5cf6"
+          sub="eng / impressions" />
+        <KPICard label="Click-Through Rate" value={`${fmt(ctr,{dec:2})}%`}
+          trend={pctChange(ctr, prevCtr)} color="#f59e0b"
+          sub="clicks / impressions" />
+        <KPICard label="Avg Eng / Post"    value={fmt(avgEngPost,{dec:1})}
+          trend={pctChange(avgEngPost, prevPosts.length ? prevEng/prevPosts.length : null)} color="#ff6d00"
+          sub="per post" />
+      </div>
+
+      {/* Engagement type breakdown + Top post */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+        {/* Engagement Breakdown */}
+        {engBreakdown.length > 0 && (
+          <div className="bg-white rounded-xl p-4" style={{ border:"1px solid #dadce0" }}>
+            <p className="text-xs font-semibold uppercase tracking-wide mb-4" style={{ color:"#5f6368" }}>Engagement Breakdown</p>
+            <div className="flex items-center gap-4">
+              {/* Donut */}
+              <div className="flex-shrink-0" style={{ width:120, height:120 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={engBreakdown} dataKey="value" cx="50%" cy="50%"
+                      innerRadius={32} outerRadius={54} strokeWidth={0}>
+                      {engBreakdown.map(e=>(
+                        <Cell key={e.name} fill={e.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{ fontSize:11, border:"1px solid #dadce0", borderRadius:6 }}
+                      formatter={(v, n) => [fmt(v), n]} />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
-            ))}
-            <div className="ml-auto"><CatBadge name={autoClassify(topPost.text_preview)} /></div>
+              {/* Legend + bars */}
+              <div className="flex-1 space-y-2">
+                {engBreakdown.map(e=>(
+                  <div key={e.name}>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="flex items-center gap-1.5 text-xs" style={{ color:"#202124" }}>
+                        <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ background:e.color }} />
+                        {e.name}
+                      </span>
+                      <span className="text-xs font-semibold" style={{ color:"#202124" }}>{fmt(e.value)}</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-gray-100">
+                      <div className="h-1.5 rounded-full" style={{ width:`${totalEng ? (e.value/totalEng*100).toFixed(0) : 0}%`, background:e.color }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Top post */}
+        {topPost && (
+          <div className="bg-white rounded-xl p-4" style={{ border:"1px solid #dadce0" }}>
+            <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color:"#5f6368" }}>Top Performing Post</p>
+            <p className="text-sm font-medium mb-4 leading-relaxed line-clamp-3" style={{ color:"#202124" }}>
+              {topPost.text_preview || "—"}
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { label:"Impressions", val:fmt(topPost.impressions),           color:"#fbbc04" },
+                { label:"Reactions",   val:fmt(topPost.reactions),             color:"#ec4899" },
+                { label:"Comments",    val:fmt(topPost.comments),              color:"#14b8a6" },
+                { label:"Shares",      val:fmt(topPost.shares),                color:"#6366f1" },
+                { label:"Clicks",      val:fmt(topPost.clicks),                color:"#ff6d00" },
+                { label:"Eng. Rate",   val:`${fmt(topPost.engagement_rate,{dec:2})}%`, color:"#8b5cf6" },
+              ].map(m=>(
+                <div key={m.label} className="rounded-lg p-2" style={{ background:m.color+"12" }}>
+                  <p className="text-base font-bold" style={{ color:m.color }}>{m.val}</p>
+                  <p className="text-xs mt-0.5" style={{ color:"#5f6368" }}>{m.label}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3">
+              <CatBadge name={autoClassify(topPost.text_preview)} small />
+              {topPost.post_date && <span className="text-xs ml-2" style={{ color:"#5f6368" }}>{shortDate(topPost.post_date)}</span>}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Performance table — top 5 posts */}
+      {top5.length > 0 && (
+        <div className="bg-white rounded-xl overflow-hidden" style={{ border:"1px solid #dadce0" }}>
+          <div className="px-4 py-3 border-b" style={{ borderColor:"#dadce0" }}>
+            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color:"#5f6368" }}>Top 5 Posts by Impressions</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[600px]">
+              <thead>
+                <tr style={{ borderBottom:"1px solid #f1f3f4" }}>
+                  {["Post","Date","Impressions","Reactions","Comments","Eng. Rate"].map(h=>(
+                    <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide" style={{ color:"#5f6368" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {top5.map((p,i)=>(
+                  <tr key={p.post_id||i} className="hover:bg-gray-50 transition-colors" style={{ borderBottom:"1px solid #f1f3f4" }}>
+                    <td className="px-4 py-3 text-xs max-w-[200px] truncate" style={{ color:"#202124" }} title={p.text_preview}>
+                      {(p.text_preview||"—").slice(0,55)}{p.text_preview?.length>55?"…":""}
+                    </td>
+                    <td className="px-4 py-3 text-xs whitespace-nowrap" style={{ color:"#5f6368" }}>{shortDate(p.post_date)}</td>
+                    <td className="px-4 py-3 text-xs font-semibold whitespace-nowrap" style={{ color:"#202124" }}>{fmt(p.impressions)}</td>
+                    <td className="px-4 py-3 text-xs whitespace-nowrap" style={{ color:"#ec4899" }}>{fmt(p.reactions)}</td>
+                    <td className="px-4 py-3 text-xs whitespace-nowrap" style={{ color:"#14b8a6" }}>{fmt(p.comments)}</td>
+                    <td className="px-4 py-3 text-xs font-semibold whitespace-nowrap" style={{ color:"#8b5cf6" }}>{fmt(p.engagement_rate,{dec:2})}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Best day + top category */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {bestDay && (
-          <div className="bg-white rounded-2xl p-3 sm:p-5 border border-gray-100 shadow-sm">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">📅 Best Posting Day</p>
-            <p className="text-2xl font-bold text-gray-900 mb-1">{bestDay.full}</p>
-            <p className="text-sm text-gray-500">{fmt(bestDay.avgEng)} avg engagements · {bestDay.posts} post{bestDay.posts !== 1 ? "s" : ""}</p>
+          <div className="bg-white rounded-xl p-4" style={{ border:"1px solid #dadce0", borderLeft:"3px solid #1a73e8" }}>
+            <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color:"#5f6368" }}>Best Posting Day</p>
+            <p className="text-2xl font-bold mb-1" style={{ color:"#202124" }}>{bestDay.full}</p>
+            <p className="text-sm" style={{ color:"#5f6368" }}>{fmt(bestDay.avgEng)} avg eng · {bestDay.posts} post{bestDay.posts!==1?"s":""}</p>
           </div>
         )}
         {posts.length > 0 && (() => {
-          const cats = CATS.map(c => ({
-            ...c,
-            count: posts.filter(p => autoClassify(p.text_preview) === c.name).length,
-          })).filter(c=>c.count>0).sort((a,b)=>b.count-a.count);
+          const cats = CATS.map(c=>({ ...c, count:posts.filter(p=>autoClassify(p.text_preview)===c.name).length }))
+            .filter(c=>c.count>0).sort((a,b)=>b.count-a.count);
           const top = cats[0];
           return top ? (
-            <div className="bg-white rounded-2xl p-3 sm:p-5 border border-gray-100 shadow-sm">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">🏷️ Most Published Category</p>
-              <p className="text-2xl font-bold text-gray-900 mb-1">{top.icon} {top.name}</p>
-              <p className="text-sm text-gray-500">{top.count} of {posts.length} posts ({Math.round(top.count/posts.length*100)}%)</p>
+            <div className="bg-white rounded-xl p-4" style={{ border:"1px solid #dadce0", borderLeft:`3px solid ${top.color}` }}>
+              <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color:"#5f6368" }}>Top Content Category</p>
+              <p className="text-2xl font-bold mb-1" style={{ color:"#202124" }}>{top.icon} {top.name}</p>
+              <p className="text-sm" style={{ color:"#5f6368" }}>{top.count} of {posts.length} posts · {Math.round(top.count/posts.length*100)}%</p>
             </div>
           ) : null;
         })()}
@@ -1441,42 +1598,67 @@ function ConnectScreen() {
 
 // ─── Google-Ads-style metric definitions ─────────────────────────────────────
 const GA_METRICS = [
-  { id:"new_followers",  label:"New followers",  color:"#1a73e8", field:"new_followers"  },
-  { id:"total_followers",label:"Total followers", color:"#34a853", field:"total"          },
-  { id:"impressions",    label:"Impressions",     color:"#fbbc04", field:"impressions"    },
-  { id:"page_views",     label:"Page views",      color:"#ea4335", field:"page_views"     },
-  { id:"engagements",    label:"Engagements",     color:"#9c27b0", field:"engagements"    },
-  { id:"clicks",         label:"Clicks",          color:"#ff6d00", field:"clicks"         },
+  { id:"new_followers",  label:"New followers",  color:"#1a73e8", field:"new_followers",  fmt:(v)=>fmt(v), unit:""      },
+  { id:"total_followers",label:"Total followers", color:"#34a853", field:"total",          fmt:(v)=>fmt(v), unit:""      },
+  { id:"impressions",    label:"Impressions",     color:"#fbbc04", field:"impressions",    fmt:(v)=>fmt(v), unit:""      },
+  { id:"page_views",     label:"Page views",      color:"#ea4335", field:"page_views",     fmt:(v)=>fmt(v), unit:""      },
+  { id:"reactions",      label:"Reactions",       color:"#ec4899", field:"reactions",      fmt:(v)=>fmt(v), unit:""      },
+  { id:"comments",       label:"Comments",        color:"#14b8a6", field:"comments",       fmt:(v)=>fmt(v), unit:""      },
+  { id:"shares",         label:"Shares",          color:"#6366f1", field:"shares",         fmt:(v)=>fmt(v), unit:""      },
+  { id:"clicks",         label:"Clicks",          color:"#ff6d00", field:"clicks",         fmt:(v)=>fmt(v), unit:""      },
+  { id:"eng_rate",       label:"Eng. Rate",       color:"#8b5cf6", field:"eng_rate",       fmt:(v)=>fmt(v,{dec:2}), unit:"%" },
+  { id:"ctr",            label:"CTR",             color:"#f59e0b", field:"ctr",            fmt:(v)=>fmt(v,{dec:2}), unit:"%" },
 ];
 
-// Build merged daily dataset: followers (interpolated) + page metrics (sync dates)
-function buildUnifiedDaily(allFollowerRows, pageRows, cutoff) {
-  // 1. Follower daily (already has every calendar day via interpolation)
+// Build merged daily dataset: followers (interpolated) + page metrics + post metrics
+function buildUnifiedDaily(allFollowerRows, pageRows, posts, cutoff) {
+  // 1. Follower daily (every calendar day via interpolation)
   const follDaily = buildDailyFollowerData(allFollowerRows, cutoff);
 
   // 2. Page analytics: aggregate by date
   const pageByDate = {};
   pageRows.forEach(r => {
     if (!r.date) return;
-    if (!pageByDate[r.date]) pageByDate[r.date] = { impressions:0, page_views:0, clicks:0, engagements:0 };
-    pageByDate[r.date].impressions  += r.impressions  || 0;
-    pageByDate[r.date].page_views   += r.page_views   || 0;
-    pageByDate[r.date].clicks       += r.clicks       || 0;
-    pageByDate[r.date].engagements  += (r.impressions||0) > 0
-      ? Math.round(((r.clicks||0)) ) : 0;
+    if (!pageByDate[r.date]) pageByDate[r.date] = { impressions:0, page_views:0 };
+    pageByDate[r.date].impressions += r.impressions || 0;
+    pageByDate[r.date].page_views  += r.page_views  || 0;
   });
 
-  // 3. Merge — follower data provides the full date spine
-  return follDaily.map(d => ({
-    date:           d.date,
-    label:          d.label,
-    new_followers:  (d.organic ?? 0) + (d.paid ?? 0),
-    total:          d.total,
-    impressions:    pageByDate[d.rawDate]?.impressions  ?? null,
-    page_views:     pageByDate[d.rawDate]?.page_views   ?? null,
-    clicks:         pageByDate[d.rawDate]?.clicks       ?? null,
-    engagements:    pageByDate[d.rawDate]?.engagements  ?? null,
-  }));
+  // 3. Post metrics: aggregate by publish date
+  const postsByDate = {};
+  (posts || []).forEach(p => {
+    const d = p.post_date;
+    if (!d) return;
+    if (!postsByDate[d]) postsByDate[d] = { reactions:0, comments:0, shares:0, clicks:0, impressions:0, count:0 };
+    postsByDate[d].reactions   += p.reactions   || 0;
+    postsByDate[d].comments    += p.comments    || 0;
+    postsByDate[d].shares      += p.shares      || 0;
+    postsByDate[d].clicks      += p.clicks      || 0;
+    postsByDate[d].impressions += p.impressions || 0;
+    postsByDate[d].count++;
+  });
+
+  // 4. Merge — follower data provides the full date spine
+  return follDaily.map(d => {
+    const pg  = pageByDate[d.date]  || null;
+    const pt  = postsByDate[d.date] || null;
+    const imp = pg?.impressions || pt?.impressions || null;
+    const totalEng = pt ? (pt.reactions + pt.comments + pt.shares + pt.clicks) : null;
+    return {
+      date:          d.date,
+      label:         d.label,
+      new_followers: (d.organic ?? 0) + (d.paid ?? 0),
+      total:         d.total,
+      impressions:   imp,
+      page_views:    pg?.page_views   ?? null,
+      reactions:     pt?.reactions    ?? null,
+      comments:      pt?.comments     ?? null,
+      shares:        pt?.shares       ?? null,
+      clicks:        pt?.clicks       ?? null,
+      eng_rate:      (imp && totalEng !== null) ? parseFloat(((totalEng / imp) * 100).toFixed(2)) : null,
+      ctr:           (imp && pt?.clicks != null) ? parseFloat(((pt.clicks / imp) * 100).toFixed(2)) : null,
+    };
+  });
 }
 
 // Compute period totals for a metric in unified data
@@ -1485,10 +1667,10 @@ function periodTotal(data, field) {
 }
 
 // Google Ads-style metric card + chart component
-function MetricSelectorChart({ followerStats, pageRows, posts, prevFollower, cutoff, dateRange, selectedMetrics, onToggleMetric }) {
+function MetricSelectorChart({ followerStats, pageRows, posts, cutoff, dateRange, selectedMetrics, onToggleMetric }) {
   const data = useMemo(
-    () => buildUnifiedDaily(followerStats, pageRows, cutoff),
-    [followerStats, pageRows, cutoff]
+    () => buildUnifiedDaily(followerStats, pageRows, posts, cutoff),
+    [followerStats, pageRows, posts, cutoff]
   );
 
   const prevCutoffDate = useMemo(() => {
@@ -1497,22 +1679,35 @@ function MetricSelectorChart({ followerStats, pageRows, posts, prevFollower, cut
   }, [dateRange]);
 
   const prevData = useMemo(
-    () => buildUnifiedDaily(followerStats, pageRows, prevCutoffDate).slice(0, data.length),
-    [followerStats, pageRows, prevCutoffDate, data.length]
+    () => buildUnifiedDaily(followerStats, pageRows, posts, prevCutoffDate).slice(0, data.length),
+    [followerStats, pageRows, posts, prevCutoffDate, data.length]
   );
 
   const tickInterval = Math.max(1, Math.floor(data.length / 7));
 
   // Stat for each metric card
   const stat = id => {
-    const cur  = periodTotal(data, GA_METRICS.find(m=>m.id===id)?.field || id);
-    const prev = periodTotal(prevData, GA_METRICS.find(m=>m.id===id)?.field || id);
+    const m    = GA_METRICS.find(x => x.id === id);
+    const field = m?.field || id;
+    // Rate metrics: take last non-null value instead of summing
+    const isRate = id === "eng_rate" || id === "ctr";
+    const cur  = isRate
+      ? (data.filter(d => d[field] != null).at(-1)?.[field] ?? 0)
+      : periodTotal(data, field);
+    const prev = isRate
+      ? (prevData.filter(d => d[field] != null).at(-1)?.[field] ?? 0)
+      : periodTotal(prevData, field);
     const pct  = prev > 0 ? Math.round(((cur - prev) / prev) * 100) : null;
     return { cur, pct };
   };
 
-  // Format value for display
-  const fmtStat = v => v >= 1e6 ? `${(v/1e6).toFixed(1)}M` : v >= 1e3 ? `${(v/1e3).toFixed(1)}K` : String(v);
+  // Format value for card display
+  const fmtStat = (id, v) => {
+    const m = GA_METRICS.find(x => x.id === id);
+    if (!m) return String(v);
+    const str = m.fmt ? m.fmt(v) : fmt(v);
+    return str + (m.unit || "");
+  };
 
   return (
     <div className="bg-white rounded-lg border overflow-hidden" style={{ borderColor:"#dadce0" }}>
@@ -1541,7 +1736,7 @@ function MetricSelectorChart({ followerStats, pageRows, posts, prevFollower, cut
                   )}
                 </div>
                 <p className="text-xs mb-0.5" style={{ color:"#5f6368" }}>{m.label}</p>
-                <p className="text-lg sm:text-xl font-medium" style={{ color:"#202124" }}>{fmtStat(s.cur)}</p>
+                <p className="text-lg sm:text-xl font-medium" style={{ color:"#202124" }}>{fmtStat(m.id, s.cur)}</p>
                 {s.pct !== null && (
                   <p className={`text-xs font-medium mt-0.5 flex items-center gap-1 ${s.pct >= 0 ? "text-green-600" : "text-red-600"}`}>
                     {s.pct >= 0 ? "▲" : "▼"} {Math.abs(s.pct)}%
@@ -1593,7 +1788,7 @@ function MetricSelectorChart({ followerStats, pageRows, posts, prevFollower, cut
                           <div key={p.dataKey} className="flex items-center gap-2 mb-1">
                             <div className="w-2.5 h-2.5 rounded-sm" style={{ background: p.color }} />
                             <span style={{ color:"#5f6368" }}>{GA_METRICS.find(m=>m.id===p.dataKey)?.label}:</span>
-                            <span className="font-semibold" style={{ color:"#202124" }}>{fmtStat(p.value ?? 0)}</span>
+                            <span className="font-semibold" style={{ color:"#202124" }}>{fmtStat(p.dataKey, p.value ?? 0)}</span>
                           </div>
                         ))}
                       </div>
@@ -1847,6 +2042,7 @@ export default function LinkedInDashboard() {
                 prevPosts={prevPosts}
                 prevFollower={prevFollower}
                 dateRange={dateRange}
+                cutoff={cutoff}
               />
             )}
             {section === "followers" && (
