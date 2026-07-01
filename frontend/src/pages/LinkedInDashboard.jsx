@@ -278,10 +278,20 @@ function isImportRow(p) {
 // Days after the last import row get organic=null so the chart line breaks cleanly
 // instead of showing a giant spike caused by mixing import sums with sync totals.
 function buildDailyFollowerData(allRows, cutoffDate) {
-  // 1. Sum all orgs per actual sync date
-  const byDate = {};
+  // 1. Deduplicate: for each (date, org_id) keep the row with the highest total_followers.
+  //    Then sum across orgs so multi-page accounts aggregate correctly.
+  const bestPerOrgDate = {};
   allRows.forEach(r => {
-    if (!r.date) return;
+    if (!r.date || !r.org_id) return;
+    const key = `${r.date}__${r.org_id}`;
+    const cur = bestPerOrgDate[key];
+    if (!cur || (r.total_followers || 0) > (cur.total_followers || 0)) {
+      bestPerOrgDate[key] = r;
+    }
+  });
+
+  const byDate = {};
+  Object.values(bestPerOrgDate).forEach(r => {
     if (!byDate[r.date]) byDate[r.date] = { date: r.date, total: 0, organic: 0, paid: 0 };
     byDate[r.date].total   += r.total_followers   || 0;
     byDate[r.date].organic += r.organic_followers || 0;
@@ -1844,6 +1854,8 @@ export default function LinkedInDashboard() {
   const [classifying,   setClassifying]  = useState(false);
   const [aiClassified,  setAiClassified] = useState(false);
   const [selectedMetrics, setSelectedMetrics] = useState(["new_followers", "impressions"]);
+  const [deduping,      setDeduping]     = useState(false);
+  const [dedupMsg,      setDedupMsg]     = useState(null);
 
   // All hooks must be above early returns
   const cutoff = useMemo(() => {
@@ -1893,6 +1905,20 @@ export default function LinkedInDashboard() {
       if (prev.length >= 2)  return [prev[1], id];
       return [...prev, id];
     });
+  }, []);
+
+  const handleDedup = useCallback(async () => {
+    setDeduping(true); setDedupMsg(null);
+    try {
+      const res = await api.post("/linkedin/dedup-followers");
+      const n = res.data?.deleted ?? 0;
+      setDedupMsg(n > 0 ? `Removed ${n} duplicate rows` : "No duplicates found");
+    } catch (e) {
+      setDedupMsg("Dedup failed");
+    } finally {
+      setDeduping(false);
+      setTimeout(() => setDedupMsg(null), 5000);
+    }
   }, []);
 
   if (loading) {
@@ -1986,6 +2012,14 @@ export default function LinkedInDashboard() {
               {refreshMsg && <span className="text-xs font-medium text-green-600 hidden sm:inline">{refreshMsg}</span>}
               {syncResult?.summary && <span className="text-xs font-medium hidden sm:inline" style={{ color:"#34a853" }}>✓</span>}
               {dataLoading && <span className="text-xs hidden sm:inline" style={{ color:"#5f6368" }}>…</span>}
+
+              <button onClick={handleDedup} disabled={deduping}
+                className="hidden sm:flex text-xs px-2 py-1 rounded transition-colors min-h-[32px] disabled:opacity-50"
+                style={{ color:"#5f6368" }}
+                title="Remove duplicate follower rows from the database">
+                {deduping ? "…" : "⊘ Dedup"}
+              </button>
+              {dedupMsg && <span className="text-xs font-medium hidden sm:inline" style={{ color:"#34a853" }}>{dedupMsg}</span>}
 
               <button onClick={disconnect}
                 className="hidden sm:flex text-xs px-2 py-1 rounded transition-colors min-h-[32px]"

@@ -281,39 +281,85 @@ router.post("/sync", auth, async (req, res) => {
       const orgName = org.name || orgId;
       const r = { follower: 0, page: 0, posts: 0, errors: [] };
 
-      // ── Follower count (snapshot only — time-series requires LinkedIn MDP) ─
+      // ── Follower data: daily time-series (up to 1 year) + today's snapshot ──
       try {
-        let total = 0;
-        // 1. Try follower stats snapshot (no time range)
+        // 1. Time-series: fetch last 365 days of daily follower counts
+        //    LinkedIn returns one element per day with organic + paid totals.
+        //    This works with r_organization_social scope (no MDP required).
+        let timeSeriesCount = 0;
+        try {
+          const series = await liGet("/organizationalEntityFollowerStatistics", token, {
+            q:                                      "organizationalEntity",
+            organizationalEntity:                   orgUrn,
+            "timeIntervals.timeGranularityType":    "DAY",
+            "timeIntervals.timeRange.start":        daysAgoMs(365),
+            "timeIntervals.timeRange.end":          Date.now(),
+          });
+
+          const rows = [];
+          for (const el of series?.elements || []) {
+            const date    = toDate(el.timeRange?.start);
+            if (!date) continue;
+            const organic = el.totalFollowerCounts?.organicFollowerCount || 0;
+            const paid    = el.totalFollowerCounts?.paidFollowerCount    || 0;
+            if (organic + paid === 0) continue;
+            rows.push({
+              date, org_id: orgId, org_name: orgName,
+              total_followers:   organic + paid,
+              organic_followers: organic,
+              paid_followers:    paid,
+            });
+          }
+
+          if (rows.length > 0) {
+            const BATCH = 100;
+            for (let i = 0; i < rows.length; i += BATCH) {
+              const { error } = await supabase
+                .from("linkedin_follower_stats")
+                .upsert(rows.slice(i, i + BATCH), { onConflict: "date,org_id" });
+              if (error) r.errors.push(`FollowerTimeSeries[${i}]: ${error.message}`);
+            }
+            timeSeriesCount = rows.length;
+            r.follower = rows.length;
+          }
+        } catch (e) {
+          r.errors.push(`FollowerTimeSeries: ${e.message}`);
+        }
+
+        // 2. Always fetch today's snapshot for the most accurate current total
+        //    (time-series may lag by a day; snapshot is real-time)
+        let snapOrganic = 0, snapPaid = 0;
         try {
           const snap = await liGet("/organizationalEntityFollowerStatistics", token, {
             q: "organizationalEntity", organizationalEntity: orgUrn,
           });
-          const tc = snap?.elements?.[0]?.totalFollowerCounts || {};
-          total = (tc.organicFollowerCount || 0) + (tc.paidFollowerCount || 0);
+          const tc     = snap?.elements?.[0]?.totalFollowerCounts || {};
+          snapOrganic  = tc.organicFollowerCount || 0;
+          snapPaid     = tc.paidFollowerCount    || 0;
         } catch (e) { r.errors.push(`FollowerSnap: ${e.message}`); }
 
-        // 2. Fallback: networkSizes endpoint
-        if (!total) {
+        // 3. Fallback: networkSizes (if snapshot also returned 0)
+        if (!snapOrganic && !snapPaid) {
           try {
-            const ns = await liGet(`/networkSizes/${encodeURIComponent(orgUrn)}`, token, {
+            const ns   = await liGet(`/networkSizes/${encodeURIComponent(orgUrn)}`, token, {
               edgeType: "CompanyFollowedByMember",
             });
-            total = ns?.firstDegreeSize || 0;
+            snapOrganic = ns?.firstDegreeSize || 0;
           } catch (e) { r.errors.push(`NetworkSizes: ${e.message}`); }
         }
 
-        if (total > 0) {
+        const snapTotal = snapOrganic + snapPaid;
+        if (snapTotal > 0) {
           const today = new Date().toISOString().split("T")[0];
           const { error } = await supabase.from("linkedin_follower_stats").upsert(
             [{ date: today, org_id: orgId, org_name: orgName,
-               total_followers: total, organic_followers: total, paid_followers: 0 }],
+               total_followers: snapTotal, organic_followers: snapOrganic, paid_followers: snapPaid }],
             { onConflict: "date,org_id" }
           );
-          if (error) r.errors.push(`Follower upsert: ${error.message}`);
-          else r.follower = 1;
-        } else {
-          r.errors.push("Follower: count is 0 from all sources");
+          if (error) r.errors.push(`FollowerToday: ${error.message}`);
+          else if (!r.follower) r.follower = 1;
+        } else if (!timeSeriesCount) {
+          r.errors.push("Follower: no data from any source");
         }
       } catch (e) { r.errors.push(`Follower: ${e.message}`); }
 
@@ -410,7 +456,11 @@ router.post("/sync", auth, async (req, res) => {
       summary[orgName] = r;
     }
 
-    res.json({ success: true, summary });
+    // Clean up any duplicates created by concurrent syncs or re-imports
+    const dedup = await dedupFollowerStats();
+    if (dedup.deleted > 0) console.log(`sync dedup: removed ${dedup.deleted} duplicate follower rows`);
+
+    res.json({ success: true, summary, dedupDeleted: dedup.deleted });
   } catch (err) {
     console.error("sync:", err.message);
     res.status(500).json({ message: err.message });
@@ -707,6 +757,60 @@ router.post("/import-followers", auth, upload.single("file"), async (req, res) =
     });
   } catch (e) {
     console.error("import-followers error:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── Deduplication helper ─────────────────────────────────────────────────────
+// Groups follower_stats by (date, org_id), keeps the row with the highest
+// total_followers (or latest id on tie), deletes the rest.
+
+async function dedupFollowerStats() {
+  const { data: allRows, error } = await supabase
+    .from("linkedin_follower_stats")
+    .select("id, date, org_id, total_followers")
+    .order("date", { ascending: true });
+
+  if (error || !allRows) return { deleted: 0, error: error?.message };
+
+  const groups = {};
+  for (const row of allRows) {
+    const key = `${row.date}__${row.org_id}`;
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(row);
+  }
+
+  const toDelete = [];
+  for (const rows of Object.values(groups)) {
+    if (rows.length <= 1) continue;
+    // Keep the row with the highest total; break ties by keeping highest id
+    rows.sort((a, b) => (b.total_followers - a.total_followers) || (b.id - a.id));
+    toDelete.push(...rows.slice(1).map(r => r.id));
+  }
+
+  if (!toDelete.length) return { deleted: 0 };
+
+  let deleted = 0;
+  const BATCH = 100;
+  for (let i = 0; i < toDelete.length; i += BATCH) {
+    const { error: delErr } = await supabase
+      .from("linkedin_follower_stats")
+      .delete()
+      .in("id", toDelete.slice(i, i + BATCH));
+    if (!delErr) deleted += toDelete.slice(i, i + BATCH).length;
+    else console.error("dedup delete error:", delErr.message);
+  }
+
+  return { deleted };
+}
+
+// ─── Dedup endpoint ───────────────────────────────────────────────────────────
+
+router.post("/dedup-followers", auth, async (req, res) => {
+  try {
+    const result = await dedupFollowerStats();
+    res.json({ success: true, ...result });
+  } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
