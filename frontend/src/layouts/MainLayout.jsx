@@ -1,7 +1,7 @@
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import {
   Menu, X, LayoutDashboard, Cpu, KanbanSquare, Calendar,
-  Shield, BarChart3, LogOut, PlusCircle, ChevronRight
+  Shield, BarChart3, LogOut, PlusCircle, ChevronRight, ClipboardCheck
 } from "lucide-react";
 import { useState } from "react";
 import useAuthStore from "../store/authStore";
@@ -45,7 +45,10 @@ const canAccessLinkedIn =
     { label: "Calendar", path: "/calendar", icon: Calendar },
     { label: "Timeline", path: "/timeline", icon: BarChart3 },
     ...(user?.role === "Admin"
-      ? [{ label: "Admin Panel", path: "/admin", icon: Shield }]
+      ? [
+          { label: "Admin Panel", path: "/admin", icon: Shield },
+          { label: "Pending Requests", path: "/pending-approvals", icon: ClipboardCheck },
+        ]
       : []),
     ...(canAccessGoogleAds
       ? [{ label: "Google Ads Dashboard", path: "/google-ads", icon: BarChart3 }]

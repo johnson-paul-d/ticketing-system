@@ -190,7 +190,6 @@ export default function TicketCalendar() {
         });
       });
 
-      console.log("Calendar Events:", allEvents);
       setEvents(allEvents);
     } catch (err) {
       console.error("Calendar fetch error:", err);

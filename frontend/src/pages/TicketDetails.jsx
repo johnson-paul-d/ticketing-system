@@ -7,6 +7,7 @@ import socket from "../services/socket";
 import moment from "moment";
 import { TICKET_CATEGORIES } from "../constants/categories";
 import { TICKET_DIVISIONS } from "../constants/divisions";
+import { TICKET_STATUSES } from "../constants/statuses";
 
 export default function TicketDetails() {
   const { id } = useParams();
@@ -686,11 +687,16 @@ export default function TicketDetails() {
               <p className="font-semibold text-gray-500">Update Status</p>
               <div className="flex flex-col sm:flex-row gap-4 mt-3">
                 <select value={status} onChange={(e) => setStatus(e.target.value)} className="border rounded-2xl px-4 py-3 w-full">
-                  <option>Open</option>
-                  <option>In Progress</option>
-                  <option>Waiting For Sources</option>
-                  <option>Completed</option>
-                  <option>Closed</option>
+                  {status && !TICKET_STATUSES.includes(status) && (
+                    <option value={status} disabled>
+                      {status}
+                    </option>
+                  )}
+                  {TICKET_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
                 </select>
                 <button onClick={updateStatus} className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl whitespace-nowrap">Update</button>
               </div>

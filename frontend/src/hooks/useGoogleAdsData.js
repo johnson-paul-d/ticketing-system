@@ -48,13 +48,6 @@ export default function useGoogleAdsData() {
         getTrends(),
       ]);
 
-      console.log({
-        overviewData,
-        campaignData,
-        keywordData,
-        trendData,
-      });
-
       setOverview(
         overviewData || {}
       );

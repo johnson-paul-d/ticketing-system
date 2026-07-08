@@ -8,6 +8,7 @@ import EditTicket from "./pages/EditTicket";
 import Kanban from "./pages/Kanban";
 import TicketCalendar from "./pages/TicketCalendar";
 import AdminPanel from "./pages/AdminPanel";
+import PendingApprovals from "./pages/PendingApprovals";
 import Reports from "./pages/Reports";
 import ProtectedRoute from "./components/ProtectedRoute";
 import TicketTimeline from "./pages/TicketTimeTracker";
@@ -19,12 +20,6 @@ import useAuthStore from "./store/authStore";
 
 function App() {
   const user = useAuthStore((state) => state.user);
-  console.log("APP USER:", user);
-console.log(
-  "Google Ads Access:",
-  user?.role === "Admin" ||
-  user?.email?.toLowerCase() === "digitalmarketing@siegerglobal.net"
-);
 const canAccessGoogleAds =
   user?.role === "Admin" ||
   user?.email?.toLowerCase() === "digitalmarketing@siegerglobal.net";
@@ -107,6 +102,15 @@ const canAccessGoogleAds =
         />
 
         <Route
+          path="/pending-approvals"
+          element={
+            <ProtectedRoute allowedRoles={["Admin"]}>
+              <PendingApprovals />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/reports"
           element={
             <ProtectedRoute>
@@ -115,7 +119,14 @@ const canAccessGoogleAds =
           }
         />
 
-        <Route path="/admin-analytics" element={<AdminAnalytics />} />
+        <Route
+          path="/admin-analytics"
+          element={
+            <ProtectedRoute>
+              <AdminAnalytics />
+            </ProtectedRoute>
+          }
+        />
 
 <Route
   path="/google-ads"

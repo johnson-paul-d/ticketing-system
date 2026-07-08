@@ -471,16 +471,6 @@ export default function GoogleAdsDashboard() {
     if (selectedCampaign !== "All") {
       trends = trends.filter((t) => t.campaign === selectedCampaign);
     }
-    // DEBUG: log per-date conversion totals so we can verify what's in the data
-    const dateConvMap = {};
-    trends.forEach((t) => {
-      const d = t.report_date;
-      if (!d) return;
-      dateConvMap[d] = (dateConvMap[d] || 0) + (Number(t.conversions) || 0);
-    });
-    console.log("[filteredTrends] conversions per date:", dateConvMap);
-    console.log("[filteredTrends] date range:", filters.dateRange?.start, "→", filters.dateRange?.end);
-    console.log("[filteredTrends] total rows:", trends.length);
     return trends;
   }, [rawTrends, filters.dateRange, selectedCampaign, selectedAccount, selectedStatus]);
 

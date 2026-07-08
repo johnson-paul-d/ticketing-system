@@ -17,6 +17,51 @@ if (!process.env.RESEND_API_KEY)
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // =====================================================
+// NOTIFICATION HELPERS
+// =====================================================
+
+// Insert one notification per active admin (matched by real name,
+// since GET /notifications filters on user_name = req.user.name)
+const notifyAdmins = async (title, message, ticketId) => {
+  try {
+    const { data: admins, error } = await supabase
+      .from('users')
+      .select('name')
+      .in('role', ['Admin', 'Super Admin'])
+      .eq('active', true);
+    if (error || !admins?.length) {
+      if (error) console.error('Admin lookup for notification failed:', error);
+      return;
+    }
+    const rows = admins.map((a) => ({
+      user_name: a.name,
+      title,
+      message,
+      ticket_id: ticketId,
+    }));
+    const { error: insertError } = await supabase.from('notifications').insert(rows);
+    if (insertError) console.error('Admin notification insert failed:', insertError);
+  } catch (err) {
+    console.error('notifyAdmins error:', err);
+  }
+};
+
+const notifyUser = async (userName, title, message, ticketId) => {
+  if (!userName) return;
+  try {
+    const { error } = await supabase.from('notifications').insert({
+      user_name: userName,
+      title,
+      message,
+      ticket_id: ticketId,
+    });
+    if (error) console.error('Notification insert failed:', error);
+  } catch (err) {
+    console.error('notifyUser error:', err);
+  }
+};
+
+// =====================================================
 // EMAIL FUNCTIONS
 // =====================================================
 
@@ -289,6 +334,7 @@ router.put('/:id', auth, async (req, res) => {
 
     let timeline = existing.timeline || [];
     const updateData = { updated_at: getISTTime(), timeline };
+    let notificationsCreated = false;
 
     // =====================================================
     // 1. DUE DATE CHANGE APPROVAL / REJECTION (Admin only)
@@ -311,6 +357,14 @@ router.put('/:id', auth, async (req, res) => {
         user: req.user.name,
         created_at: getISTTime(),
       });
+
+      await notifyUser(
+        existing.due_date_change_requested_by,
+        'Due Date Change Approved',
+        `${req.user.name} approved the due date change for "${existing.title}" to ${existing.requested_due_date}`,
+        existing.id
+      );
+      notificationsCreated = true;
     }
 
     // Reject
@@ -329,6 +383,14 @@ router.put('/:id', auth, async (req, res) => {
         user: req.user.name,
         created_at: getISTTime(),
       });
+
+      await notifyUser(
+        existing.due_date_change_requested_by,
+        'Due Date Change Rejected',
+        `${req.user.name} rejected the due date change request for "${existing.title}"`,
+        existing.id
+      );
+      notificationsCreated = true;
     }
 
     // Revert — non-admin cancels their own pending request
@@ -380,6 +442,13 @@ router.put('/:id', auth, async (req, res) => {
         user: req.user.name,
         created_at: getISTTime(),
       });
+
+      await notifyAdmins(
+        'Due Date Change Requested',
+        `${req.user.name} requested a due date change for "${existing.title}" from ${existing.due_date || 'Not set'} to ${requested_due_date}`,
+        existing.id
+      );
+      notificationsCreated = true;
 
       // Send email to admin
       if (process.env.ADMIN_EMAIL) {
@@ -468,12 +537,12 @@ router.put('/:id', auth, async (req, res) => {
         user: req.user.name,
         created_at: getISTTime(),
       });
-      await supabase.from('notifications').insert({
-        user_name: 'Admin',
-        title: 'Approval Required',
-        message: `${req.user.name} requested approval for "${existing.title}"`,
-        ticket_id: existing.id,
-      });
+      await notifyAdmins(
+        'Approval Required',
+        `${req.user.name} requested approval for "${existing.title}"`,
+        existing.id
+      );
+      notificationsCreated = true;
       if (process.env.ADMIN_EMAIL) {
         await sendApprovalEmail(process.env.ADMIN_EMAIL, existing.title, req.user.name, existing.id);
       }
@@ -497,7 +566,10 @@ router.put('/:id', auth, async (req, res) => {
     }
 
     const io = req.app.get('io');
-    if (io) io.emit('ticketUpdated', data);
+    if (io) {
+      io.emit('ticketUpdated', data);
+      if (notificationsCreated) io.emit('notificationReceived');
+    }
 
     res.json(data);
   } catch (err) {
@@ -539,8 +611,19 @@ router.put('/:id/approve', auth, async (req, res) => {
       .select()
       .single();
     if (error) return res.status(500).json({ message: 'Approval failed' });
+
+    await notifyUser(
+      ticket.approval_requested_by,
+      'Ticket Approved',
+      `${req.user.name} approved "${ticket.title}" as ${finalStatus}`,
+      ticket.id
+    );
+
     const io = req.app.get('io');
-    if (io) io.emit('ticketUpdated', data);
+    if (io) {
+      io.emit('ticketUpdated', data);
+      io.emit('notificationReceived');
+    }
     res.json(data);
   } catch (err) {
     console.error(err);
@@ -580,8 +663,19 @@ router.put('/:id/reject', auth, async (req, res) => {
       .select()
       .single();
     if (error) return res.status(500).json({ message: 'Reject failed' });
+
+    await notifyUser(
+      ticket.approval_requested_by,
+      'Ticket Rejected',
+      `${req.user.name} rejected the completion request for "${ticket.title}". It has been reopened.`,
+      ticket.id
+    );
+
     const io = req.app.get('io');
-    if (io) io.emit('ticketUpdated', data);
+    if (io) {
+      io.emit('ticketUpdated', data);
+      io.emit('notificationReceived');
+    }
     res.json(data);
   } catch (err) {
     console.error(err);

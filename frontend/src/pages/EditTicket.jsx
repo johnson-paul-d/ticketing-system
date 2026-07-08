@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
+import { TICKET_STATUSES } from "../constants/statuses";
 
 export default function EditTicket() {
   const { id } = useParams();
@@ -51,7 +52,7 @@ export default function EditTicket() {
       setDueDateChangeRequestedBy(ticket.due_date_change_requested_by || "");
       setDueDateChangeRequestedRole(ticket.due_date_change_requested_role || "");
     } catch (error) {
-      console.log(error);
+      console.error(error);
       alert("Failed to load ticket");
     }
   };
@@ -71,7 +72,7 @@ export default function EditTicket() {
       alert("Ticket updated successfully");
       navigate("/tickets");
     } catch (error) {
-      console.log(error);
+      console.error(error);
       alert("Update failed");
     }
   };
@@ -112,6 +113,7 @@ export default function EditTicket() {
             <option>Low</option>
             <option>Medium</option>
             <option>High</option>
+            <option>Critical</option>
           </select>
 
           <select
@@ -120,10 +122,16 @@ export default function EditTicket() {
             onChange={handleChange}
             className="w-full border p-4 rounded-xl"
           >
-            <option>Open</option>
-            <option>In Progress</option>
-            <option>Waiting Approval</option>
-            <option>Completed</option>
+            {formData.status && !TICKET_STATUSES.includes(formData.status) && (
+              <option value={formData.status} disabled>
+                {formData.status}
+              </option>
+            )}
+            {TICKET_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
           </select>
 
           {/* Due Date field with pending request handling */}

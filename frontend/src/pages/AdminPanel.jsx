@@ -34,14 +34,9 @@ const fetchUsers =
           "/users"
         );
 
-      console.log(
-        "USERS:",
-        res.data
-      );
-
       setUsers(res.data);
     } catch (error) {
-      console.log(error);
+      console.error(error);
     }
   };
 

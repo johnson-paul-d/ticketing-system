@@ -51,10 +51,6 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-// ❌ REMOVED the line: app.options('*', cors(corsOptions));
-// The cors() middleware already handles OPTIONS preflight requests.
-
-app.use(express.json());
 
 const io = new Server(server, {
   cors: {

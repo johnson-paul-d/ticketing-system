@@ -34,11 +34,6 @@ export default function TicketTimeline() {
         "/tickets"
       );
 
-      console.log(
-        "Tickets API:",
-        res.data
-      );
-
       // =====================================================
       // SAFE FORMAT
       // =====================================================
@@ -196,11 +191,6 @@ export default function TicketTimeline() {
           };
         });
 
-      console.log(
-        "Formatted Tasks:",
-        formatted
-      );
-
       setTasks(formatted);
     } catch (err) {
       console.error(
@@ -255,10 +245,6 @@ export default function TicketTimeline() {
             time_spent_minutes:
               duration,
           }
-        );
-
-        console.log(
-          "Task updated"
         );
       } catch (err) {
         console.error(
