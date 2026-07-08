@@ -12,13 +12,28 @@ const { Resend } = require('resend');
 // =====================================================
 
 if (!process.env.RESEND_API_KEY)
-  console.error('❌ RESEND_API_KEY missing');
+  console.error('❌ RESEND_API_KEY missing — approval emails disabled');
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 // =====================================================
 // NOTIFICATION HELPERS
 // =====================================================
+
+// Insert notification rows. If notifications.ticket_id is still the legacy
+// bigint type (tickets use uuid ids), the typed insert fails with 22P02 —
+// retry without ticket_id so the notification is still delivered.
+const insertNotifications = async (rows) => {
+  const { error } = await supabase.from('notifications').insert(rows);
+  if (!error) return;
+  if (error.code === '22P02') {
+    const fallbackRows = rows.map(({ ticket_id, ...rest }) => rest);
+    const { error: retryError } = await supabase.from('notifications').insert(fallbackRows);
+    if (retryError) console.error('Notification insert failed (retry):', retryError);
+  } else {
+    console.error('Notification insert failed:', error);
+  }
+};
 
 // Insert one notification per active admin (matched by real name,
 // since GET /notifications filters on user_name = req.user.name)
@@ -39,8 +54,7 @@ const notifyAdmins = async (title, message, ticketId) => {
       message,
       ticket_id: ticketId,
     }));
-    const { error: insertError } = await supabase.from('notifications').insert(rows);
-    if (insertError) console.error('Admin notification insert failed:', insertError);
+    await insertNotifications(rows);
   } catch (err) {
     console.error('notifyAdmins error:', err);
   }
@@ -49,13 +63,9 @@ const notifyAdmins = async (title, message, ticketId) => {
 const notifyUser = async (userName, title, message, ticketId) => {
   if (!userName) return;
   try {
-    const { error } = await supabase.from('notifications').insert({
-      user_name: userName,
-      title,
-      message,
-      ticket_id: ticketId,
-    });
-    if (error) console.error('Notification insert failed:', error);
+    await insertNotifications([
+      { user_name: userName, title, message, ticket_id: ticketId },
+    ]);
   } catch (err) {
     console.error('notifyUser error:', err);
   }
@@ -66,6 +76,7 @@ const notifyUser = async (userName, title, message, ticketId) => {
 // =====================================================
 
 const sendApprovalEmail = async (to, ticketTitle, requesterName, ticketId) => {
+  if (!resend) return false;
   try {
     await resend.emails.send({
       from: process.env.FROM_EMAIL,
@@ -96,6 +107,7 @@ const sendDueDateApprovalEmail = async (
   requesterName,
   ticketId
 ) => {
+  if (!resend) return false;
   try {
     await resend.emails.send({
       from: process.env.FROM_EMAIL,
@@ -270,12 +282,12 @@ router.post('/', auth, async (req, res) => {
     }
 
     if (assigned_to && assignedUser) {
-      await supabase.from('notifications').insert({
-        user_name: assignedUser.name,
-        title: 'New Ticket Assigned',
-        message: `${req.user.name} assigned a ticket to you`,
-        ticket_id: data.id,
-      });
+      await notifyUser(
+        assignedUser.name,
+        'New Ticket Assigned',
+        `${req.user.name} assigned a ticket to you`,
+        data.id
+      );
     }
 
     const io = req.app.get('io');
@@ -712,14 +724,12 @@ router.put('/:id/assign', auth, async (req, res) => {
       return res.status(500).json({ message: 'Assignment failed' });
     }
 
-    await supabase
-      .from('notifications')
-      .insert({
-        user_name: assigned_to_name,
-        title: 'Ticket Assigned',
-        message: `${req.user.name} assigned "${existing.title}" to you`,
-        ticket_id: existing.id,
-      });
+    await notifyUser(
+      assigned_to_name,
+      'Ticket Assigned',
+      `${req.user.name} assigned "${existing.title}" to you`,
+      existing.id
+    );
 
     const io = req.app.get('io');
 
