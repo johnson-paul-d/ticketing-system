@@ -1,7 +1,7 @@
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import {
   Menu, X, LayoutDashboard, Cpu, KanbanSquare, Calendar,
-  Shield, BarChart3, LogOut, PlusCircle, ChevronRight, ClipboardCheck
+  Shield, BarChart3, LogOut, PlusCircle, ChevronRight, ClipboardCheck, FolderKanban
 } from "lucide-react";
 import { useState } from "react";
 import useAuthStore from "../store/authStore";
@@ -38,6 +38,7 @@ const canAccessLinkedIn =
   const menuItems = [
     { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
     { label: "Tickets", path: "/tickets", icon: Cpu },
+    { label: "Projects", path: "/projects", icon: FolderKanban },
     ...(user?.role !== "Team Member"
       ? [{ label: "Create Ticket", path: "/create-ticket", icon: PlusCircle }]
       : []),

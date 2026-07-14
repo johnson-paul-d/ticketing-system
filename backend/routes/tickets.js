@@ -16,58 +16,51 @@ if (!process.env.RESEND_API_KEY)
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
+const { notifyAdmins, notifyUser } = require('../services/notificationService');
+
 // =====================================================
-// NOTIFICATION HELPERS
+// PROJECT HELPERS (tasks inside a project)
 // =====================================================
 
-// Insert notification rows. If notifications.ticket_id is still the legacy
-// bigint type (tickets use uuid ids), the typed insert fails with 22P02 —
-// retry without ticket_id so the notification is still delivered.
-const insertNotifications = async (rows) => {
-  const { error } = await supabase.from('notifications').insert(rows);
-  if (!error) return;
-  if (error.code === '22P02') {
-    const fallbackRows = rows.map(({ ticket_id, ...rest }) => rest);
-    const { error: retryError } = await supabase.from('notifications').insert(fallbackRows);
-    if (retryError) console.error('Notification insert failed (retry):', retryError);
-  } else {
-    console.error('Notification insert failed:', error);
-  }
+const fetchProject = async (projectId) => {
+  if (!projectId) return null;
+  const { data } = await supabase
+    .from('projects')
+    .select('id, name, target_date, members')
+    .eq('id', projectId)
+    .single();
+  return data || null;
 };
 
-// Insert one notification per active admin (matched by real name,
-// since GET /notifications filters on user_name = req.user.name)
-const notifyAdmins = async (title, message, ticketId) => {
-  try {
-    const { data: admins, error } = await supabase
+// The project timeline follows its tasks: when an admin sets or approves a
+// task due date beyond the project target date, the target date extends
+// automatically and members are informed.
+const extendProjectTimeline = async (project, newDate, actorName, io) => {
+  const { data: updated } = await supabase
+    .from('projects')
+    .update({ target_date: newDate, updated_at: getISTTime() })
+    .eq('id', project.id)
+    .select()
+    .single();
+
+  const memberIds = (project.members || []).filter(Boolean);
+  if (memberIds.length) {
+    const { data: users } = await supabase
       .from('users')
       .select('name')
-      .in('role', ['Admin', 'Super Admin'])
-      .eq('active', true);
-    if (error || !admins?.length) {
-      if (error) console.error('Admin lookup for notification failed:', error);
-      return;
+      .in('id', memberIds);
+    for (const u of users || []) {
+      await notifyUser(
+        u.name,
+        'Project Timeline Extended',
+        `${actorName} extended the "${project.name}" project target date to ${newDate}`,
+        null
+      );
     }
-    const rows = admins.map((a) => ({
-      user_name: a.name,
-      title,
-      message,
-      ticket_id: ticketId,
-    }));
-    await insertNotifications(rows);
-  } catch (err) {
-    console.error('notifyAdmins error:', err);
   }
-};
-
-const notifyUser = async (userName, title, message, ticketId) => {
-  if (!userName) return;
-  try {
-    await insertNotifications([
-      { user_name: userName, title, message, ticket_id: ticketId },
-    ]);
-  } catch (err) {
-    console.error('notifyUser error:', err);
+  if (io) {
+    io.emit('projectUpdated', updated);
+    io.emit('notificationReceived');
   }
 };
 
@@ -206,8 +199,12 @@ router.get('/:id', auth, async (req, res) => {
 
     if (timeError) console.error('Time entry fetch error:', timeError);
 
+    const project = await fetchProject(ticket.project_id);
+
     res.json({
       ...ticket,
+      project_name: project?.name || null,
+      project_target_date: project?.target_date || null,
       time_entries: timeEntries || [],
     });
   } catch (err) {
@@ -232,10 +229,31 @@ router.post('/', auth, async (req, res) => {
       due_date,
       allotted_minutes,
       given_by,
+      project_id,
     } = req.body;
 
     if (!title || !description) {
       return res.status(400).json({ message: 'Title and description required' });
+    }
+
+    // Task inside a project: due date is capped by the project target date.
+    // Admins may exceed it — the project timeline extends automatically.
+    let project = null;
+    let extendProjectTo = null;
+    if (project_id) {
+      project = await fetchProject(project_id);
+      if (!project) {
+        return res.status(400).json({ message: 'Project not found' });
+      }
+      if (due_date && project.target_date && due_date > project.target_date) {
+        if (req.user.role === 'Admin' || req.user.role === 'Super Admin') {
+          extendProjectTo = due_date;
+        } else {
+          return res.status(400).json({
+            message: `Task due date cannot exceed the project target date (${project.target_date})`,
+          });
+        }
+      }
     }
 
     const insertData = {
@@ -251,6 +269,7 @@ router.post('/', auth, async (req, res) => {
       created_by: req.user.id,
       created_by_name: req.user.name,
       given_by: given_by || null,
+      project_id: project_id || null,
       created_at: getISTTime(),
       updated_at: getISTTime(),
       tagged_users: [],
@@ -291,6 +310,11 @@ router.post('/', auth, async (req, res) => {
     }
 
     const io = req.app.get('io');
+
+    if (extendProjectTo && project) {
+      await extendProjectTimeline(project, extendProjectTo, req.user.name, io);
+    }
+
     if (io) {
       io.emit('ticketCreated', data);
       io.emit('notificationReceived');
@@ -321,6 +345,7 @@ router.put('/:id', auth, async (req, res) => {
       comment,
       allotted_minutes,
       given_by,
+      project_id,
       // Due date request fields
       requested_due_date,
       due_date_change_status,
@@ -348,6 +373,21 @@ router.put('/:id', auth, async (req, res) => {
     const updateData = { updated_at: getISTTime(), timeline };
     let notificationsCreated = false;
 
+    // Project context: the ticket's project (or the one being linked) sets
+    // the due-date ceiling; admin actions beyond it extend the timeline
+    const projectContext = await fetchProject(
+      project_id !== undefined ? project_id : existing.project_id
+    );
+    if (project_id) {
+      if (!projectContext) {
+        return res.status(400).json({ message: 'Project not found' });
+      }
+      updateData.project_id = project_id;
+    } else if (project_id === null) {
+      updateData.project_id = null;
+    }
+    let extendProjectTo = null;
+
     // =====================================================
     // 1. DUE DATE CHANGE APPROVAL / REJECTION (Admin only)
     // =====================================================
@@ -362,6 +402,14 @@ router.put('/:id', auth, async (req, res) => {
       updateData.due_date_change_status = 'Approved';
       updateData.due_date_change_requested_by = null;
       updateData.due_date_change_requested_at = null;
+
+      // Approved date beyond the project target → timeline adjusts automatically
+      if (
+        projectContext?.target_date &&
+        existing.requested_due_date > projectContext.target_date
+      ) {
+        extendProjectTo = existing.requested_due_date;
+      }
 
       timeline.push({
         type: 'due_date_approved',
@@ -431,6 +479,9 @@ router.put('/:id', auth, async (req, res) => {
         user: req.user.name,
         created_at: getISTTime(),
       });
+      if (projectContext?.target_date && due_date > projectContext.target_date) {
+        extendProjectTo = due_date;
+      }
     }
 
     // =====================================================
@@ -578,6 +629,11 @@ router.put('/:id', auth, async (req, res) => {
     }
 
     const io = req.app.get('io');
+
+    if (extendProjectTo && projectContext) {
+      await extendProjectTimeline(projectContext, extendProjectTo, req.user.name, io);
+    }
+
     if (io) {
       io.emit('ticketUpdated', data);
       if (notificationsCreated) io.emit('notificationReceived');

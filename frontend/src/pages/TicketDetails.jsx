@@ -397,6 +397,15 @@ export default function TicketDetails() {
             <p className="text-gray-500 mt-2">Ticket ID: {ticket.id}</p>
             <div className="flex flex-wrap gap-3 mt-5">
               <span className="bg-gray-100 px-4 py-2 rounded-full text-sm font-medium">{ticket.status}</span>
+              {ticket.project_id && ticket.project_name && (
+                <span
+                  onClick={() => navigate(`/projects/${ticket.project_id}`)}
+                  className="bg-[#9b2423]/10 text-[#9b2423] px-4 py-2 rounded-full text-sm font-semibold cursor-pointer hover:bg-[#9b2423]/20 transition"
+                  title="Open project board"
+                >
+                  📁 {ticket.project_name}
+                </span>
+              )}
               {ticket.approval_status && <span className="bg-yellow-100 text-yellow-700 px-4 py-2 rounded-full text-sm font-medium">Approval: {ticket.approval_status}</span>}
               {/* NEW: Pending due date approval badge */}
               {ticket.due_date_change_status === "Pending" && (

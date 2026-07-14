@@ -9,6 +9,8 @@ import Kanban from "./pages/Kanban";
 import TicketCalendar from "./pages/TicketCalendar";
 import AdminPanel from "./pages/AdminPanel";
 import PendingApprovals from "./pages/PendingApprovals";
+import Projects from "./pages/Projects";
+import ProjectDetails from "./pages/ProjectDetails";
 import Reports from "./pages/Reports";
 import ProtectedRoute from "./components/ProtectedRoute";
 import TicketTimeline from "./pages/TicketTimeTracker";
@@ -79,6 +81,24 @@ const canAccessGoogleAds =
           element={
             <ProtectedRoute>
               <Kanban />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/projects"
+          element={
+            <ProtectedRoute>
+              <Projects />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/projects/:id"
+          element={
+            <ProtectedRoute>
+              <ProjectDetails />
             </ProtectedRoute>
           }
         />

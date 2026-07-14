@@ -8,6 +8,7 @@ const authRoutes = require('./routes/auth');
 const ticketRoutes = require('./routes/tickets');
 const userRoutes = require('./routes/users');
 const notificationRoutes = require('./routes/notifications');
+const projectRoutes = require('./routes/projects');
 
 const app = express();
 const server = http.createServer(app);
@@ -69,6 +70,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/projects', projectRoutes);
 app.use('/api', timeEntryRoutes);
 app.use("/api/leave-requests", leaveRoutes);
 

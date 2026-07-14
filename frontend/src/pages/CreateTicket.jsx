@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
@@ -14,8 +14,16 @@ export default function CreateTicket() {
   const [division, setDivision] = useState("CPS");
   const [dueDate, setDueDate] = useState("");
   const [givenBy, setGivenBy] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    api.get("/projects").then((r) => setProjects(r.data || [])).catch(() => {});
+  }, []);
+
+  const selectedProject = projects.find((p) => p.id === projectId);
 
   const handleSubmit = async () => {
     if (!title.trim() || !description.trim()) {
@@ -33,6 +41,7 @@ export default function CreateTicket() {
         division,
         due_date: dueDate || null,
         given_by: givenBy,
+        project_id: projectId || null,
       });
       navigate("/tickets");
     } catch (err) {
@@ -159,11 +168,42 @@ export default function CreateTicket() {
                 type="date"
                 className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm sm:text-base focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all outline-none bg-gray-50"
                 value={dueDate}
+                max={selectedProject?.target_date || undefined}
                 onChange={(e) => setDueDate(e.target.value)}
                 disabled={loading}
               />
+              {selectedProject?.target_date && (
+                <p className="text-xs text-gray-400 mt-1.5">
+                  Capped at project target date: {selectedProject.target_date}
+                </p>
+              )}
             </div>
           </div>
+
+          {/* Project (optional) */}
+          {projects.length > 0 && (
+            <div className="mb-6">
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                Project (optional)
+              </label>
+              <select
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm sm:text-base focus:ring-2 focus:ring-indigo-400 bg-gray-50 outline-none cursor-pointer"
+                value={projectId}
+                onChange={(e) => setProjectId(e.target.value)}
+                disabled={loading}
+              >
+                <option value="">— None —</option>
+                {projects
+                  .filter((p) => p.status === "Active" || p.status === "On Hold")
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                      {p.target_date ? ` (target ${p.target_date})` : ""}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
 
           {/* Given By field */}
           <div className="mb-8">
