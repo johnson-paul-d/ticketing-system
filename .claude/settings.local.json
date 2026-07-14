@@ -115,7 +115,10 @@
       "Bash(curl -s http://localhost:5099/api/test)",
       "Bash(cp \"C:/Users/MKTGAN~1/AppData/Local/Temp/claude/D--Ticketing-System/cc1f1e32-00d9-4fa7-b3cf-10901b53e2df/scratchpad/notif-e2e.js\" ./notif-e2e.tmp.js)",
       "Bash(node notif-e2e.tmp.js)",
-      "Bash(node -e \"require\\('dotenv'\\).config\\({quiet:true}\\); console.log\\(Object.keys\\(process.env\\).filter\\(k => /SUPABASE|DATABASE|PG|POSTGRES/i.test\\(k\\)\\)\\)\")"
+      "Bash(node -e \"require\\('dotenv'\\).config\\({quiet:true}\\); console.log\\(Object.keys\\(process.env\\).filter\\(k => /SUPABASE|DATABASE|PG|POSTGRES/i.test\\(k\\)\\)\\)\")",
+      "Bash(node --check routes/projects.js)",
+      "Bash(node --check services/notificationService.js)",
+      "Bash(node -e \"require\\('dotenv'\\).config\\({quiet:true}\\); const jwt=require\\('jsonwebtoken'\\); console.log\\(jwt.sign\\({id:'preview-admin',email:'preview@test.local',role:'Admin',name:'Preview Admin'},process.env.JWT_SECRET,{expiresIn:'1h'}\\)\\)\")"
     ]
   }
 }
