@@ -123,29 +123,31 @@ router.post('/', auth, async (req, res) => {
     if (req.user.role === 'Team Member') {
       return res.status(403).json({ message: 'Team members cannot create projects' });
     }
-    const { name, description, target_date, members, color } = req.body;
+    const { name, description, target_date, members, color, division } = req.body;
     if (!name?.trim()) {
       return res.status(400).json({ message: 'Project name is required' });
     }
 
-    const { data, error } = await supabase
-      .from('projects')
-      .insert([
-        {
-          name: name.trim(),
-          description: description || null,
-          status: 'Active',
-          target_date: target_date || null,
-          color: color || null,
-          members: Array.isArray(members) ? members : [],
-          created_by: req.user.id,
-          created_by_name: req.user.name,
-          created_at: getISTTime(),
-          updated_at: getISTTime(),
-        },
-      ])
-      .select()
-      .single();
+    const insertRow = {
+      name: name.trim(),
+      description: description || null,
+      status: 'Active',
+      target_date: target_date || null,
+      color: color || null,
+      division: division || null,
+      members: Array.isArray(members) ? members : [],
+      created_by: req.user.id,
+      created_by_name: req.user.name,
+      created_at: getISTTime(),
+      updated_at: getISTTime(),
+    };
+
+    let { data, error } = await supabase.from('projects').insert([insertRow]).select().single();
+    // projects.division migration not run yet — retry without the column
+    if (error && error.code === 'PGRST204') {
+      const { division: _skip, ...withoutDivision } = insertRow;
+      ({ data, error } = await supabase.from('projects').insert([withoutDivision]).select().single());
+    }
     if (error) {
       if (isMissingSchema(error)) return migrationResponse(res);
       throw error;
@@ -271,13 +273,14 @@ router.put('/:id', auth, async (req, res) => {
       return res.status(403).json({ message: 'Only admin or the project creator can edit' });
     }
 
-    const { name, description, status, target_date, members, color } = req.body;
+    const { name, description, status, target_date, members, color, division } = req.body;
     const updateData = { updated_at: getISTTime() };
     if (name !== undefined) updateData.name = name;
     if (description !== undefined) updateData.description = description;
     if (status !== undefined) updateData.status = status;
     if (color !== undefined) updateData.color = color;
     if (members !== undefined) updateData.members = members;
+    if (division !== undefined) updateData.division = division;
 
     // Target date cannot shrink below the latest task due date —
     // the project timeline depends on its tasks
@@ -300,13 +303,31 @@ router.put('/:id', auth, async (req, res) => {
       updateData.target_date = target_date;
     }
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('projects')
       .update(updateData)
       .eq('id', existing.id)
       .select()
       .single();
+    // projects.division migration not run yet — retry without the column
+    if (error && error.code === 'PGRST204' && 'division' in updateData) {
+      const { division: _skip, ...withoutDivision } = updateData;
+      ({ data, error } = await supabase
+        .from('projects')
+        .update(withoutDivision)
+        .eq('id', existing.id)
+        .select()
+        .single());
+    }
     if (error) throw error;
+
+    // Division maps to all tasks in the project — propagate changes
+    if (division !== undefined && division && division !== existing.division) {
+      await supabase
+        .from('tickets')
+        .update({ division, updated_at: getISTTime() })
+        .eq('project_id', existing.id);
+    }
 
     // Notify newly added members
     if (members !== undefined) {

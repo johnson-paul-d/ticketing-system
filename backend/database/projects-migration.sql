@@ -19,3 +19,6 @@ alter table public.tickets
   add column if not exists project_id uuid references public.projects(id) on delete set null;
 
 create index if not exists tickets_project_id_idx on public.tickets(project_id);
+
+-- v2: division on projects (mapped to all tasks)
+alter table public.projects add column if not exists division text;

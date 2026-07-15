@@ -14,6 +14,7 @@ import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
 import socket from "../services/socket";
 import useAuthStore from "../store/authStore";
+import { TICKET_DIVISIONS } from "../constants/divisions";
 
 // Deterministic pastel per name for member avatars
 export const avatarColor = (name = "") => {
@@ -112,6 +113,7 @@ export default function Projects() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [targetDate, setTargetDate] = useState("");
+  const [division, setDivision] = useState("");
   const [memberIds, setMemberIds] = useState([]);
 
   const canCreate = user?.role !== "Team Member";
@@ -173,12 +175,14 @@ export default function Projects() {
         name,
         description,
         target_date: targetDate || null,
+        division: division || null,
         members: memberIds,
       });
       setShowCreate(false);
       setName("");
       setDescription("");
       setTargetDate("");
+      setDivision("");
       setMemberIds([]);
       navigate(`/projects/${res.data.id}`);
     } catch (err) {
@@ -249,13 +253,20 @@ export default function Projects() {
                 <h2 className="font-bold text-base group-hover:text-[#9b2423] transition line-clamp-1">
                   {p.name}
                 </h2>
-                <span
-                  className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
-                    statusChip[p.status] || statusChip.Active
-                  }`}
-                >
-                  {p.status}
-                </span>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {p.division && (
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                      {p.division}
+                    </span>
+                  )}
+                  <span
+                    className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+                      statusChip[p.status] || statusChip.Active
+                    }`}
+                  >
+                    {p.status}
+                  </span>
+                </div>
               </div>
 
               {p.description && (
@@ -334,18 +345,34 @@ export default function Projects() {
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Target date</label>
-                <input
-                  type="date"
-                  value={targetDate}
-                  onChange={(e) => setTargetDate(e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 outline-none focus:ring-2 focus:ring-[#9b2423]/40"
-                />
-                <p className="text-xs text-gray-400 mt-1.5">
-                  Task due dates cannot exceed this date. Approved extensions adjust it automatically.
-                </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Target date</label>
+                  <input
+                    type="date"
+                    value={targetDate}
+                    onChange={(e) => setTargetDate(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 outline-none focus:ring-2 focus:ring-[#9b2423]/40"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Division</label>
+                  <select
+                    value={division}
+                    onChange={(e) => setDivision(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 outline-none"
+                  >
+                    <option value="">— None —</option>
+                    {TICKET_DIVISIONS.map((d) => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
+              <p className="text-xs text-gray-400 -mt-2">
+                Task due dates cannot exceed the target date (approved extensions adjust it automatically).
+                The division is applied to every task in the project.
+              </p>
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">

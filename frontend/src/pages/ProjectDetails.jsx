@@ -22,6 +22,7 @@ import {
   Minus,
   Eye,
   FilterX,
+  Timer,
 } from "lucide-react";
 import { Gantt, ViewMode } from "gantt-task-react";
 import "gantt-task-react/dist/index.css";
@@ -30,6 +31,16 @@ import api from "../services/api";
 import socket from "../services/socket";
 import useAuthStore from "../store/authStore";
 import { avatarColor, daysLeft, TargetChip, ProgressBar, MemberAvatars } from "./Projects";
+import { TICKET_DIVISIONS } from "../constants/divisions";
+
+const fmtMinutes = (mins) => {
+  const m = Math.max(0, Number(mins) || 0);
+  if (!m) return null;
+  const d = Math.floor(m / 1440);
+  const h = Math.floor((m % 1440) / 60);
+  const mm = m % 60;
+  return [d ? `${d}d` : "", h ? `${h}h` : "", mm ? `${mm}m` : ""].filter(Boolean).join(" ");
+};
 
 const COLUMNS = [
   { key: "todo", label: "To Do", statuses: ["Open"], target: "Open", dot: "#94a3b8" },
@@ -101,6 +112,9 @@ export default function ProjectDetails() {
   const [tAssignee, setTAssignee] = useState("");
   const [tPriority, setTPriority] = useState("Medium");
   const [tDue, setTDue] = useState("");
+  const [tDays, setTDays] = useState(0);
+  const [tHours, setTHours] = useState(0);
+  const [tMins, setTMins] = useState(0);
   const [taskError, setTaskError] = useState("");
   const [allUsers, setAllUsers] = useState([]);
 
@@ -128,6 +142,7 @@ export default function ProjectDetails() {
   const [eDesc, setEDesc] = useState("");
   const [eStatus, setEStatus] = useState("Active");
   const [eTarget, setETarget] = useState("");
+  const [eDivision, setEDivision] = useState("");
   const [eMembers, setEMembers] = useState([]);
   const [editError, setEditError] = useState("");
 
@@ -284,18 +299,22 @@ export default function ProjectDetails() {
     setSavingTask(true);
     setTaskError("");
     try {
+      const allotted =
+        Math.max(0, tDays) * 1440 + Math.max(0, tHours) * 60 + Math.max(0, tMins);
       await api.post("/tickets", {
         title: tTitle,
         description: tDesc,
         priority: tPriority,
         assigned_to: tAssignee || null,
         due_date: tDue || null,
+        allotted_minutes: allotted,
         project_id: project.id,
-        division: null,
+        division: project.division || null,
         category: null,
       });
       setShowAdd(false);
       setTTitle(""); setTDesc(""); setTAssignee(""); setTPriority("Medium"); setTDue("");
+      setTDays(0); setTHours(0); setTMins(0);
       flash("success", "Task created");
       fetchProject();
     } catch (err) {
@@ -311,6 +330,7 @@ export default function ProjectDetails() {
     setEDesc(project.description || "");
     setEStatus(project.status || "Active");
     setETarget(dstr(project.target_date) || "");
+    setEDivision(project.division || "");
     setEMembers(project.members || []);
     setEditError("");
     setShowEdit(true);
@@ -325,6 +345,7 @@ export default function ProjectDetails() {
         description: eDesc,
         status: eStatus,
         target_date: eTarget || null,
+        division: eDivision || null,
         members: eMembers,
       });
       setShowEdit(false);
@@ -514,6 +535,11 @@ export default function ProjectDetails() {
                 <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-gray-100 text-gray-600">
                   {project.status}
                 </span>
+                {project.division && (
+                  <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-[#9b2423]/10 text-[#9b2423]">
+                    {project.division}
+                  </span>
+                )}
               </div>
               {project.description && (
                 <p className="text-sm text-gray-500 mt-1.5 max-w-2xl">{project.description}</p>
@@ -770,6 +796,11 @@ export default function ProjectDetails() {
                                 <CalendarDays size={10} /> {due.slice(5)}
                               </span>
                             )}
+                            {fmtMinutes(t.allotted_minutes) && (
+                              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full inline-flex items-center gap-1 bg-gray-100 text-gray-500">
+                                <Timer size={10} /> {fmtMinutes(t.allotted_minutes)}
+                              </span>
+                            )}
                           </div>
                           {t.assigned_to_name && (
                             <div
@@ -812,6 +843,7 @@ export default function ProjectDetails() {
                   <th className="px-4 py-3 font-semibold">Assignee</th>
                   <th className="px-4 py-3 font-semibold">Priority</th>
                   <th className="px-4 py-3 font-semibold">Due</th>
+                  <th className="px-4 py-3 font-semibold">Allotted</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
                 </tr>
               </thead>
@@ -862,6 +894,9 @@ export default function ProjectDetails() {
                         </td>
                         <td className={`px-4 py-3 text-xs whitespace-nowrap ${overdue ? "text-red-600 font-semibold" : "text-gray-500"}`}>
                           {due || "—"}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
+                          {fmtMinutes(t.allotted_minutes) || "—"}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           <span className="inline-flex items-center gap-1.5 text-xs text-gray-600">
@@ -1237,6 +1272,37 @@ export default function ProjectDetails() {
                   </p>
                 )}
               </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Timer size={14} /> Allotted time
+                  </span>
+                </label>
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { label: "Days", value: tDays, set: setTDays },
+                    { label: "Hours", value: tHours, set: setTHours },
+                    { label: "Minutes", value: tMins, set: setTMins },
+                  ].map((f) => (
+                    <div key={f.label}>
+                      <input
+                        type="number"
+                        min="0"
+                        value={f.value}
+                        onChange={(e) => f.set(Math.max(0, parseInt(e.target.value) || 0))}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-50 outline-none text-center"
+                      />
+                      <p className="text-[10px] text-gray-400 text-center mt-1">{f.label}</p>
+                    </div>
+                  ))}
+                </div>
+                {project.division && (
+                  <p className="text-xs text-gray-400 mt-2">
+                    Division <span className="font-semibold text-gray-500">{project.division}</span> is applied automatically from the project
+                  </p>
+                )}
+              </div>
             </div>
             <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex gap-3">
               <button
@@ -1314,6 +1380,22 @@ export default function ProjectDetails() {
                     className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 outline-none"
                   />
                 </div>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Division</label>
+                <select
+                  value={eDivision}
+                  onChange={(e) => setEDivision(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 outline-none"
+                >
+                  <option value="">— None —</option>
+                  {TICKET_DIVISIONS.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-400 mt-1.5">
+                  Changing the division updates every task in this project
+                </p>
               </div>
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">

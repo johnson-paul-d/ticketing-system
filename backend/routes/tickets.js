@@ -24,11 +24,19 @@ const { notifyAdmins, notifyUser } = require('../services/notificationService');
 
 const fetchProject = async (projectId) => {
   if (!projectId) return null;
-  const { data } = await supabase
+  let { data, error } = await supabase
     .from('projects')
-    .select('id, name, target_date, members')
+    .select('id, name, target_date, members, division')
     .eq('id', projectId)
     .single();
+  // projects.division migration not run yet — retry without it
+  if (error && error.code === '42703') {
+    ({ data } = await supabase
+      .from('projects')
+      .select('id, name, target_date, members')
+      .eq('id', projectId)
+      .single());
+  }
   return data || null;
 };
 
@@ -261,7 +269,8 @@ router.post('/', auth, async (req, res) => {
       description,
       priority: priority || 'Medium',
       category: category || null,
-      division: division || null,
+      // Tasks inside a project inherit the project's division
+      division: division || project?.division || null,
       assigned_to: assigned_to || null,
       due_date: due_date || null,
       allotted_minutes: allotted_minutes || 0,
@@ -384,6 +393,10 @@ router.put('/:id', auth, async (req, res) => {
         return res.status(400).json({ message: 'Project not found' });
       }
       updateData.project_id = project_id;
+      // Linked tasks take on the project's division
+      if (projectContext.division && division === undefined) {
+        updateData.division = projectContext.division;
+      }
       // Linking an existing ticket: its due date must respect the project
       // target date (admins extend the timeline instead)
       const effectiveDue = due_date || existing.due_date;

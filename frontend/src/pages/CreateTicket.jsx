@@ -16,6 +16,9 @@ export default function CreateTicket() {
   const [givenBy, setGivenBy] = useState("");
   const [projectId, setProjectId] = useState("");
   const [projects, setProjects] = useState([]);
+  const [allottedDays, setAllottedDays] = useState(0);
+  const [allottedHours, setAllottedHours] = useState(0);
+  const [allottedMins, setAllottedMins] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -24,6 +27,11 @@ export default function CreateTicket() {
   }, []);
 
   const selectedProject = projects.find((p) => p.id === projectId);
+
+  // Tasks in a project take the project's division
+  useEffect(() => {
+    if (selectedProject?.division) setDivision(selectedProject.division);
+  }, [projectId]);
 
   const handleSubmit = async () => {
     if (!title.trim() || !description.trim()) {
@@ -42,6 +50,10 @@ export default function CreateTicket() {
         due_date: dueDate || null,
         given_by: givenBy,
         project_id: projectId || null,
+        allotted_minutes:
+          Math.max(0, allottedDays) * 1440 +
+          Math.max(0, allottedHours) * 60 +
+          Math.max(0, allottedMins),
       });
       navigate("/tickets");
     } catch (err) {
@@ -204,6 +216,32 @@ export default function CreateTicket() {
               </select>
             </div>
           )}
+
+          {/* Allotted time */}
+          <div className="mb-6">
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+              Allotted Time
+            </label>
+            <div className="grid grid-cols-3 gap-4 max-w-md">
+              {[
+                { label: "Days", value: allottedDays, set: setAllottedDays },
+                { label: "Hours", value: allottedHours, set: setAllottedHours },
+                { label: "Minutes", value: allottedMins, set: setAllottedMins },
+              ].map((f) => (
+                <div key={f.label}>
+                  <input
+                    type="number"
+                    min="0"
+                    value={f.value}
+                    onChange={(e) => f.set(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-3 text-sm text-center focus:ring-2 focus:ring-indigo-400 bg-gray-50 outline-none"
+                    disabled={loading}
+                  />
+                  <p className="text-xs text-gray-400 text-center mt-1">{f.label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
 
           {/* Given By field */}
           <div className="mb-8">
