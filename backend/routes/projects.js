@@ -222,10 +222,27 @@ router.get('/:id', auth, async (req, res) => {
         t.assigned_to_name || users.find((u) => u.id === t.assigned_to)?.name || null,
     }));
 
+    // Stable Jira-style task numbers, assigned server-side over the FULL set
+    // so numbering matches for every viewer
+    [...tasksWithNames]
+      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+      .forEach((t, i) => {
+        t.task_number = i + 1;
+      });
+
+    // Members only see their own tasks — admins and the project creator
+    // see the whole picture
+    const fullView = isAdmin(req.user) || project.created_by === req.user.id;
+    const visibleTasks = fullView
+      ? tasksWithNames
+      : tasksWithNames.filter((t) => t.assigned_to === req.user.id);
+
     res.json({
       ...project,
+      full_view: fullView,
+      // Overall stats stay project-wide so everyone sees the project stage
       stats: taskStats(tasksWithNames, project.target_date),
-      tasks: tasksWithNames,
+      tasks: visibleTasks,
       member_details: (project.members || [])
         .map((id) => users.find((u) => u.id === id))
         .filter(Boolean),

@@ -15,6 +15,13 @@ import {
   Users,
   Link2,
   Search,
+  List,
+  Activity,
+  ArrowUp,
+  ArrowDown,
+  Minus,
+  Eye,
+  FilterX,
 } from "lucide-react";
 import { Gantt, ViewMode } from "gantt-task-react";
 import "gantt-task-react/dist/index.css";
@@ -53,6 +60,24 @@ const statusBadge = {
 
 const dstr = (d) => (d ? String(d).split("T")[0] : null);
 
+// Jira-style priority direction icon
+function PriorityIcon({ p }) {
+  if (p === "Critical" || p === "High")
+    return <ArrowUp size={12} strokeWidth={3} className={p === "Critical" ? "text-red-600" : "text-red-400"} />;
+  if (p === "Low")
+    return <ArrowDown size={12} strokeWidth={3} className="text-emerald-500" />;
+  return <Minus size={12} strokeWidth={3} className="text-amber-500" />;
+}
+
+const timeAgo = (dateStr) => {
+  const s = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  if (s < 604800) return `${Math.floor(s / 86400)}d ago`;
+  return dstr(dateStr);
+};
+
 export default function ProjectDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -89,6 +114,12 @@ export default function ProjectDetails() {
 
   // Gantt view
   const [ganttView, setGanttView] = useState(ViewMode.Week);
+
+  // Quick filters (Jira-style)
+  const [q, setQ] = useState("");
+  const [fPriority, setFPriority] = useState("");
+  const [fAssignee, setFAssignee] = useState("");
+  const [myOnly, setMyOnly] = useState(false);
 
   // Edit-project modal
   const [showEdit, setShowEdit] = useState(false);
@@ -133,12 +164,69 @@ export default function ProjectDetails() {
   }, [id]);
 
   const canEdit = isAdmin || project?.created_by === user?.id;
+  const fullView = !!project?.full_view;
   const tasks = project?.tasks || [];
 
   const assigneeOptions = useMemo(() => {
     const members = project?.member_details || [];
     return members.length ? members : allUsers;
   }, [project, allUsers]);
+
+  // Jira-style key: initials of project name + stable server-side number
+  const keyPrefix = useMemo(() => {
+    const p = (project?.name || "")
+      .split(/\s+/)
+      .map((w) => w[0])
+      .join("")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "")
+      .slice(0, 4);
+    return p || "PRJ";
+  }, [project?.name]);
+  const taskKey = (t) => `${keyPrefix}-${t.task_number ?? "?"}`;
+
+  const taskAssignees = useMemo(() => {
+    const seen = {};
+    tasks.forEach((t) => {
+      if (t.assigned_to && t.assigned_to_name) seen[t.assigned_to] = t.assigned_to_name;
+    });
+    return Object.entries(seen).map(([id, name]) => ({ id, name }));
+  }, [tasks]);
+
+  const filteredTasks = useMemo(
+    () =>
+      tasks.filter((t) => {
+        if (q) {
+          const s = q.toLowerCase();
+          if (
+            !t.title?.toLowerCase().includes(s) &&
+            !taskKey(t).toLowerCase().includes(s) &&
+            !t.assigned_to_name?.toLowerCase().includes(s)
+          )
+            return false;
+        }
+        if (fPriority && t.priority !== fPriority) return false;
+        if (fAssignee && t.assigned_to !== fAssignee) return false;
+        if (myOnly && t.assigned_to !== user?.id) return false;
+        return true;
+      }),
+    [tasks, q, fPriority, fAssignee, myOnly, user?.id, keyPrefix]
+  );
+  const filtersActive = !!(q || fPriority || fAssignee || myOnly);
+
+  // Activity feed: flattened task timelines, newest first
+  const activity = useMemo(() => {
+    const items = [];
+    filteredTasks.forEach((t) => {
+      (Array.isArray(t.timeline) ? t.timeline : []).forEach((e) => {
+        if (e?.created_at)
+          items.push({ ...e, taskTitle: t.title, taskId: t.id, key: taskKey(t) });
+      });
+    });
+    return items
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, 60);
+  }, [filteredTasks, keyPrefix]);
 
   // ============ MOVE TASK (drag/drop or action sheet) ============
   const moveTask = async (task, targetStatus, columnLabel) => {
@@ -166,6 +254,21 @@ export default function ProjectDetails() {
     const taskId = e.dataTransfer.getData("text/plain");
     const task = tasks.find((t) => t.id === taskId);
     if (task) moveTask(task, col.target, col.label);
+  };
+
+  const quickAssign = async (task, userId) => {
+    const u = allUsers.find((x) => x.id === userId) || assigneeOptions.find((x) => x.id === userId);
+    setSheetTask(null);
+    try {
+      await api.put(`/tickets/${task.id}/assign`, {
+        assigned_to: userId || null,
+        assigned_to_name: u?.name || null,
+      });
+      flash("success", userId ? `Assigned to ${u?.name}` : "Task unassigned");
+      fetchProject();
+    } catch (err) {
+      flash("error", err.response?.data?.message || "Failed to assign task");
+    }
   };
 
   // ============ ADD TASK ============
@@ -289,6 +392,7 @@ export default function ProjectDetails() {
 
   // ============ GANTT DATA ============
   const ganttTasks = useMemo(() => {
+    const tasks = filteredTasks;
     if (!project || !tasks.length) return [];
     const day = 86400000;
     const dOnly = (v) => {
@@ -354,7 +458,7 @@ export default function ProjectDetails() {
       });
     });
     return rows;
-  }, [project, tasks]);
+  }, [project, filteredTasks]);
 
   if (loading) {
     return (
@@ -493,18 +597,28 @@ export default function ProjectDetails() {
         </div>
       </div>
 
-      {/* ===== TABS ===== */}
-      <div className="flex items-center gap-2 mb-4">
+      {/* Member scope notice */}
+      {!fullView && (
+        <div className="flex items-center gap-2 bg-blue-50 border border-blue-100 text-blue-700 text-xs font-medium px-4 py-2.5 rounded-xl mb-4">
+          <Eye size={14} />
+          Showing only tasks assigned to you ({tasks.length}) — overall progress reflects the whole project
+        </div>
+      )}
+
+      {/* ===== TABS + QUICK FILTERS ===== */}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
         {[
           { key: "board", label: "Board", icon: LayoutGrid },
+          { key: "list", label: "List", icon: List },
           { key: "gantt", label: "Gantt", icon: GanttChartSquare },
+          { key: "activity", label: "Activity", icon: Activity },
         ].map((t) => {
           const Icon = t.icon;
           return (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`inline-flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-xl transition ${
+              className={`inline-flex items-center gap-1.5 text-sm font-semibold px-3.5 py-2 rounded-xl transition ${
                 tab === t.key
                   ? "bg-[#9b2423] text-white shadow-sm"
                   : "bg-white text-gray-600 hover:text-[#9b2423]"
@@ -514,13 +628,69 @@ export default function ProjectDetails() {
             </button>
           );
         })}
+
+        <div className="flex items-center gap-2 flex-wrap sm:ml-auto">
+          <div className="relative">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search tasks…"
+              className="w-40 sm:w-48 bg-white border border-gray-200 rounded-xl pl-8 pr-3 py-2 text-xs outline-none focus:ring-2 focus:ring-[#9b2423]/30"
+            />
+          </div>
+          <select
+            value={fPriority}
+            onChange={(e) => setFPriority(e.target.value)}
+            className="bg-white border border-gray-200 rounded-xl px-2.5 py-2 text-xs outline-none text-gray-600"
+          >
+            <option value="">Priority</option>
+            <option>Critical</option>
+            <option>High</option>
+            <option>Medium</option>
+            <option>Low</option>
+          </select>
+          {fullView && taskAssignees.length > 0 && (
+            <select
+              value={fAssignee}
+              onChange={(e) => setFAssignee(e.target.value)}
+              className="bg-white border border-gray-200 rounded-xl px-2.5 py-2 text-xs outline-none text-gray-600 max-w-[130px]"
+            >
+              <option value="">Assignee</option>
+              {taskAssignees.map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+          )}
+          {fullView && (
+            <button
+              onClick={() => setMyOnly(!myOnly)}
+              className={`text-xs font-semibold px-3 py-2 rounded-xl border transition ${
+                myOnly
+                  ? "bg-[#9b2423] text-white border-[#9b2423]"
+                  : "bg-white text-gray-600 border-gray-200 hover:border-[#9b2423]/40"
+              }`}
+            >
+              My Tasks
+            </button>
+          )}
+          {filtersActive && (
+            <button
+              onClick={() => { setQ(""); setFPriority(""); setFAssignee(""); setMyOnly(false); }}
+              className="inline-flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-[#9b2423] px-2 py-2"
+              title="Clear filters"
+            >
+              <FilterX size={14} /> Clear
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ===== BOARD ===== */}
       {tab === "board" && (
         <div className="flex gap-3 sm:gap-4 overflow-x-auto pb-4 snap-x items-start">
           {COLUMNS.map((col) => {
-            const colTasks = tasks.filter((t) => col.statuses.includes(t.status));
+            const colTasks = filteredTasks.filter((t) => col.statuses.includes(t.status));
             return (
               <div
                 key={col.key}
@@ -546,8 +716,9 @@ export default function ProjectDetails() {
                 <div className="space-y-2.5 min-h-[60px]">
                   {colTasks.map((t) => {
                     const due = dstr(t.due_date);
-                    const overdue =
-                      due && col.key !== "done" && daysLeft(due) < 0;
+                    const dl = due ? daysLeft(due) : null;
+                    const overdue = due && col.key !== "done" && dl < 0;
+                    const dueSoon = due && col.key !== "done" && dl >= 0 && dl <= 3;
                     return (
                       <div
                         key={t.id}
@@ -557,21 +728,25 @@ export default function ProjectDetails() {
                           movingId === t.id ? "opacity-50" : ""
                         }`}
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <Link
-                            to={`/tickets/${t.id}`}
-                            className="text-sm font-semibold leading-snug hover:text-[#9b2423] transition line-clamp-2"
-                          >
-                            {t.title}
-                          </Link>
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <span className="text-[10px] font-mono font-semibold text-gray-400 tracking-wide">
+                            {taskKey(t)}
+                          </span>
                           <button
                             onClick={() => setSheetTask(t)}
                             className="text-gray-300 hover:text-gray-600 flex-shrink-0 -mr-1"
-                            title="Move task"
+                            title="Task actions"
                           >
                             <MoreVertical size={16} />
                           </button>
                         </div>
+
+                        <Link
+                          to={`/tickets/${t.id}`}
+                          className="text-sm font-semibold leading-snug hover:text-[#9b2423] transition line-clamp-2 block"
+                        >
+                          {t.title}
+                        </Link>
 
                         {statusBadge[t.status] && (
                           <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full mt-2 ${statusBadge[t.status]}`}>
@@ -581,12 +756,16 @@ export default function ProjectDetails() {
 
                         <div className="flex items-center justify-between mt-3">
                           <div className="flex items-center gap-1.5">
-                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${priorityPill[t.priority] || "bg-gray-100 text-gray-500"}`}>
-                              {t.priority || "—"}
+                            <span className={`inline-flex items-center gap-0.5 text-[10px] font-semibold px-2 py-0.5 rounded-full ${priorityPill[t.priority] || "bg-gray-100 text-gray-500"}`}>
+                              <PriorityIcon p={t.priority} /> {t.priority || "—"}
                             </span>
                             {due && (
                               <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${
-                                overdue ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-500"
+                                overdue
+                                  ? "bg-red-100 text-red-700"
+                                  : dueSoon
+                                  ? "bg-amber-100 text-amber-700"
+                                  : "bg-gray-100 text-gray-500"
                               }`}>
                                 <CalendarDays size={10} /> {due.slice(5)}
                               </span>
@@ -606,12 +785,135 @@ export default function ProjectDetails() {
                     );
                   })}
                   {colTasks.length === 0 && (
-                    <p className="text-xs text-gray-300 text-center py-6">No tasks</p>
+                    <p className="text-xs text-gray-300 text-center py-6">
+                      {filtersActive ? "No matching tasks" : "No tasks"}
+                    </p>
                   )}
                 </div>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ===== LIST ===== */}
+      {tab === "list" && (
+        <div className="bg-white rounded-2xl shadow-sm overflow-x-auto">
+          {filteredTasks.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-10">
+              {filtersActive ? "No matching tasks" : "No tasks yet"}
+            </p>
+          ) : (
+            <table className="w-full min-w-[640px] text-sm">
+              <thead>
+                <tr className="text-left text-[11px] uppercase tracking-wide text-gray-400 border-b border-gray-100">
+                  <th className="px-4 py-3 font-semibold">Key</th>
+                  <th className="px-4 py-3 font-semibold">Task</th>
+                  <th className="px-4 py-3 font-semibold">Assignee</th>
+                  <th className="px-4 py-3 font-semibold">Priority</th>
+                  <th className="px-4 py-3 font-semibold">Due</th>
+                  <th className="px-4 py-3 font-semibold">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...filteredTasks]
+                  .sort((a, b) => {
+                    if (!a.due_date && !b.due_date) return 0;
+                    if (!a.due_date) return 1;
+                    if (!b.due_date) return -1;
+                    return a.due_date < b.due_date ? -1 : 1;
+                  })
+                  .map((t) => {
+                    const col = colForStatus(t.status);
+                    const due = dstr(t.due_date);
+                    const dl = due ? daysLeft(due) : null;
+                    const overdue = due && col.key !== "done" && dl < 0;
+                    return (
+                      <tr
+                        key={t.id}
+                        onClick={() => navigate(`/tickets/${t.id}`)}
+                        className="border-b border-gray-50 hover:bg-gray-50/70 cursor-pointer transition"
+                      >
+                        <td className="px-4 py-3 font-mono text-xs font-semibold text-gray-400 whitespace-nowrap">
+                          {taskKey(t)}
+                        </td>
+                        <td className="px-4 py-3 font-medium max-w-[280px]">
+                          <span className="line-clamp-1">{t.title}</span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {t.assigned_to_name ? (
+                            <span className="inline-flex items-center gap-1.5">
+                              <span
+                                className="w-5 h-5 rounded-full text-white text-[8px] font-bold flex items-center justify-center"
+                                style={{ background: avatarColor(t.assigned_to_name) }}
+                              >
+                                {t.assigned_to_name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
+                              </span>
+                              <span className="text-xs text-gray-600">{t.assigned_to_name}</span>
+                            </span>
+                          ) : (
+                            <span className="text-xs text-gray-300">Unassigned</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className={`inline-flex items-center gap-0.5 text-[10px] font-semibold px-2 py-0.5 rounded-full ${priorityPill[t.priority] || "bg-gray-100 text-gray-500"}`}>
+                            <PriorityIcon p={t.priority} /> {t.priority || "—"}
+                          </span>
+                        </td>
+                        <td className={`px-4 py-3 text-xs whitespace-nowrap ${overdue ? "text-red-600 font-semibold" : "text-gray-500"}`}>
+                          {due || "—"}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1.5 text-xs text-gray-600">
+                            <span className="w-2 h-2 rounded-full" style={{ background: col.dot }} />
+                            {t.status}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* ===== ACTIVITY ===== */}
+      {tab === "activity" && (
+        <div className="bg-white rounded-2xl shadow-sm p-5 sm:p-6">
+          {activity.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-10">No activity yet</p>
+          ) : (
+            <div className="space-y-4">
+              {activity.map((e, i) => (
+                <div key={i} className="flex items-start gap-3">
+                  <div
+                    className="w-7 h-7 rounded-full text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5"
+                    style={{ background: avatarColor(e.user || "?") }}
+                  >
+                    {(e.user || "?").split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1 pb-4 border-b border-gray-50">
+                    <p className="text-sm text-gray-700">
+                      <span className="font-semibold">{e.user || "System"}</span>{" "}
+                      <span className="text-gray-500">{e.action}</span>
+                    </p>
+                    {e.comment && (
+                      <p className="text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2 mt-1.5 whitespace-pre-wrap break-words">
+                        {e.comment}
+                      </p>
+                    )}
+                    <p className="text-xs text-gray-400 mt-1">
+                      <Link to={`/tickets/${e.taskId}`} className="font-mono font-semibold hover:text-[#9b2423]">
+                        {e.key}
+                      </Link>{" "}
+                      · <span className="text-gray-400">{e.taskTitle}</span> · {timeAgo(e.created_at)}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -722,6 +1024,24 @@ export default function ProjectDetails() {
                 </button>
               ))}
             </div>
+
+            {fullView && (
+              <>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 px-1 mt-4 mb-1.5">
+                  Assign to
+                </p>
+                <select
+                  value={sheetTask.assigned_to || ""}
+                  onChange={(e) => quickAssign(sheetTask, e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 outline-none"
+                >
+                  <option value="">Unassigned</option>
+                  {(allUsers.length ? allUsers : assigneeOptions).map((u) => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+                </select>
+              </>
+            )}
           </div>
         </div>
       )}
