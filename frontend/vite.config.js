@@ -38,6 +38,10 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Take over immediately on new deployments so users never run a stale build
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {

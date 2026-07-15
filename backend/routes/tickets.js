@@ -378,15 +378,27 @@ router.put('/:id', auth, async (req, res) => {
     const projectContext = await fetchProject(
       project_id !== undefined ? project_id : existing.project_id
     );
+    let extendProjectTo = null;
     if (project_id) {
       if (!projectContext) {
         return res.status(400).json({ message: 'Project not found' });
       }
       updateData.project_id = project_id;
+      // Linking an existing ticket: its due date must respect the project
+      // target date (admins extend the timeline instead)
+      const effectiveDue = due_date || existing.due_date;
+      if (effectiveDue && projectContext.target_date && effectiveDue > projectContext.target_date) {
+        if (req.user.role === 'Admin' || req.user.role === 'Super Admin') {
+          extendProjectTo = effectiveDue;
+        } else {
+          return res.status(400).json({
+            message: `Task due date (${effectiveDue}) exceeds the project target date (${projectContext.target_date})`,
+          });
+        }
+      }
     } else if (project_id === null) {
       updateData.project_id = null;
     }
-    let extendProjectTo = null;
 
     // =====================================================
     // 1. DUE DATE CHANGE APPROVAL / REJECTION (Admin only)

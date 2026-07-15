@@ -13,8 +13,11 @@ import {
   MoreVertical,
   ExternalLink,
   Users,
-  Target,
+  Link2,
+  Search,
 } from "lucide-react";
+import { Gantt, ViewMode } from "gantt-task-react";
+import "gantt-task-react/dist/index.css";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
 import socket from "../services/socket";
@@ -75,6 +78,17 @@ export default function ProjectDetails() {
   const [tDue, setTDue] = useState("");
   const [taskError, setTaskError] = useState("");
   const [allUsers, setAllUsers] = useState([]);
+
+  // Link-existing-tasks modal
+  const [showLink, setShowLink] = useState(false);
+  const [linkCandidates, setLinkCandidates] = useState([]);
+  const [linkLoading, setLinkLoading] = useState(false);
+  const [linkSearch, setLinkSearch] = useState("");
+  const [linkSelected, setLinkSelected] = useState([]);
+  const [linking, setLinking] = useState(false);
+
+  // Gantt view
+  const [ganttView, setGanttView] = useState(ViewMode.Week);
 
   // Edit-project modal
   const [showEdit, setShowEdit] = useState(false);
@@ -230,30 +244,117 @@ export default function ProjectDetails() {
     }
   };
 
-  // ============ TIMELINE DATA ============
-  const timeline = useMemo(() => {
-    if (!project) return null;
-    const today = dstr(new Date().toISOString());
-    const dates = [];
-    tasks.forEach((t) => {
-      if (t.created_at) dates.push(dstr(t.created_at));
-      if (t.due_date) dates.push(dstr(t.due_date));
-    });
-    if (project.created_at) dates.push(dstr(project.created_at));
-    if (project.target_date) dates.push(dstr(project.target_date));
-    dates.push(today);
-    const valid = dates.filter(Boolean).sort();
-    if (!valid.length) return null;
-    const start = new Date(valid[0]).getTime();
-    const end = Math.max(new Date(valid[valid.length - 1]).getTime(), start + 86400000);
-    const span = end - start;
-    const pct = (d) =>
-      Math.min(100, Math.max(0, ((new Date(dstr(d)).getTime() - start) / span) * 100));
-    return { pct, today, start: valid[0], end: dstr(new Date(end).toISOString()) };
-  }, [project, tasks]);
-
   const colForStatus = (status) =>
     COLUMNS.find((c) => c.statuses.includes(status)) || COLUMNS[0];
+
+  // ============ LINK EXISTING TASKS ============
+  const openLinkModal = async () => {
+    setShowLink(true);
+    setLinkSelected([]);
+    setLinkSearch("");
+    setLinkLoading(true);
+    try {
+      const res = await api.get("/tickets");
+      setLinkCandidates((res.data || []).filter((t) => !t.project_id));
+    } catch (err) {
+      flash("error", "Failed to load tickets");
+    } finally {
+      setLinkLoading(false);
+    }
+  };
+
+  const linkTasks = async () => {
+    if (!linkSelected.length) return;
+    setLinking(true);
+    const failed = [];
+    for (const tid of linkSelected) {
+      try {
+        await api.put(`/tickets/${tid}`, { project_id: project.id });
+      } catch (err) {
+        const t = linkCandidates.find((c) => c.id === tid);
+        failed.push(
+          `${t?.title || tid}: ${err.response?.data?.message || "failed"}`
+        );
+      }
+    }
+    setLinking(false);
+    setShowLink(false);
+    if (failed.length) {
+      flash("error", `Not linked — ${failed[0]}${failed.length > 1 ? ` (+${failed.length - 1} more)` : ""}`);
+    } else {
+      flash("success", `${linkSelected.length} task${linkSelected.length > 1 ? "s" : ""} added to the project`);
+    }
+    fetchProject();
+  };
+
+  // ============ GANTT DATA ============
+  const ganttTasks = useMemo(() => {
+    if (!project || !tasks.length) return [];
+    const day = 86400000;
+    const dOnly = (v) => {
+      const d = new Date(dstr(v));
+      d.setHours(0, 0, 0, 0);
+      return d;
+    };
+    const starts = tasks.map((t) => dOnly(t.created_at).getTime());
+    if (project.created_at) starts.push(dOnly(project.created_at).getTime());
+    const minStart = new Date(Math.min(...starts));
+    let maxEnd = project.target_date ? dOnly(project.target_date) : null;
+    tasks.forEach((t) => {
+      if (t.due_date) {
+        const e = dOnly(t.due_date);
+        if (!maxEnd || e > maxEnd) maxEnd = e;
+      }
+    });
+    if (!maxEnd || maxEnd.getTime() <= minStart.getTime()) {
+      maxEnd = new Date(minStart.getTime() + 7 * day);
+    }
+
+    const rows = [
+      {
+        id: `project-${project.id}`,
+        name: project.name,
+        start: minStart,
+        end: maxEnd,
+        type: "project",
+        progress: project.stats?.progress || 0,
+        isDisabled: true,
+        hideChildren: false,
+        styles: {
+          progressColor: "#9b2423",
+          progressSelectedColor: "#9b2423",
+          backgroundColor: "#d9c0bf",
+          backgroundSelectedColor: "#d9c0bf",
+        },
+      },
+    ];
+
+    tasks.forEach((t) => {
+      const col = colForStatus(t.status);
+      const start = dOnly(t.created_at);
+      let end = t.due_date ? dOnly(t.due_date) : new Date(start.getTime() + day);
+      if (end.getTime() <= start.getTime()) end = new Date(start.getTime() + day);
+      const overdue = t.due_date && col.key !== "done" && daysLeft(dstr(t.due_date)) < 0;
+      const color = overdue ? "#dc2626" : col.dot;
+      rows.push({
+        id: String(t.id),
+        name: t.title,
+        start,
+        end,
+        type: "task",
+        progress: col.key === "done" ? 100 : col.key === "review" ? 75 : col.key === "progress" ? 50 : 0,
+        isDisabled: true,
+        project: `project-${project.id}`,
+        styles: {
+          progressColor: color,
+          progressSelectedColor: color,
+          backgroundColor: "#e5e7eb",
+          backgroundSelectedColor: "#e5e7eb",
+        },
+      });
+    });
+    return rows;
+  }, [project, tasks]);
 
   if (loading) {
     return (
@@ -324,6 +425,13 @@ export default function ProjectDetails() {
                 </button>
               )}
               <button
+                onClick={openLinkModal}
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 border border-gray-200 hover:border-[#9b2423]/40 px-3.5 py-2 rounded-xl transition"
+                title="Add existing tickets to this project"
+              >
+                <Link2 size={14} /> Add Existing
+              </button>
+              <button
                 onClick={() => { setTaskError(""); setShowAdd(true); }}
                 className="inline-flex items-center gap-1.5 bg-[#9b2423] hover:bg-[#7d1d1c] text-white text-sm font-semibold px-3.5 py-2 rounded-xl transition"
               >
@@ -345,6 +453,43 @@ export default function ProjectDetails() {
               </span>
             </div>
           </div>
+
+          {/* Stage summary */}
+          {tasks.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap mt-4 pt-4 border-t border-gray-100">
+              {(() => {
+                const total = project.stats?.total || 0;
+                const done = project.stats?.done || 0;
+                const overdueCount = project.stats?.overdue || 0;
+                const targetPassed = d !== null && d < 0;
+                const health =
+                  total > 0 && done === total
+                    ? { label: "Complete", cls: "bg-blue-100 text-blue-700" }
+                    : targetPassed
+                    ? { label: "Overdue", cls: "bg-red-100 text-red-700" }
+                    : overdueCount > 0
+                    ? { label: "At Risk", cls: "bg-amber-100 text-amber-700" }
+                    : { label: "On Track", cls: "bg-emerald-100 text-emerald-700" };
+                return (
+                  <span className={`text-xs font-bold px-3 py-1 rounded-full ${health.cls}`}>
+                    {health.label}
+                  </span>
+                );
+              })()}
+              {COLUMNS.map((c) => {
+                const n = tasks.filter((t) => c.statuses.includes(t.status)).length;
+                return (
+                  <span
+                    key={c.key}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 bg-gray-50 px-2.5 py-1 rounded-full"
+                  >
+                    <span className="w-2 h-2 rounded-full" style={{ background: c.dot }} />
+                    {c.label} {n}
+                  </span>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
@@ -352,7 +497,7 @@ export default function ProjectDetails() {
       <div className="flex items-center gap-2 mb-4">
         {[
           { key: "board", label: "Board", icon: LayoutGrid },
-          { key: "timeline", label: "Timeline", icon: GanttChartSquare },
+          { key: "gantt", label: "Gantt", icon: GanttChartSquare },
         ].map((t) => {
           const Icon = t.icon;
           return (
@@ -470,91 +615,69 @@ export default function ProjectDetails() {
         </div>
       )}
 
-      {/* ===== TIMELINE ===== */}
-      {tab === "timeline" && (
-        <div className="bg-white rounded-2xl shadow-sm p-5 sm:p-6 overflow-x-auto">
-          {!timeline || tasks.length === 0 ? (
+      {/* ===== GANTT ===== */}
+      {tab === "gantt" && (
+        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+          {ganttTasks.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-10">
-              Add tasks with due dates to see the project timeline
+              Add tasks to see the project Gantt chart
             </p>
           ) : (
-            <div className="min-w-[560px]">
-              <div className="flex justify-between text-[11px] text-gray-400 font-medium mb-3">
-                <span>{timeline.start}</span>
-                {project.target_date && (
-                  <span className="inline-flex items-center gap-1 text-[#9b2423] font-semibold">
-                    <Target size={12} /> Target {dstr(project.target_date)}
+            <>
+              <div className="flex items-center justify-between gap-3 flex-wrap p-3 sm:p-4 border-b border-gray-100">
+                <div className="flex items-center gap-1.5">
+                  {[
+                    { label: "Day", mode: ViewMode.Day },
+                    { label: "Week", mode: ViewMode.Week },
+                    { label: "Month", mode: ViewMode.Month },
+                  ].map((v) => (
+                    <button
+                      key={v.label}
+                      onClick={() => setGanttView(v.mode)}
+                      className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition ${
+                        ganttView === v.mode
+                          ? "bg-[#9b2423] text-white"
+                          : "bg-gray-50 text-gray-600 hover:bg-gray-100"
+                      }`}
+                    >
+                      {v.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-3 flex-wrap">
+                  {COLUMNS.map((c) => (
+                    <span key={c.key} className="inline-flex items-center gap-1.5 text-[11px] text-gray-500">
+                      <span className="w-2.5 h-2.5 rounded-sm" style={{ background: c.dot }} /> {c.label}
+                    </span>
+                  ))}
+                  <span className="inline-flex items-center gap-1.5 text-[11px] text-gray-500">
+                    <span className="w-2.5 h-2.5 rounded-sm bg-red-600" /> Overdue
                   </span>
-                )}
-                <span>{timeline.end}</span>
+                </div>
               </div>
-
-              <div className="relative space-y-2.5">
-                {/* today line */}
-                <div
-                  className="absolute top-0 bottom-0 w-px bg-blue-400/70 z-10"
-                  style={{ left: `${timeline.pct(timeline.today)}%` }}
-                  title="Today"
+              <div className="overflow-x-auto project-gantt">
+                <Gantt
+                  tasks={ganttTasks}
+                  viewMode={ganttView}
+                  listCellWidth={
+                    typeof window !== "undefined" && window.innerWidth < 640 ? "" : "170px"
+                  }
+                  columnWidth={
+                    ganttView === ViewMode.Month ? 180 : ganttView === ViewMode.Week ? 110 : 52
+                  }
+                  rowHeight={44}
+                  barCornerRadius={6}
+                  fontSize="12px"
+                  todayColor="rgba(59,130,246,0.10)"
+                  onDoubleClick={(t) => {
+                    if (!String(t.id).startsWith("project-")) navigate(`/tickets/${t.id}`);
+                  }}
                 />
-                {/* target line */}
-                {project.target_date && (
-                  <div
-                    className="absolute top-0 bottom-0 w-px border-l-2 border-dashed border-[#9b2423]/60 z-10"
-                    style={{ left: `${timeline.pct(project.target_date)}%` }}
-                    title={`Target: ${dstr(project.target_date)}`}
-                  />
-                )}
-
-                {tasks.map((t) => {
-                  const col = colForStatus(t.status);
-                  const startP = timeline.pct(t.created_at);
-                  const endP = t.due_date ? timeline.pct(t.due_date) : startP;
-                  const width = Math.max(endP - startP, 1.5);
-                  const overdue =
-                    t.due_date && col.key !== "done" && daysLeft(dstr(t.due_date)) < 0;
-                  return (
-                    <div key={t.id} className="flex items-center gap-3">
-                      <Link
-                        to={`/tickets/${t.id}`}
-                        className="w-36 sm:w-48 flex-shrink-0 text-xs font-medium text-gray-600 hover:text-[#9b2423] truncate"
-                        title={t.title}
-                      >
-                        {t.title}
-                      </Link>
-                      <div className="flex-1 relative h-6 bg-gray-50 rounded-lg">
-                        <div
-                          className="absolute top-1 bottom-1 rounded-md flex items-center px-1.5"
-                          style={{
-                            left: `${startP}%`,
-                            width: `${width}%`,
-                            background: overdue ? "#dc2626" : col.dot,
-                            opacity: col.key === "done" ? 0.45 : 0.85,
-                          }}
-                          title={`${t.title} — ${t.status}${t.due_date ? ` · due ${dstr(t.due_date)}` : ""}`}
-                        >
-                          {t.due_date && width > 12 && (
-                            <span className="text-[9px] text-white font-semibold truncate">
-                              {dstr(t.due_date).slice(5)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
-
-              <div className="flex items-center gap-4 mt-5 flex-wrap">
-                {COLUMNS.map((c) => (
-                  <span key={c.key} className="inline-flex items-center gap-1.5 text-[11px] text-gray-500">
-                    <span className="w-2.5 h-2.5 rounded-sm" style={{ background: c.dot }} /> {c.label}
-                  </span>
-                ))}
-                <span className="inline-flex items-center gap-1.5 text-[11px] text-gray-500">
-                  <span className="w-2.5 h-2.5 rounded-sm bg-red-600" /> Overdue
-                </span>
-              </div>
-            </div>
+              <p className="text-[11px] text-gray-400 px-4 py-2 border-t border-gray-100">
+                Bar fill shows task progress by stage · double-click a bar to open the ticket
+              </p>
+            </>
           )}
         </div>
       )}
@@ -598,6 +721,112 @@ export default function ProjectDetails() {
                   ) : null}
                 </button>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== LINK EXISTING TASKS MODAL ===== */}
+      {showLink && (
+        <div className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-0 sm:p-6">
+          <div className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h2 className="text-lg font-bold">Add Existing Tasks</h2>
+              <button onClick={() => setShowLink(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="px-6 pt-4">
+              <div className="relative">
+                <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  value={linkSearch}
+                  onChange={(e) => setLinkSearch(e.target.value)}
+                  placeholder="Search tickets…"
+                  className="w-full border border-gray-200 rounded-xl pl-10 pr-4 py-2.5 text-sm bg-gray-50 outline-none focus:ring-2 focus:ring-[#9b2423]/40"
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2 min-h-[120px]">
+              {linkLoading ? (
+                <div className="flex items-center justify-center py-10 text-gray-400 gap-2">
+                  <Loader2 size={17} className="animate-spin" /> Loading tickets…
+                </div>
+              ) : (
+                (() => {
+                  const q = linkSearch.toLowerCase();
+                  const filtered = linkCandidates.filter(
+                    (t) =>
+                      !q ||
+                      t.title?.toLowerCase().includes(q) ||
+                      t.assigned_to_name?.toLowerCase().includes(q)
+                  );
+                  if (!filtered.length)
+                    return (
+                      <p className="text-sm text-gray-400 text-center py-10">
+                        {linkCandidates.length === 0
+                          ? "No unassigned tickets available"
+                          : "No tickets match your search"}
+                      </p>
+                    );
+                  return filtered.map((t) => {
+                    const checked = linkSelected.includes(t.id);
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() =>
+                          setLinkSelected((prev) =>
+                            prev.includes(t.id)
+                              ? prev.filter((x) => x !== t.id)
+                              : [...prev, t.id]
+                          )
+                        }
+                        className={`w-full text-left border rounded-xl px-4 py-3 transition ${
+                          checked
+                            ? "border-[#9b2423] bg-[#9b2423]/5"
+                            : "border-gray-100 hover:border-gray-200"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-semibold line-clamp-1">{t.title}</p>
+                          <span
+                            className={`w-[18px] h-[18px] rounded-md border flex items-center justify-center flex-shrink-0 ${
+                              checked ? "bg-[#9b2423] border-[#9b2423]" : "border-gray-300"
+                            }`}
+                          >
+                            {checked && <span className="text-white text-[10px] font-bold">✓</span>}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {t.status}
+                          {t.assigned_to_name ? ` · ${t.assigned_to_name}` : ""}
+                          {t.due_date ? ` · due ${dstr(t.due_date)}` : ""}
+                        </p>
+                      </button>
+                    );
+                  });
+                })()
+              )}
+            </div>
+
+            <div className="border-t px-6 py-4 flex gap-3">
+              <button
+                onClick={linkTasks}
+                disabled={linking || linkSelected.length === 0}
+                className="flex-1 inline-flex items-center justify-center gap-2 bg-[#9b2423] hover:bg-[#7d1d1c] disabled:opacity-50 text-white font-semibold text-sm px-4 py-3 rounded-xl transition"
+              >
+                {linking ? <Loader2 size={16} className="animate-spin" /> : <Link2 size={15} />}
+                Add {linkSelected.length > 0 ? `${linkSelected.length} ` : ""}to Project
+              </button>
+              <button
+                onClick={() => setShowLink(false)}
+                className="px-5 py-3 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
