@@ -209,8 +209,20 @@ router.get('/:id', auth, async (req, res) => {
 
     const project = await fetchProject(ticket.project_id);
 
+    // Older rows may have assigned_to without a stored name — resolve it
+    let assignedToName = ticket.assigned_to_name;
+    if (ticket.assigned_to && !assignedToName) {
+      const { data: assignee } = await supabase
+        .from('users')
+        .select('name')
+        .eq('id', ticket.assigned_to)
+        .single();
+      assignedToName = assignee?.name || null;
+    }
+
     res.json({
       ...ticket,
+      assigned_to_name: assignedToName,
       project_name: project?.name || null,
       project_target_date: project?.target_date || null,
       time_entries: timeEntries || [],
@@ -264,6 +276,18 @@ router.post('/', auth, async (req, res) => {
       }
     }
 
+    // Resolve the assignee before insert so assigned_to_name is stored on
+    // the row — the ticket page reads it directly
+    let assignedUser = null;
+    if (assigned_to) {
+      const { data: fetchedUser } = await supabase
+        .from('users')
+        .select('id, name')
+        .eq('id', assigned_to)
+        .single();
+      assignedUser = fetchedUser;
+    }
+
     const insertData = {
       title,
       description,
@@ -272,6 +296,7 @@ router.post('/', auth, async (req, res) => {
       // Tasks inside a project inherit the project's division
       division: division || project?.division || null,
       assigned_to: assigned_to || null,
+      assigned_to_name: assignedUser?.name || null,
       due_date: due_date || null,
       allotted_minutes: allotted_minutes || 0,
       status: 'Open',
@@ -297,16 +322,6 @@ router.post('/', auth, async (req, res) => {
     if (error) {
       console.error(error);
       return res.status(500).json({ message: 'Ticket creation failed', error: error.message });
-    }
-
-    let assignedUser = null;
-    if (assigned_to) {
-      const { data: fetchedUser } = await supabase
-        .from('users')
-        .select('id, name')
-        .eq('id', assigned_to)
-        .single();
-      assignedUser = fetchedUser;
     }
 
     if (assigned_to && assignedUser) {
@@ -393,6 +408,14 @@ router.put('/:id', auth, async (req, res) => {
         return res.status(400).json({ message: 'Project not found' });
       }
       updateData.project_id = project_id;
+      if (existing.project_id !== project_id) {
+        timeline.push({
+          type: 'project',
+          action: `Added to project "${projectContext.name}"`,
+          user: req.user.name,
+          created_at: getISTTime(),
+        });
+      }
       // Linked tasks take on the project's division
       if (projectContext.division && division === undefined) {
         updateData.division = projectContext.division;
@@ -411,6 +434,14 @@ router.put('/:id', auth, async (req, res) => {
       }
     } else if (project_id === null) {
       updateData.project_id = null;
+      if (existing.project_id) {
+        timeline.push({
+          type: 'project',
+          action: 'Removed from project',
+          user: req.user.name,
+          created_at: getISTTime(),
+        });
+      }
     }
 
     // =====================================================
@@ -635,6 +666,16 @@ router.put('/:id', auth, async (req, res) => {
         await sendApprovalEmail(process.env.ADMIN_EMAIL, existing.title, req.user.name, existing.id);
       }
     } else if (status !== undefined) {
+      // Plain status changes (e.g. board drag to In Progress) belong in the
+      // ticket history too
+      if (status !== existing.status) {
+        timeline.push({
+          type: 'status',
+          action: `Status changed from ${existing.status || 'Open'} to ${status}`,
+          user: req.user.name,
+          created_at: getISTTime(),
+        });
+      }
       updateData.status = status;
     }
 
