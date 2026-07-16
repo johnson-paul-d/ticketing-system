@@ -223,11 +223,12 @@ export default function Tickets() {
       const matchesUser =
         selectedUsers.length === 0 || selectedUsers.includes(assignedUser);
 
-      // Overdue filter
+      // Overdue filter — finished tickets are never overdue
       const isOverdue =
         ticket.due_date &&
         new Date(ticket.due_date) < new Date() &&
-        ticket.status !== "Completed";
+        ticket.status !== "Completed" &&
+        ticket.status !== "Closed";
       const matchesOverdue =
         overdueFilter === "All"
           ? true
@@ -514,7 +515,8 @@ export default function Tickets() {
               const isOverdue =
                 ticket.due_date &&
                 new Date(ticket.due_date) < new Date() &&
-                ticket.status !== "Completed";
+                ticket.status !== "Completed" &&
+                ticket.status !== "Closed";
 
               const totalMinutes = (ticket.time_entries || []).reduce(
                 (sum, entry) => sum + (entry.duration_minutes || 0),

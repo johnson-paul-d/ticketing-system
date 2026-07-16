@@ -298,6 +298,8 @@ function buildDueAnalysis(tickets) {
   let noDueDate = 0;
   
   tickets.forEach(t => {
+    // Finished tickets are not pending workload — never count them as overdue
+    if (t.status === "Completed" || t.status === "Closed") return;
     if (!t.due_date) {
       noDueDate++;
       return;
@@ -847,7 +849,7 @@ export default function Dashboard() {
   );
   const completionRate = pct(doneT.length, total);
   const overdueTickets = tickets.filter(t => {
-    if (!t.due_date || t.status === "Completed") return false;
+    if (!t.due_date || t.status === "Completed" || t.status === "Closed") return false;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const dueDate = new Date(t.due_date);

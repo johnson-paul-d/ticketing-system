@@ -91,7 +91,8 @@ export default function TicketCalendar() {
         const isOverdue =
           ticket.due_date &&
           new Date(ticket.due_date) < new Date() &&
-          ticket.status !== "Completed";
+          ticket.status !== "Completed" &&
+          ticket.status !== "Closed";
 
         if (ticket.due_date) {
           const dueDate = new Date(ticket.due_date);
