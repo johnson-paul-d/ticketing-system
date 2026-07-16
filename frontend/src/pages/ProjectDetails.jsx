@@ -250,7 +250,7 @@ export default function ProjectDetails() {
     setSheetTask(null);
     try {
       await api.put(`/tickets/${task.id}`, { status: targetStatus });
-      if (targetStatus === "Completed" || targetStatus === "Waiting For Sources") {
+      if (!isAdmin && (targetStatus === "Completed" || targetStatus === "Waiting For Sources")) {
         flash("success", `"${task.title}" sent for admin approval`);
       } else {
         flash("success", `"${task.title}" moved to ${columnLabel}`);
@@ -1053,7 +1053,7 @@ export default function ProjectDetails() {
                 >
                   <span className="w-2 h-2 rounded-full" style={{ background: c.dot }} />
                   {c.label}
-                  {c.key === "done" || c.key === "review" ? (
+                  {!isAdmin && (c.key === "done" || c.key === "review") ? (
                     <span className="text-[10px] text-gray-400 ml-auto">needs approval</span>
                   ) : null}
                 </button>

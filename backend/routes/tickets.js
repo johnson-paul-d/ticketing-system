@@ -645,25 +645,52 @@ router.put('/:id', auth, async (req, res) => {
     // 6. STATUS & APPROVAL REQUEST FOR COMPLETION
     // =====================================================
     if (status && approvalTriggers.includes(status)) {
-      updateData.status = 'Waiting For Approval';
-      updateData.approval_required = true;
-      updateData.approval_status = 'Pending';
-      updateData.approval_requested_by = req.user.name;
-      updateData.approval_requested_status = status;
-      timeline.push({
-        type: 'approval',
-        action: `Approval requested for ${status}`,
-        user: req.user.name,
-        created_at: getISTTime(),
-      });
-      await notifyAdmins(
-        'Approval Required',
-        `${req.user.name} requested approval for "${existing.title}"`,
-        existing.id
-      );
-      notificationsCreated = true;
-      if (process.env.ADMIN_EMAIL) {
-        await sendApprovalEmail(process.env.ADMIN_EMAIL, existing.title, req.user.name, existing.id);
+      if (req.user.role === 'Admin' || req.user.role === 'Super Admin') {
+        // Admins apply the status directly — no self-approval loop
+        updateData.status = status;
+        updateData.approval_required = false;
+        updateData.approval_status = 'Approved';
+        updateData.approved_by = req.user.name;
+        updateData.approved_at = getISTTime();
+        timeline.push({
+          type: 'status',
+          action: `Status changed from ${existing.status || 'Open'} to ${status}`,
+          user: req.user.name,
+          created_at: getISTTime(),
+        });
+        if (
+          existing.assigned_to_name &&
+          existing.assigned_to_name !== req.user.name
+        ) {
+          await notifyUser(
+            existing.assigned_to_name,
+            `Ticket ${status}`,
+            `${req.user.name} marked "${existing.title}" as ${status}`,
+            existing.id
+          );
+          notificationsCreated = true;
+        }
+      } else {
+        updateData.status = 'Waiting For Approval';
+        updateData.approval_required = true;
+        updateData.approval_status = 'Pending';
+        updateData.approval_requested_by = req.user.name;
+        updateData.approval_requested_status = status;
+        timeline.push({
+          type: 'approval',
+          action: `Approval requested for ${status}`,
+          user: req.user.name,
+          created_at: getISTTime(),
+        });
+        await notifyAdmins(
+          'Approval Required',
+          `${req.user.name} requested approval for "${existing.title}"`,
+          existing.id
+        );
+        notificationsCreated = true;
+        if (process.env.ADMIN_EMAIL) {
+          await sendApprovalEmail(process.env.ADMIN_EMAIL, existing.title, req.user.name, existing.id);
+        }
       }
     } else if (status !== undefined) {
       // Plain status changes (e.g. board drag to In Progress) belong in the
