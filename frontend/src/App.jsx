@@ -18,7 +18,12 @@ import AdminAnalytics from "./pages/AdminAnalytics";
 import GoogleAdsDashboard from "./pages/GoogleAdsDashboard";
 import LinkedInDashboard  from "./pages/LinkedInDashboard";
 import LinkedInCallback   from "./pages/LinkedInCallback";
+import AbmDashboard from "./pages/AbmDashboard";
+import AbmAccounts from "./pages/AbmAccounts";
+import AbmAccountDetails from "./pages/AbmAccountDetails";
+import AbmToday from "./pages/AbmToday";
 import useAuthStore from "./store/authStore";
+import { canAccessAbm } from "./constants/abm";
 
 function App() {
   const user = useAuthStore((state) => state.user);
@@ -180,6 +185,39 @@ const canAccessGoogleAds =
         />
 
         <Route path="/auth/linkedin/callback" element={<LinkedInCallback />} />
+
+        <Route
+          path="/abm"
+          element={
+            <ProtectedRoute>
+              {canAccessAbm(user) ? <AbmDashboard /> : <Navigate to="/dashboard" replace />}
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/abm/accounts"
+          element={
+            <ProtectedRoute>
+              {canAccessAbm(user) ? <AbmAccounts /> : <Navigate to="/dashboard" replace />}
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/abm/accounts/:id"
+          element={
+            <ProtectedRoute>
+              {canAccessAbm(user) ? <AbmAccountDetails /> : <Navigate to="/dashboard" replace />}
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/abm/today"
+          element={
+            <ProtectedRoute>
+              {canAccessAbm(user) ? <AbmToday /> : <Navigate to="/dashboard" replace />}
+            </ProtectedRoute>
+          }
+        />
 
       </Routes>
     </BrowserRouter>

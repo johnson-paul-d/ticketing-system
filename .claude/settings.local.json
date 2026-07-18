@@ -118,7 +118,26 @@
       "Bash(node -e \"require\\('dotenv'\\).config\\({quiet:true}\\); console.log\\(Object.keys\\(process.env\\).filter\\(k => /SUPABASE|DATABASE|PG|POSTGRES/i.test\\(k\\)\\)\\)\")",
       "Bash(node --check routes/projects.js)",
       "Bash(node --check services/notificationService.js)",
-      "Bash(node -e \"require\\('dotenv'\\).config\\({quiet:true}\\); const jwt=require\\('jsonwebtoken'\\); console.log\\(jwt.sign\\({id:'preview-admin',email:'preview@test.local',role:'Admin',name:'Preview Admin'},process.env.JWT_SECRET,{expiresIn:'1h'}\\)\\)\")"
+      "Bash(node -e \"require\\('dotenv'\\).config\\({quiet:true}\\); const jwt=require\\('jsonwebtoken'\\); console.log\\(jwt.sign\\({id:'preview-admin',email:'preview@test.local',role:'Admin',name:'Preview Admin'},process.env.JWT_SECRET,{expiresIn:'1h'}\\)\\)\")",
+      "Bash(node -e \"require\\('dotenv'\\).config\\({quiet:true}\\); const jwt=require\\('jsonwebtoken'\\); console.log\\(jwt.sign\\({id:'preview-admin',email:'preview@test.local',role:'Admin',name:'Preview Admin'},process.env.JWT_SECRET,{expiresIn:'2h'}\\)\\)\")",
+      "Bash(node -e \"require\\('dotenv'\\).config\\({quiet:true}\\); const jwt=require\\('jsonwebtoken'\\); const crypto=require\\('crypto'\\); const id=crypto.randomUUID\\(\\); console.log\\(id\\); console.log\\(jwt.sign\\({id,email:'preview@test.local',role:'Admin',name:'Preview Admin'},process.env.JWT_SECRET,{expiresIn:'2h'}\\)\\)\")",
+      "Bash(node -e \"require\\('dotenv'\\).config\\({quiet:true}\\); const jwt=require\\('jsonwebtoken'\\); const crypto=require\\('crypto'\\); const id=crypto.randomUUID\\(\\); console.log\\(JSON.stringify\\({id, token: jwt.sign\\({id,email:'e2e@test.local',role:'Team Member',name:'E2E Member'},process.env.JWT_SECRET,{expiresIn:'2h'}\\)}\\)\\)\")",
+      "Bash(node -e \"require\\('dotenv'\\).config\\({quiet:true}\\); const jwt=require\\('jsonwebtoken'\\); const crypto=require\\('crypto'\\); const id=crypto.randomUUID\\(\\); console.log\\(id + '|' + jwt.sign\\({id,email:'preview@test.local',role:'Admin',name:'Preview Admin'},process.env.JWT_SECRET,{expiresIn:'2h'}\\)\\)\")",
+      "Bash(NODE_OPTIONS=--use-system-ca node -e ' *)",
+      "Bash(node -e \"require\\('dotenv'\\).config\\({quiet:true}\\); const jwt=require\\('jsonwebtoken'\\); const crypto=require\\('crypto'\\); const id=crypto.randomUUID\\(\\); console.log\\(id + '|' + jwt.sign\\({id,email:'preview@test.local',role:'Admin',name:'Preview Admin'},process.env.JWT_SECRET,{expiresIn:'1h'}\\)\\)\")",
+      "WebFetch(domain:github.com)",
+      "PowerShell(npm view globodai-mcp-linkedin-sales-navigator name version dist-tags time.modified dependencies)",
+      "PowerShell(git clone https://github.com/globodai-group/mcp-linkedin-sales-navigator.git D:\\\\mcp-linkedin-sales-navigator)",
+      "PowerShell(Get-ChildItem D:\\\\mcp-linkedin-sales-navigator -Recurse -File | Where-Object { $_.FullName -notmatch 'node_modules' } | Select-Object -ExpandProperty FullName)",
+      "PowerShell(claude mcp add --scope user linkedin-sales-navigator -e LSN_AUTH_METHOD=cdp -e \"LSN_CDP_ENDPOINT=http://localhost:9222\" -- node D:\\\\mcp-linkedin-sales-navigator\\\\dist\\\\index.js)",
+      "PowerShell(if \\(Test-Path C:\\\\Users\\\\mktganalyst\\\\.claude.json\\) { $j = Get-Content C:\\\\Users\\\\mktganalyst\\\\.claude.json -Raw | ConvertFrom-Json; if \\($null -ne $j.mcpServers\\) { $j.mcpServers | ConvertTo-Json -Depth 5 } else { 'no mcpServers key' }; \\(Get-Item C:\\\\Users\\\\mktganalyst\\\\.claude.json\\).Length } else { 'file missing' })",
+      "Bash(timeout 15 node dist/index.js)",
+      "PowerShell(Get-ChildItem D:\\\\Ticketing-System\\\\backend -Recurse -File | Where-Object { $_.FullName -notmatch 'node_modules' } | Select-Object -ExpandProperty FullName; Get-ChildItem D:\\\\Ticketing-System\\\\frontend\\\\src -Recurse -Directory | Select-Object -ExpandProperty FullName)",
+      "Bash(curl -s -o - -w \" [HTTP %{http_code}]\\\\n\" http://localhost:5000/api/test)",
+      "Bash(node -e \"process.env.DOTENV_CONFIG_QUIET='true'; require\\('/d/Ticketing-System/backend/node_modules/dotenv'\\).config\\({path:'/d/Ticketing-System/backend/.env'}\\); const jwt=require\\('/d/Ticketing-System/backend/node_modules/jsonwebtoken'\\); console.log\\(jwt.sign\\({id:'00000000-0000-0000-0000-000000000001',name:'Smoke Test',role:'Admin'}, process.env.JWT_SECRET, {expiresIn:'30m'}\\)\\)\")",
+      "Bash(node -e \"process.env.DOTENV_CONFIG_QUIET='true'; require\\('dotenv'\\).config\\(\\); const jwt=require\\('jsonwebtoken'\\); console.log\\(jwt.sign\\({id:'00000000-0000-0000-0000-000000000001',name:'Smoke Test',role:'Admin'}, process.env.JWT_SECRET, {expiresIn:'30m'}\\)\\)\")",
+      "Bash(node -e \"process.env.DOTENV_CONFIG_QUIET='true'; require\\('dotenv'\\).config\\(\\); const supabase=require\\('./config/supabase'\\); supabase.from\\('users'\\).select\\('id, name, email, role, active'\\).ilike\\('name','%johnson%'\\).then\\(\\({data,error}\\)=>{ console.log\\(JSON.stringify\\(error||data,null,2\\)\\); }\\);\")",
+      "Bash(node -e \"process.env.DOTENV_CONFIG_QUIET='true'; require\\('dotenv'\\).config\\(\\); const jwt=require\\('jsonwebtoken'\\); const mk=\\(id,name,role\\)=>jwt.sign\\({id,name,role}, process.env.JWT_SECRET, {expiresIn:'20m'}\\); console.log\\(JSON.stringify\\({user: mk\\('11111111-1111-1111-1111-111111111111','Other User','User'\\), john: mk\\('d5f32730-4953-4c7c-9185-c87e6eca329d','Johnson Paul D','Team Member'\\)}\\)\\)\")"
     ]
   }
 }

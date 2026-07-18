@@ -1,11 +1,13 @@
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import {
   Menu, X, LayoutDashboard, Cpu, KanbanSquare, Calendar,
-  Shield, BarChart3, LogOut, PlusCircle, ChevronRight, ClipboardCheck, FolderKanban
+  Shield, BarChart3, LogOut, PlusCircle, ChevronRight, ClipboardCheck, FolderKanban,
+  Target, Building2, CalendarCheck
 } from "lucide-react";
 import { useState } from "react";
 import useAuthStore from "../store/authStore";
 import NotificationBell from "../components/NotificationBell";
+import { canAccessAbm } from "../constants/abm";
 
 function LinkedInIcon({ size = 16 }) {
   return (
@@ -49,6 +51,13 @@ const canAccessLinkedIn =
       ? [
           { label: "Admin Panel", path: "/admin", icon: Shield },
           { label: "Pending Requests", path: "/pending-approvals", icon: ClipboardCheck },
+        ]
+      : []),
+    ...(canAccessAbm(user)
+      ? [
+          { label: "ABM Dashboard", path: "/abm", icon: Target },
+          { label: "ABM Accounts", path: "/abm/accounts", icon: Building2 },
+          { label: "Today's Queue", path: "/abm/today", icon: CalendarCheck },
         ]
       : []),
     ...(canAccessGoogleAds
