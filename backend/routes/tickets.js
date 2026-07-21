@@ -18,6 +18,9 @@ const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KE
 
 const { notifyAdmins, notifyUser } = require('../services/notificationService');
 
+// Today's date in IST (date-only, for tickets.completed_date)
+const todayIST = () => new Date(Date.now() + 330 * 60000).toISOString().split('T')[0];
+
 // =====================================================
 // PROJECT HELPERS (tasks inside a project)
 // =====================================================
@@ -669,6 +672,7 @@ router.put('/:id', auth, async (req, res) => {
         updateData.approval_status = 'Approved';
         updateData.approved_by = req.user.name;
         updateData.approved_at = getISTTime();
+        if (status === 'Completed') updateData.completed_date = todayIST();
         timeline.push({
           type: 'status',
           action: `Status changed from ${existing.status || 'Open'} to ${status}`,
@@ -719,6 +723,10 @@ router.put('/:id', auth, async (req, res) => {
           user: req.user.name,
           created_at: getISTTime(),
         });
+        // Reopening a completed ticket clears its completion date
+        if (existing.status === 'Completed' && existing.completed_date) {
+          updateData.completed_date = null;
+        }
       }
       updateData.status = status;
     }
@@ -726,12 +734,23 @@ router.put('/:id', auth, async (req, res) => {
     // =====================================================
     // 7. EXECUTE UPDATE
     // =====================================================
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('tickets')
       .update(updateData)
       .eq('id', id)
       .select()
       .single();
+
+    // completed_date migration not run yet — retry without it
+    if (error && error.code === 'PGRST204' && 'completed_date' in updateData) {
+      const { completed_date: _skip, ...withoutNew } = updateData;
+      ({ data, error } = await supabase
+        .from('tickets')
+        .update(withoutNew)
+        .eq('id', id)
+        .select()
+        .single());
+    }
 
     if (error) {
       console.error(error);
@@ -774,20 +793,33 @@ router.put('/:id/approve', auth, async (req, res) => {
       created_at: getISTTime(),
     });
     const finalStatus = ticket.approval_requested_status || 'Open';
-    const { data, error } = await supabase
+    const approveData = {
+      status: finalStatus,
+      approval_required: false,
+      approval_status: 'Approved',
+      approved_by: req.user.name,
+      approved_at: getISTTime(),
+      updated_at: getISTTime(),
+      timeline,
+    };
+    if (finalStatus === 'Completed') approveData.completed_date = todayIST();
+
+    let { data, error } = await supabase
       .from('tickets')
-      .update({
-        status: finalStatus,
-        approval_required: false,
-        approval_status: 'Approved',
-        approved_by: req.user.name,
-        approved_at: getISTTime(),
-        updated_at: getISTTime(),
-        timeline,
-      })
+      .update(approveData)
       .eq('id', req.params.id)
       .select()
       .single();
+    // completed_date migration not run yet — retry without it
+    if (error && error.code === 'PGRST204' && 'completed_date' in approveData) {
+      const { completed_date: _skip, ...withoutNew } = approveData;
+      ({ data, error } = await supabase
+        .from('tickets')
+        .update(withoutNew)
+        .eq('id', req.params.id)
+        .select()
+        .single());
+    }
     if (error) return res.status(500).json({ message: 'Approval failed' });
 
     await notifyUser(

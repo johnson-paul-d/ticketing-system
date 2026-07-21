@@ -412,6 +412,11 @@ export default function TicketDetails() {
                 </span>
               )}
               {ticket.approval_status && <span className="bg-yellow-100 text-yellow-700 px-4 py-2 rounded-full text-sm font-medium">Approval: {ticket.approval_status}</span>}
+              {ticket.completed_date && (
+                <span className="bg-emerald-100 text-emerald-700 px-4 py-2 rounded-full text-sm font-medium">
+                  ✅ Completed on {String(ticket.completed_date).split("T")[0]}
+                </span>
+              )}
               {/* NEW: Pending due date approval badge */}
               {ticket.due_date_change_status === "Pending" && (
                 <span className="bg-orange-100 text-orange-700 px-4 py-2 rounded-full text-sm font-medium">

@@ -96,13 +96,14 @@ router.get('/', auth, async (req, res) => {
       return { ...p, stats: taskStats(tasks, p.target_date) };
     });
 
-    // Non-admins only see projects they belong to or have a task in
+    // Non-admins only see projects they own, belong to, or have a task in
     const visible = isAdmin(req.user)
       ? enriched
       : enriched.filter(
           (p) =>
             (p.members || []).includes(req.user.id) ||
             p.created_by === req.user.id ||
+            p.owner === req.user.id ||
             (projectTickets || []).some(
               (t) => t.project_id === p.id && t.assigned_to === req.user.id
             )
@@ -123,7 +124,7 @@ router.post('/', auth, async (req, res) => {
     if (req.user.role === 'Team Member') {
       return res.status(403).json({ message: 'Team members cannot create projects' });
     }
-    const { name, description, target_date, members, color, division } = req.body;
+    const { name, description, target_date, members, color, division, owner } = req.body;
     if (!name?.trim()) {
       return res.status(400).json({ message: 'Project name is required' });
     }
@@ -135,6 +136,7 @@ router.post('/', auth, async (req, res) => {
       target_date: target_date || null,
       color: color || null,
       division: division || null,
+      owner: owner || null,
       members: Array.isArray(members) ? members : [],
       created_by: req.user.id,
       created_by_name: req.user.name,
@@ -143,10 +145,10 @@ router.post('/', auth, async (req, res) => {
     };
 
     let { data, error } = await supabase.from('projects').insert([insertRow]).select().single();
-    // projects.division migration not run yet — retry without the column
+    // division/owner migration not run yet — retry without the new columns
     if (error && error.code === 'PGRST204') {
-      const { division: _skip, ...withoutDivision } = insertRow;
-      ({ data, error } = await supabase.from('projects').insert([withoutDivision]).select().single());
+      const { division: _d, owner: _o, ...withoutNew } = insertRow;
+      ({ data, error } = await supabase.from('projects').insert([withoutNew]).select().single());
     }
     if (error) {
       if (isMissingSchema(error)) return migrationResponse(res);
@@ -193,20 +195,25 @@ router.get('/:id', auth, async (req, res) => {
       .eq('project_id', project.id)
       .order('created_at', { ascending: true });
 
-    // Access: admin, member, creator, or assignee of any task
+    // Access: admin, owner, member, creator, or assignee of any task
     const hasAccess =
       isAdmin(req.user) ||
       (project.members || []).includes(req.user.id) ||
       project.created_by === req.user.id ||
+      project.owner === req.user.id ||
       (tasks || []).some((t) => t.assigned_to === req.user.id);
     if (!hasAccess) {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    // Resolve names for members + task assignees in one query
+    // Resolve names for members + owner + task assignees in one query
     const userIds = [
       ...new Set(
-        [...(project.members || []), ...(tasks || []).map((t) => t.assigned_to)].filter(Boolean)
+        [
+          ...(project.members || []),
+          project.owner,
+          ...(tasks || []).map((t) => t.assigned_to),
+        ].filter(Boolean)
       ),
     ];
     let users = [];
@@ -232,9 +239,12 @@ router.get('/:id', auth, async (req, res) => {
         t.task_number = i + 1;
       });
 
-    // Members only see their own tasks — admins and the project creator
-    // see the whole picture
-    const fullView = isAdmin(req.user) || project.created_by === req.user.id;
+    // Members only see their own tasks — admins, the project creator and
+    // the project owner see the whole picture
+    const fullView =
+      isAdmin(req.user) ||
+      project.created_by === req.user.id ||
+      project.owner === req.user.id;
     const visibleTasks = fullView
       ? tasksWithNames
       : tasksWithNames.filter((t) => t.assigned_to === req.user.id);
@@ -248,6 +258,7 @@ router.get('/:id', auth, async (req, res) => {
       member_details: (project.members || [])
         .map((id) => users.find((u) => u.id === id))
         .filter(Boolean),
+      owner_details: users.find((u) => u.id === project.owner) || null,
     });
   } catch (err) {
     console.error(err);
@@ -269,11 +280,15 @@ router.put('/:id', auth, async (req, res) => {
       if (isMissingSchema(fetchError)) return migrationResponse(res);
       return res.status(404).json({ message: 'Project not found' });
     }
-    if (!isAdmin(req.user) && existing.created_by !== req.user.id) {
-      return res.status(403).json({ message: 'Only admin or the project creator can edit' });
+    if (
+      !isAdmin(req.user) &&
+      existing.created_by !== req.user.id &&
+      existing.owner !== req.user.id
+    ) {
+      return res.status(403).json({ message: 'Only admin, the project owner or the creator can edit' });
     }
 
-    const { name, description, status, target_date, members, color, division } = req.body;
+    const { name, description, status, target_date, members, color, division, owner } = req.body;
     const updateData = { updated_at: getISTTime() };
     if (name !== undefined) updateData.name = name;
     if (description !== undefined) updateData.description = description;
@@ -281,6 +296,7 @@ router.put('/:id', auth, async (req, res) => {
     if (color !== undefined) updateData.color = color;
     if (members !== undefined) updateData.members = members;
     if (division !== undefined) updateData.division = division;
+    if (owner !== undefined) updateData.owner = owner;
 
     // Target date cannot shrink below the latest task due date —
     // the project timeline depends on its tasks
@@ -309,17 +325,34 @@ router.put('/:id', auth, async (req, res) => {
       .eq('id', existing.id)
       .select()
       .single();
-    // projects.division migration not run yet — retry without the column
-    if (error && error.code === 'PGRST204' && 'division' in updateData) {
-      const { division: _skip, ...withoutDivision } = updateData;
+    // division/owner migration not run yet — retry without the new columns
+    if (error && error.code === 'PGRST204') {
+      const { division: _d, owner: _o, ...withoutNew } = updateData;
       ({ data, error } = await supabase
         .from('projects')
-        .update(withoutDivision)
+        .update(withoutNew)
         .eq('id', existing.id)
         .select()
         .single());
     }
     if (error) throw error;
+
+    // Tell the new owner
+    if (owner && owner !== existing.owner && owner !== req.user.id) {
+      const { data: ownerUser } = await supabase
+        .from('users')
+        .select('name')
+        .eq('id', owner)
+        .single();
+      if (ownerUser) {
+        await notifyUser(
+          ownerUser.name,
+          'Project Ownership',
+          `${req.user.name} made you the owner of the project "${data.name}"`,
+          null
+        );
+      }
+    }
 
     // Division maps to all tasks in the project — propagate changes
     if (division !== undefined && division && division !== existing.division) {

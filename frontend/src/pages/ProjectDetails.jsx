@@ -143,6 +143,7 @@ export default function ProjectDetails() {
   const [eStatus, setEStatus] = useState("Active");
   const [eTarget, setETarget] = useState("");
   const [eDivision, setEDivision] = useState("");
+  const [eOwner, setEOwner] = useState("");
   const [eMembers, setEMembers] = useState([]);
   const [editError, setEditError] = useState("");
 
@@ -178,7 +179,8 @@ export default function ProjectDetails() {
     };
   }, [id]);
 
-  const canEdit = isAdmin || project?.created_by === user?.id;
+  const canEdit =
+    isAdmin || project?.created_by === user?.id || project?.owner === user?.id;
   const fullView = !!project?.full_view;
   const tasks = project?.tasks || [];
 
@@ -331,6 +333,7 @@ export default function ProjectDetails() {
     setEStatus(project.status || "Active");
     setETarget(dstr(project.target_date) || "");
     setEDivision(project.division || "");
+    setEOwner(project.owner || "");
     setEMembers(project.members || []);
     setEditError("");
     setShowEdit(true);
@@ -346,6 +349,7 @@ export default function ProjectDetails() {
         status: eStatus,
         target_date: eTarget || null,
         division: eDivision || null,
+        owner: eOwner || null,
         members: eMembers,
       });
       setShowEdit(false);
@@ -538,6 +542,14 @@ export default function ProjectDetails() {
                 {project.division && (
                   <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-[#9b2423]/10 text-[#9b2423]">
                     {project.division}
+                  </span>
+                )}
+                {project.owner_details && (
+                  <span
+                    className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200"
+                    title="Project owner"
+                  >
+                    👑 {project.owner_details.name}
                   </span>
                 )}
               </div>
@@ -1395,6 +1407,22 @@ export default function ProjectDetails() {
                 </select>
                 <p className="text-xs text-gray-400 mt-1.5">
                   Changing the division updates every task in this project
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Project owner</label>
+                <select
+                  value={eOwner}
+                  onChange={(e) => setEOwner(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 outline-none"
+                >
+                  <option value="">— None —</option>
+                  {allUsers.map((u) => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-400 mt-1.5">
+                  The owner sees every task in the project and can manage it
                 </p>
               </div>
               <div>

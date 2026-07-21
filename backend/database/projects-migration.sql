@@ -22,3 +22,8 @@ create index if not exists tickets_project_id_idx on public.tickets(project_id);
 
 -- v2: division on projects (mapped to all tasks)
 alter table public.projects add column if not exists division text;
+
+-- v3: project owner (full project visibility like the creator) +
+--     completion date stamped when a ticket becomes Completed
+alter table public.projects add column if not exists owner uuid;
+alter table public.tickets add column if not exists completed_date date;

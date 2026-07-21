@@ -114,6 +114,7 @@ export default function Projects() {
   const [description, setDescription] = useState("");
   const [targetDate, setTargetDate] = useState("");
   const [division, setDivision] = useState("");
+  const [ownerId, setOwnerId] = useState("");
   const [memberIds, setMemberIds] = useState([]);
 
   const canCreate = user?.role !== "Team Member";
@@ -176,6 +177,7 @@ export default function Projects() {
         description,
         target_date: targetDate || null,
         division: division || null,
+        owner: ownerId || null,
         members: memberIds,
       });
       setShowCreate(false);
@@ -183,6 +185,7 @@ export default function Projects() {
       setDescription("");
       setTargetDate("");
       setDivision("");
+      setOwnerId("");
       setMemberIds([]);
       navigate(`/projects/${res.data.id}`);
     } catch (err) {
@@ -373,6 +376,25 @@ export default function Projects() {
                 Task due dates cannot exceed the target date (approved extensions adjust it automatically).
                 The division is applied to every task in the project.
               </p>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                  Project owner
+                </label>
+                <select
+                  value={ownerId}
+                  onChange={(e) => setOwnerId(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 outline-none"
+                >
+                  <option value="">— None —</option>
+                  {allUsers.map((u) => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-400 mt-1.5">
+                  The owner sees every task in the project and can manage it, like the creator
+                </p>
+              </div>
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">

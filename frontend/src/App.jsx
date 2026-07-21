@@ -11,6 +11,7 @@ import AdminPanel from "./pages/AdminPanel";
 import PendingApprovals from "./pages/PendingApprovals";
 import Projects from "./pages/Projects";
 import ProjectDetails from "./pages/ProjectDetails";
+import CompletionReport from "./pages/CompletionReport";
 import Reports from "./pages/Reports";
 import ProtectedRoute from "./components/ProtectedRoute";
 import TicketTimeline from "./pages/TicketTimeTracker";
@@ -131,6 +132,15 @@ const canAccessGoogleAds =
           element={
             <ProtectedRoute allowedRoles={["Admin"]}>
               <PendingApprovals />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/completion-report"
+          element={
+            <ProtectedRoute allowedRoles={["Admin"]}>
+              <CompletionReport />
             </ProtectedRoute>
           }
         />
