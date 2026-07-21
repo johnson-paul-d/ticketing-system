@@ -149,15 +149,20 @@ export default function TicketDetails() {
         });
         alert("Due date updated");
       } else {
-        // Non-admin: submit for approval
-        await api.put(`/tickets/${ticket.id}`, {
+        // Non-admin: needs approval only when the ticket has a Given By
+        // (or the date extends a project timeline) — backend decides
+        const res = await api.put(`/tickets/${ticket.id}`, {
           requested_due_date: dueDate,
           due_date_change_status: "Pending",
           due_date_change_requested_by: user.name,
           due_date_change_requested_at: new Date().toISOString(),
           comment: comment || "Due date change request",
         });
-        alert("Due date change request submitted for approval");
+        if (res.data.due_date_change_status === "Pending") {
+          alert("Due date change request submitted for approval");
+        } else {
+          alert("Due date updated");
+        }
       }
       fetchTicket();
       setComment("");

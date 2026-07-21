@@ -550,35 +550,52 @@ router.put('/:id', auth, async (req, res) => {
       req.user.role !== 'Admin' &&
       req.user.role !== 'Super Admin'
     ) {
-      updateData.requested_due_date = requested_due_date;
-      updateData.due_date_change_status = 'Pending';
-      updateData.due_date_change_requested_by = due_date_change_requested_by || req.user.name;
-      updateData.due_date_change_requested_at = due_date_change_requested_at || getISTTime();
+      // Approval is only needed when the ticket has a "Given By" (someone
+      // commissioned it), or when the new date would extend the project
+      // timeline. Otherwise the change applies immediately.
+      const needsApproval =
+        !!existing.given_by?.trim() ||
+        !!(projectContext?.target_date && requested_due_date > projectContext.target_date);
 
-      timeline.push({
-        type: 'due_date_request',
-        action: `Requested due date change from ${existing.due_date || 'Not set'} to ${requested_due_date}`,
-        user: req.user.name,
-        created_at: getISTTime(),
-      });
+      if (needsApproval) {
+        updateData.requested_due_date = requested_due_date;
+        updateData.due_date_change_status = 'Pending';
+        updateData.due_date_change_requested_by = due_date_change_requested_by || req.user.name;
+        updateData.due_date_change_requested_at = due_date_change_requested_at || getISTTime();
 
-      await notifyAdmins(
-        'Due Date Change Requested',
-        `${req.user.name} requested a due date change for "${existing.title}" from ${existing.due_date || 'Not set'} to ${requested_due_date}`,
-        existing.id
-      );
-      notificationsCreated = true;
+        timeline.push({
+          type: 'due_date_request',
+          action: `Requested due date change from ${existing.due_date || 'Not set'} to ${requested_due_date}`,
+          user: req.user.name,
+          created_at: getISTTime(),
+        });
 
-      // Send email to admin
-      if (process.env.ADMIN_EMAIL) {
-        await sendDueDateApprovalEmail(
-          process.env.ADMIN_EMAIL,
-          existing.title,
-          existing.due_date,
-          requested_due_date,
-          req.user.name,
+        await notifyAdmins(
+          'Due Date Change Requested',
+          `${req.user.name} requested a due date change for "${existing.title}" from ${existing.due_date || 'Not set'} to ${requested_due_date}`,
           existing.id
         );
+        notificationsCreated = true;
+
+        // Send email to admin
+        if (process.env.ADMIN_EMAIL) {
+          await sendDueDateApprovalEmail(
+            process.env.ADMIN_EMAIL,
+            existing.title,
+            existing.due_date,
+            requested_due_date,
+            req.user.name,
+            existing.id
+          );
+        }
+      } else {
+        updateData.due_date = requested_due_date;
+        timeline.push({
+          type: 'due_date',
+          action: `Due date changed from ${existing.due_date || 'Not set'} to ${requested_due_date} (no approval needed — ticket has no Given By)`,
+          user: req.user.name,
+          created_at: getISTTime(),
+        });
       }
     }
 
