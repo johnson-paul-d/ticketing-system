@@ -39,6 +39,39 @@ const fmtMins = (mins) => {
 const daysBetween = (a, b) =>
   Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86400000);
 
+// Completion date read from the ticket's own history: the moment its status
+// moved to its terminal state (Completed/Closed), whether by a direct status
+// change or by an admin approving a completion request. Returns null when the
+// history has no such event (very old rows) so callers can fall back.
+const completionFromHistory = (timeline, finalStatus) => {
+  const escaped = String(finalStatus).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  // 1. Direct status change: "Status changed from X to Completed"
+  const statusEntry = [...timeline]
+    .reverse()
+    .find(
+      (e) =>
+        e.type === "status" &&
+        new RegExp(`to ${escaped}\\b`, "i").test(e.action || "")
+    );
+  if (statusEntry) return dstr(statusEntry.created_at);
+
+  // 2. Approval flow: a completion request an admin later approved. The
+  //    "Ticket approved" entry is the moment the ticket actually completed.
+  const wasRequested = timeline.some(
+    (e) =>
+      e.type === "approval" &&
+      new RegExp(`Approval requested for ${escaped}`, "i").test(e.action || "")
+  );
+  if (wasRequested) {
+    const approvedEntry = [...timeline]
+      .reverse()
+      .find((e) => e.type === "approval" && /Ticket approved/i.test(e.action || ""));
+    if (approvedEntry) return dstr(approvedEntry.created_at);
+  }
+  return null;
+};
+
 // Reconstruct the due-date journey of a ticket from its timeline
 const analyzeTicket = (t) => {
   const timeline = Array.isArray(t.timeline) ? t.timeline : [];
@@ -52,17 +85,19 @@ const analyzeTicket = (t) => {
   const finalDue = dstr(t.due_date);
   const originalDue = changes.length ? changes[0].from : finalDue;
 
-  // Completed date: real column first, then approval stamp, then the status
-  // timeline entry, then last update as a last resort
-  let completedOn = dstr(t.completed_date);
-  if (!completedOn && t.approved_at && (t.status === "Completed" || t.approval_requested_status === "Completed")) {
+  // Completion date comes from the ticket history (the status/approval event
+  // that put it in its terminal state). The completed_date column and
+  // approved_at are only fallbacks for legacy rows whose history predates
+  // status-change logging; updated_at is an absolute last resort (it moves
+  // on any later edit, so it is the least trustworthy).
+  let completedOn = completionFromHistory(timeline, t.status);
+  if (!completedOn) completedOn = dstr(t.completed_date);
+  if (
+    !completedOn &&
+    t.approved_at &&
+    (t.status === "Completed" || t.approval_requested_status === t.status)
+  ) {
     completedOn = dstr(t.approved_at);
-  }
-  if (!completedOn) {
-    const statusEntry = [...timeline]
-      .reverse()
-      .find((e) => (e.action || "").includes("to Completed"));
-    if (statusEntry) completedOn = dstr(statusEntry.created_at);
   }
   if (!completedOn) completedOn = dstr(t.updated_at);
 
