@@ -857,7 +857,7 @@ const canAccessLinkedIn =
             <button className="ml-menu-btn" onClick={() => setOpen(true)}>
               <Menu size={20} strokeWidth={1.6} />
             </button>
-            <span className="ml-topbar-title">SIEGER OPS</span>
+            <span className="ml-topbar-title">SIEGER MKT</span>
             <div className="ml-topbar-notif">
               <NotificationBell />
             </div>
