@@ -95,7 +95,7 @@ export default function Reports() {
           <h1 className="text-3xl font-bold">Reports</h1>
           <p className="text-gray-500 mt-1">Enterprise reporting center</p>
         </div>
-        <button onClick={exportExcel} className="bg-black text-white px-6 py-3 rounded-xl">
+        <button onClick={exportExcel} className="bg-[#9b2423] hover:bg-[#7d1d1c] text-white px-6 py-3 rounded-xl">
           Export Excel
         </button>
       </div>
@@ -117,7 +117,7 @@ export default function Reports() {
             onClick={() => setStatusFilter(tab)}
             className={`px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${
               statusFilter === tab
-                ? "bg-black text-white border-black"
+                ? "bg-[#9b2423] text-white border-[#9b2423]"
                 : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
             }`}
           >

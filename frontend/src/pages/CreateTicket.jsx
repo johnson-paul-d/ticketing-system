@@ -69,7 +69,7 @@ export default function CreateTicket() {
       <div className="font-['Inter',system-ui,sans-serif] px-4 sm:px-6">
         {/* Header */}
         <div className="mb-6 sm:mb-8">
-          <h1 className="text-2xl sm:text-4xl font-bold tracking-tight bg-gradient-to-r from-indigo-700 to-cyan-700 bg-clip-text text-transparent">
+          <h1 className="text-2xl sm:text-4xl font-bold tracking-tight bg-gradient-to-r from-[#9b2423] to-[#6b1a19] bg-clip-text text-transparent">
             Create Ticket
           </h1>
           <p className="text-gray-500 mt-1 text-sm sm:text-base">
@@ -94,7 +94,7 @@ export default function CreateTicket() {
             <input
               type="text"
               placeholder="e.g., Unable to access Salesforce dashboard"
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm sm:text-base focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all outline-none bg-gray-50"
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm sm:text-base focus:ring-2 focus:ring-[#9b2423]/40 focus:border-transparent transition-all outline-none bg-gray-50"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               disabled={loading}
@@ -109,7 +109,7 @@ export default function CreateTicket() {
             <textarea
               rows={6}
               placeholder="Describe the issue in detail..."
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm sm:text-base focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all outline-none bg-gray-50 resize-vertical"
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm sm:text-base focus:ring-2 focus:ring-[#9b2423]/40 focus:border-transparent transition-all outline-none bg-gray-50 resize-vertical"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               disabled={loading}
@@ -123,7 +123,7 @@ export default function CreateTicket() {
                 Category
               </label>
               <select
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm sm:text-base focus:ring-2 focus:ring-indigo-400 bg-gray-50 outline-none cursor-pointer"
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm sm:text-base focus:ring-2 focus:ring-[#9b2423]/40 bg-gray-50 outline-none cursor-pointer"
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 disabled={loading}
@@ -140,7 +140,7 @@ export default function CreateTicket() {
                 Priority
               </label>
               <select
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm sm:text-base focus:ring-2 focus:ring-indigo-400 bg-gray-50 outline-none cursor-pointer"
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm sm:text-base focus:ring-2 focus:ring-[#9b2423]/40 bg-gray-50 outline-none cursor-pointer"
                 value={priority}
                 onChange={(e) => setPriority(e.target.value)}
                 disabled={loading}
@@ -160,7 +160,7 @@ export default function CreateTicket() {
                 Division
               </label>
               <select
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm sm:text-base focus:ring-2 focus:ring-indigo-400 bg-gray-50 outline-none cursor-pointer"
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm sm:text-base focus:ring-2 focus:ring-[#9b2423]/40 bg-gray-50 outline-none cursor-pointer"
                 value={division}
                 onChange={(e) => setDivision(e.target.value)}
                 disabled={loading}
@@ -178,7 +178,7 @@ export default function CreateTicket() {
               </label>
               <input
                 type="date"
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm sm:text-base focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all outline-none bg-gray-50"
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm sm:text-base focus:ring-2 focus:ring-[#9b2423]/40 focus:border-transparent transition-all outline-none bg-gray-50"
                 value={dueDate}
                 max={selectedProject?.target_date || undefined}
                 onChange={(e) => setDueDate(e.target.value)}
@@ -199,7 +199,7 @@ export default function CreateTicket() {
                 Project (optional)
               </label>
               <select
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm sm:text-base focus:ring-2 focus:ring-indigo-400 bg-gray-50 outline-none cursor-pointer"
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm sm:text-base focus:ring-2 focus:ring-[#9b2423]/40 bg-gray-50 outline-none cursor-pointer"
                 value={projectId}
                 onChange={(e) => setProjectId(e.target.value)}
                 disabled={loading}
@@ -234,7 +234,7 @@ export default function CreateTicket() {
                     min="0"
                     value={f.value}
                     onChange={(e) => f.set(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-3 text-sm text-center focus:ring-2 focus:ring-indigo-400 bg-gray-50 outline-none"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-3 text-sm text-center focus:ring-2 focus:ring-[#9b2423]/40 bg-gray-50 outline-none"
                     disabled={loading}
                   />
                   <p className="text-xs text-gray-400 text-center mt-1">{f.label}</p>
@@ -251,7 +251,7 @@ export default function CreateTicket() {
             <input
               type="text"
               placeholder="Enter name of person who gave the ticket"
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm sm:text-base focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all outline-none bg-gray-50"
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm sm:text-base focus:ring-2 focus:ring-[#9b2423]/40 focus:border-transparent transition-all outline-none bg-gray-50"
               value={givenBy}
               onChange={(e) => setGivenBy(e.target.value)}
               disabled={loading}
@@ -263,7 +263,7 @@ export default function CreateTicket() {
             <button
               onClick={handleSubmit}
               disabled={loading}
-              className="bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-700 hover:to-cyan-700 text-white font-semibold px-6 py-3 rounded-xl transition-all duration-200 shadow-md disabled:opacity-70 disabled:cursor-not-allowed text-sm sm:text-base w-full sm:w-auto"
+              className="bg-[#9b2423] hover:bg-[#7d1d1c] text-white font-semibold px-6 py-3 rounded-xl transition-all duration-200 shadow-md disabled:opacity-70 disabled:cursor-not-allowed text-sm sm:text-base w-full sm:w-auto"
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">

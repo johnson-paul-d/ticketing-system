@@ -204,7 +204,7 @@ export default function TimeTracker() {
             <button
               onClick={handlePermissionRequest}
               disabled={submittingPermission}
-              className="bg-blue-600 hover:bg-blue-700 text-white rounded-2xl px-6 py-3 font-semibold disabled:opacity-50"
+              className="bg-[#9b2423] hover:bg-[#7d1d1c] text-white rounded-2xl px-6 py-3 font-semibold disabled:opacity-50"
             >
               {submittingPermission ? "Submitting..." : "Request Permission"}
             </button>

@@ -174,7 +174,7 @@ const fetchUsers =
 
         <button
           onClick={createUser}
-          className="bg-black text-white px-6 py-3 rounded-xl mt-6"
+          className="bg-[#9b2423] hover:bg-[#7d1d1c] text-white px-6 py-3 rounded-xl mt-6"
         >
           Create User
         </button>
@@ -256,7 +256,7 @@ const fetchUsers =
                         user
                       )
                     }
-                    className="bg-black text-white px-4 py-2 rounded-lg"
+                    className="bg-[#9b2423] hover:bg-[#7d1d1c] text-white px-4 py-2 rounded-lg"
                   >
                     {user.active
                       ? "Disable"

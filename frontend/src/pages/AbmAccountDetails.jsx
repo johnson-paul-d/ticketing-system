@@ -665,7 +665,7 @@ export default function AbmAccountDetails() {
                     <td className="py-2.5 text-right">{o.probability != null ? `${o.probability}%` : "—"}</td>
                     <td className="py-2.5 text-right">{o.expected_value != null ? Number(o.expected_value).toLocaleString() : "—"}</td>
                     <td className="py-2.5">
-                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700">{o.stage}</span>
+                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[#9b2423]/10 text-[#9b2423]">{o.stage}</span>
                     </td>
                   </tr>
                 ))}

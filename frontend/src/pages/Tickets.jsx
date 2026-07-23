@@ -350,7 +350,7 @@ export default function Tickets() {
         </div>
         <button
           onClick={() => navigate("/create-ticket")}
-          className="bg-black text-white px-5 py-3 rounded-xl w-full lg:w-auto hover:bg-gray-800"
+          className="bg-[#9b2423] text-white px-5 py-3 rounded-xl w-full lg:w-auto hover:bg-[#7d1d1c]"
         >
           + Create Ticket
         </button>
@@ -582,7 +582,7 @@ export default function Tickets() {
                   <td className="p-5">
                     <button
                       onClick={() => navigate(`/tickets/${ticket.id}`)}
-                      className="bg-black text-white px-4 py-2 rounded-lg hover:bg-gray-800"
+                      className="bg-[#9b2423] text-white px-4 py-2 rounded-lg hover:bg-[#7d1d1c]"
                     >
                       View
                     </button>

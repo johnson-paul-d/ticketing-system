@@ -368,7 +368,7 @@ export default function TicketDetails() {
                 <div className="flex gap-2">
                   <button
                     onClick={updateTicketTitle}
-                    className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl whitespace-nowrap"
+                    className="bg-[#9b2423] hover:bg-[#7d1d1c] text-white px-5 py-3 rounded-2xl whitespace-nowrap"
                   >
                     Save
                   </button>
@@ -509,7 +509,7 @@ export default function TicketDetails() {
                         alert("Failed to update description");
                       }
                     }}
-                    className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl w-fit"
+                    className="bg-[#9b2423] hover:bg-[#7d1d1c] text-white px-5 py-3 rounded-2xl w-fit"
                   >
                     Update
                   </button>
@@ -552,7 +552,7 @@ export default function TicketDetails() {
                         alert("Failed to update priority");
                       }
                     }}
-                    className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl"
+                    className="bg-[#9b2423] hover:bg-[#7d1d1c] text-white px-5 py-3 rounded-2xl"
                   >
                     Update
                   </button>
@@ -597,7 +597,7 @@ export default function TicketDetails() {
                         alert("Failed to update category");
                       }
                     }}
-                    className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl"
+                    className="bg-[#9b2423] hover:bg-[#7d1d1c] text-white px-5 py-3 rounded-2xl"
                   >
                     Update
                   </button>
@@ -655,7 +655,7 @@ export default function TicketDetails() {
                         alert("Failed to update division");
                       }
                     }}
-                    className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl"
+                    className="bg-[#9b2423] hover:bg-[#7d1d1c] text-white px-5 py-3 rounded-2xl"
                   >
                     Update
                   </button>
@@ -688,7 +688,7 @@ export default function TicketDetails() {
                         alert("Failed to update Given By");
                       }
                     }}
-                    className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl whitespace-nowrap"
+                    className="bg-[#9b2423] hover:bg-[#7d1d1c] text-white px-5 py-3 rounded-2xl whitespace-nowrap"
                   >
                     Update
                   </button>
@@ -717,7 +717,7 @@ export default function TicketDetails() {
                     </option>
                   ))}
                 </select>
-                <button onClick={updateStatus} className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl whitespace-nowrap">Update</button>
+                <button onClick={updateStatus} className="bg-[#9b2423] hover:bg-[#7d1d1c] text-white px-5 py-3 rounded-2xl whitespace-nowrap">Update</button>
               </div>
             </div>
 
@@ -735,7 +735,7 @@ export default function TicketDetails() {
                 />
                 <button
                   onClick={updateDueDate}
-                  className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl whitespace-nowrap"
+                  className="bg-[#9b2423] hover:bg-[#7d1d1c] text-white px-5 py-3 rounded-2xl whitespace-nowrap"
                   disabled={!isAdmin && ticket.due_date_change_status === "Pending"}
                 >
                   {isAdmin ? "Update" : "Request Change"}
@@ -810,7 +810,7 @@ export default function TicketDetails() {
                   </select>
                   <button
                     onClick={assignTicket}
-                    className="bg-black hover:bg-gray-800 text-white px-8 py-3 rounded-2xl whitespace-nowrap"
+                    className="bg-[#9b2423] hover:bg-[#7d1d1c] text-white px-8 py-3 rounded-2xl whitespace-nowrap"
                   >
                     Assign
                   </button>
@@ -855,7 +855,7 @@ export default function TicketDetails() {
               <div><label className="block text-sm font-medium mb-2">Start Time</label><input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="border rounded-2xl px-4 py-3 w-full" /></div>
               <div><label className="block text-sm font-medium mb-2">End Time</label><input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="border rounded-2xl px-4 py-3 w-full" /></div>
               <div><label className="block text-sm font-medium mb-2">Notes</label><input type="text" placeholder="Work notes" value={notes} onChange={(e) => setNotes(e.target.value)} className="border rounded-2xl px-4 py-3 w-full" /></div>
-              <div className="flex items-end"><button onClick={logTime} className="bg-black hover:bg-gray-800 text-white rounded-2xl px-6 py-3 font-semibold w-full">Log Time</button></div>
+              <div className="flex items-end"><button onClick={logTime} className="bg-[#9b2423] hover:bg-[#7d1d1c] text-white rounded-2xl px-6 py-3 font-semibold w-full">Log Time</button></div>
             </div>
             <p className="text-sm text-gray-500 mt-4">Maximum allowed work log is 8 hours per entry.</p>
           </div>
@@ -886,7 +886,7 @@ export default function TicketDetails() {
                         </div>
                         <div className="flex flex-col items-start lg:items-end gap-3">
                           <div><div className="text-3xl font-bold">{formatMinutes(entry.duration_minutes)}</div><div className="text-sm text-gray-500 mt-1">Time Spent</div></div>
-                          <button onClick={() => startEditEntry(entry)} className="bg-black text-white px-5 py-2 rounded-xl hover:bg-gray-800">Edit</button>
+                          <button onClick={() => startEditEntry(entry)} className="bg-[#9b2423] text-white px-5 py-2 rounded-xl hover:bg-[#7d1d1c]">Edit</button>
                         </div>
                       </>
                     ) : (

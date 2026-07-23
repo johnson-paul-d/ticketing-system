@@ -162,7 +162,7 @@ export default function EditTicket() {
 
           <button
             type="submit"
-            className="bg-black text-white px-6 py-4 rounded-xl"
+            className="bg-[#9b2423] hover:bg-[#7d1d1c] text-white px-6 py-4 rounded-xl"
           >
             Save Changes
           </button>
