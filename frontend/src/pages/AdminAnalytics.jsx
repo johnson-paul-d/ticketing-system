@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
+import { excludeDisabledUsers } from "../utils/reportFilters";
 import useAuthStore from "../store/authStore";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
@@ -429,7 +430,7 @@ export default function AdminAnalytics() {
       try {
         setLoading(true);
         const res = await api.get("/tickets");
-        setTickets(res.data || []);
+        setTickets(excludeDisabledUsers(res.data || []));
       } catch (err) {
         console.error(err);
       } finally {

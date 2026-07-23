@@ -162,7 +162,7 @@ router.get('/', auth, async (req, res) => {
     const assignedIds = [...new Set(tickets.map(t => t.assigned_to).filter(Boolean))];
     let users = [];
     if (assignedIds.length > 0) {
-      const { data: fetchedUsers, error: userError } = await supabase.from('users').select('id, name').in('id', assignedIds);
+      const { data: fetchedUsers, error: userError } = await supabase.from('users').select('id, name, active').in('id', assignedIds);
       if (!userError && fetchedUsers) users = fetchedUsers;
       else console.error('User fetch error:', userError);
     }
@@ -172,7 +172,10 @@ router.get('/', auth, async (req, res) => {
       const assignedUser = users?.find(u => u.id === ticket.assigned_to);
       return {
         ...ticket,
-        assigned_to_name: assignedUser?.name || null,
+        assigned_to_name: assignedUser?.name || ticket.assigned_to_name || null,
+        // Reports and dashboards hide work owned by disabled people.
+        // Unassigned tickets stay visible (nobody is disabled).
+        assigned_to_active: ticket.assigned_to ? assignedUser?.active !== false : true,
         time_entries: entries || [],
       };
     });

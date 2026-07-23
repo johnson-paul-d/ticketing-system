@@ -22,6 +22,7 @@ import {
 } from "recharts";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
+import { excludeDisabledUsers } from "../utils/reportFilters";
 import useAuthStore from "../store/authStore";
 
 /* ─── Design tokens ─────────────────────────────────────────────────────── */
@@ -779,7 +780,7 @@ export default function Dashboard() {
   const fetchTickets = async () => {
     try {
       const res = await api.get("/tickets");
-      let data = res.data;
+      let data = excludeDisabledUsers(res.data);
       if (user?.role === "Team Member") {
         data = data.filter((t) => t.assigned_to_name === user.name);
       }

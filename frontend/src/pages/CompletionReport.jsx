@@ -22,6 +22,7 @@ import {
 } from "recharts";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
+import { excludeDisabledUsers } from "../utils/reportFilters";
 import { TICKET_DIVISIONS } from "../constants/divisions";
 
 const dstr = (d) => (d ? String(d).split("T")[0] : null);
@@ -165,7 +166,7 @@ export default function CompletionReport() {
   useEffect(() => {
     Promise.all([api.get("/tickets"), api.get("/projects").catch(() => ({ data: [] }))])
       .then(([t, p]) => {
-        setTickets(t.data || []);
+        setTickets(excludeDisabledUsers(t.data || []));
         setProjects(p.data || []);
       })
       .catch(console.error)

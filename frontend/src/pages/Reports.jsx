@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
+import { excludeDisabledUsers } from "../utils/reportFilters";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import { useNavigate } from "react-router-dom";
@@ -32,7 +33,7 @@ export default function Reports() {
   const fetchTickets = async () => {
     try {
       const res = await api.get("/tickets");
-      setTickets(res.data);
+      setTickets(excludeDisabledUsers(res.data));
     } catch (error) {
       console.error(error);
     }
