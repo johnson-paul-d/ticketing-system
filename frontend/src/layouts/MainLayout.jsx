@@ -2,7 +2,7 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import {
   Menu, X, LayoutDashboard, Cpu, KanbanSquare, Calendar,
   Shield, BarChart3, LogOut, PlusCircle, ChevronRight, ClipboardCheck, FolderKanban,
-  Target, Building2, CalendarCheck, TrendingUp, Gauge
+  Target, Building2, CalendarCheck, TrendingUp, Gauge, ChevronDown
 } from "lucide-react";
 import { useState } from "react";
 import useAuthStore from "../store/authStore";
@@ -21,8 +21,12 @@ export default function MainLayout({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [open, setOpen] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState({});
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
+
+  const toggleGroup = (key) =>
+    setCollapsedGroups((g) => ({ ...g, [key]: !g[key] }));
 
   const handleLogout = () => {
     logout();
@@ -37,42 +41,62 @@ const canAccessLinkedIn =
   user?.role === "Admin" ||
   user?.id === "072c5ff4-7d6e-4930-b271-e47e261f604d";
 
-  const menuItems = [
-    { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
-    { label: "Tickets", path: "/tickets", icon: Cpu },
-    { label: "Projects", path: "/projects", icon: FolderKanban },
-    ...(user?.role !== "Team Member"
-      ? [{ label: "Create Ticket", path: "/create-ticket", icon: PlusCircle }]
-      : []),
-    { label: "Kanban", path: "/kanban", icon: KanbanSquare },
-    { label: "Calendar", path: "/calendar", icon: Calendar },
-    { label: "Timeline", path: "/timeline", icon: BarChart3 },
-    ...(user?.role === "Admin"
-      ? [
-          { label: "Admin Panel", path: "/admin", icon: Shield },
-          { label: "Pending Requests", path: "/pending-approvals", icon: ClipboardCheck },
-          { label: "Completion Report", path: "/completion-report", icon: TrendingUp },
-          { label: "Open Tickets Report", path: "/open-tickets-report", icon: Gauge },
-        ]
-      : []),
-    ...(canAccessAbm(user)
-      ? [
-          { label: "ABM Dashboard", path: "/abm", icon: Target },
-          { label: "ABM Accounts", path: "/abm/accounts", icon: Building2 },
-          { label: "Today's Queue", path: "/abm/today", icon: CalendarCheck },
-        ]
-      : []),
+  const isAdmin = user?.role === "Admin";
+
+  // Dashboard-type overview pages
+  const dashboardChildren = [
+    { label: "Overview", path: "/dashboard", icon: LayoutDashboard },
     ...(canAccessGoogleAds
-      ? [{ label: "Google Ads Dashboard", path: "/google-ads", icon: BarChart3 }]
+      ? [{ label: "Google Ads", path: "/google-ads", icon: BarChart3 }]
       : []),
     ...(canAccessLinkedIn
       ? [{ label: "LinkedIn Analytics", path: "/linkedin", icon: LinkedInIcon }]
       : []),
-    {
-      label: "Reports",
-      path: "/admin-analytics",
-      icon: BarChart3,
-    },
+  ];
+
+  // All reporting pages live under one "Reports" group
+  const reportChildren = [
+    { label: "Analytics", path: "/admin-analytics", icon: BarChart3 },
+    ...(isAdmin
+      ? [
+          { label: "Completion Report", path: "/completion-report", icon: TrendingUp },
+          { label: "Open Tickets Report", path: "/open-tickets-report", icon: Gauge },
+        ]
+      : []),
+  ];
+
+  const abmChildren = canAccessAbm(user)
+    ? [
+        { label: "ABM Dashboard", path: "/abm", icon: Target },
+        { label: "ABM Accounts", path: "/abm/accounts", icon: Building2 },
+        { label: "Today's Queue", path: "/abm/today", icon: CalendarCheck },
+      ]
+    : [];
+
+  const adminChildren = isAdmin
+    ? [
+        { label: "Admin Panel", path: "/admin", icon: Shield },
+        { label: "Pending Requests", path: "/pending-approvals", icon: ClipboardCheck },
+      ]
+    : [];
+
+  const menuItems = [
+    { type: "group", key: "dashboard", label: "Dashboard", icon: LayoutDashboard, children: dashboardChildren },
+    { type: "link", label: "Tickets", path: "/tickets", icon: Cpu },
+    { type: "link", label: "Projects", path: "/projects", icon: FolderKanban },
+    ...(user?.role !== "Team Member"
+      ? [{ type: "link", label: "Create Ticket", path: "/create-ticket", icon: PlusCircle }]
+      : []),
+    { type: "link", label: "Kanban", path: "/kanban", icon: KanbanSquare },
+    { type: "link", label: "Calendar", path: "/calendar", icon: Calendar },
+    { type: "link", label: "Timeline", path: "/timeline", icon: BarChart3 },
+    { type: "group", key: "reports", label: "Reports", icon: TrendingUp, children: reportChildren },
+    ...(abmChildren.length
+      ? [{ type: "group", key: "abm", label: "ABM", icon: Target, children: abmChildren }]
+      : []),
+    ...(adminChildren.length
+      ? [{ type: "group", key: "admin", label: "Admin", icon: Shield, children: adminChildren }]
+      : []),
   ];
 
   return (
@@ -458,6 +482,62 @@ const canAccessLinkedIn =
           transform: translateX(0);
         }
 
+        /* ----- COLLAPSIBLE NAV GROUPS ----- */
+        .ml-nav-group-btn {
+          width: 100%;
+          border: none;
+          background: transparent;
+          font-family: inherit;
+          font-size: 0.85rem;
+          font-weight: 500;
+          cursor: pointer;
+          text-align: left;
+        }
+        .ml-nav-caret {
+          margin-left: auto;
+          color: var(--text-3);
+          transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), color 220ms;
+          flex-shrink: 0;
+        }
+        .ml-nav-caret.open {
+          transform: rotate(180deg);
+          color: var(--accent);
+        }
+        .ml-nav-group-btn.active .ml-nav-caret {
+          color: var(--accent);
+        }
+        .ml-nav-sub {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          margin: 2px 0 4px;
+          padding-left: 16px;
+          position: relative;
+          animation: mlNavExpand 200ms ease;
+        }
+        /* guide line down the group */
+        .ml-nav-sub::before {
+          content: '';
+          position: absolute;
+          left: 18px;
+          top: 4px;
+          bottom: 4px;
+          width: 1.5px;
+          background: var(--border);
+        }
+        .ml-nav-subitem {
+          padding: 8px 12px 8px 20px;
+          font-size: 0.82rem;
+        }
+        .ml-nav-subitem .ml-nav-icon {
+          width: 30px;
+          height: 30px;
+        }
+        @keyframes mlNavExpand {
+          from { opacity: 0; transform: translateY(-4px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
         /* ----- SIDEBAR FOOTER (Logout) ----- */
         .ml-sidebar-footer {
           padding: 20px 16px 24px;
@@ -695,20 +775,68 @@ const canAccessLinkedIn =
           <nav className="ml-nav">
             {menuItems.map((item) => {
               const Icon = item.icon;
-              const isActive = location.pathname === item.path;
+
+              // Plain link, or a group that only has one child (render flat)
+              if (item.type === "link" || (item.type === "group" && item.children.length === 1)) {
+                const target = item.type === "link" ? item : item.children[0];
+                const isActive = location.pathname === target.path;
+                return (
+                  <Link
+                    key={item.label}
+                    to={target.path}
+                    onClick={() => setOpen(false)}
+                    className={`ml-nav-item ${isActive ? "active" : ""}`}
+                  >
+                    <span className="ml-nav-icon">
+                      <Icon size={16} strokeWidth={1.5} />
+                    </span>
+                    {item.label}
+                    <ChevronRight size={14} className="ml-nav-arrow" />
+                  </Link>
+                );
+              }
+
+              // Collapsible group
+              const containsActive = item.children.some((c) => c.path === location.pathname);
+              // Open when it holds the active route, unless the user collapsed it
+              const isOpen = collapsedGroups[item.key] ?? containsActive;
               return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  onClick={() => setOpen(false)}
-                  className={`ml-nav-item ${isActive ? "active" : ""}`}
-                >
-                  <span className="ml-nav-icon">
-                    <Icon size={16} strokeWidth={1.5} />
-                  </span>
-                  {item.label}
-                  <ChevronRight size={14} className="ml-nav-arrow" />
-                </Link>
+                <div key={item.key}>
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(item.key)}
+                    className={`ml-nav-item ml-nav-group-btn ${containsActive ? "active" : ""}`}
+                    aria-expanded={isOpen}
+                  >
+                    <span className="ml-nav-icon">
+                      <Icon size={16} strokeWidth={1.5} />
+                    </span>
+                    {item.label}
+                    <ChevronDown size={15} className={`ml-nav-caret ${isOpen ? "open" : ""}`} />
+                  </button>
+                  {isOpen && (
+                    <div className="ml-nav-sub">
+                      {item.children.map((child) => {
+                        const CIcon = child.icon;
+                        const childActive = location.pathname === child.path;
+                        return (
+                          <Link
+                            key={child.path}
+                            to={child.path}
+                            onClick={() => setOpen(false)}
+                            className={`ml-nav-item ml-nav-subitem ${childActive ? "active" : ""}`}
+                          >
+                            <span className="ml-nav-icon">
+                              <CIcon size={15} strokeWidth={1.5} />
+                            </span>
+                            {child.label}
+                            <ChevronRight size={13} className="ml-nav-arrow" />
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </nav>
