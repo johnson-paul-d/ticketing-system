@@ -437,7 +437,7 @@ export default function Login() {
             </button>
 
             <div className="sg-footer">
-              Protected • Sieger Poppinsnal Access
+              Protected • Sieger Professional Access
             </div>
 
           </div>
