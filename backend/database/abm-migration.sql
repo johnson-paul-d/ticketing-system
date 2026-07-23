@@ -90,3 +90,18 @@ create table if not exists public.abm_opportunities (
 );
 
 create index if not exists abm_opportunities_account_idx on public.abm_opportunities(account_id);
+
+-- 5. Settings — editable sequence cadence (wait days after each activity type).
+--    Single row; the backend falls back to built-in defaults when absent.
+create table if not exists public.abm_settings (
+  id integer primary key default 1 check (id = 1),
+  sequence_waits jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now(),
+  updated_by_name text
+);
+
+insert into public.abm_settings (id) values (1) on conflict (id) do nothing;
+
+-- 6. Division on accounts (ASTOR - TEX / ASTOR - NON TEX / ILS / CPS / TMD EXP)
+alter table public.abm_accounts add column if not exists division text;
+create index if not exists abm_accounts_division_idx on public.abm_accounts(division);

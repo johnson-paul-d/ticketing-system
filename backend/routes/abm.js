@@ -73,9 +73,46 @@ const statusAfterActivity = (type, result) => {
   }
 };
 
+// Wait days after each activity type before the next step is due.
+// Editable via abm_settings.sequence_waits; these are the fallbacks.
+const DEFAULT_WAITS = {
+  'Cold Email 1': 5,
+  'Cold Email 2': 5,
+  'Cold Email 3': 5,
+  'LinkedIn Connect': 5,
+  'LinkedIn Message': 3,
+  'Sales Navigator Message': 3,
+  WhatsApp: 3,
+  'Direct Call': 5,
+  'Follow-up': 5,
+  Meeting: 1,
+  Demo: 1,
+  'Proposal Sent': 7,
+  Visit: 3,
+};
+
+const loadWaits = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('abm_settings')
+      .select('sequence_waits')
+      .eq('id', 1)
+      .maybeSingle();
+    if (error || !data) return { ...DEFAULT_WAITS };
+    const merged = { ...DEFAULT_WAITS };
+    Object.entries(data.sequence_waits || {}).forEach(([k, v]) => {
+      const n = parseInt(v, 10);
+      if (k in merged && Number.isFinite(n) && n >= 0 && n <= 365) merged[k] = n;
+    });
+    return merged;
+  } catch {
+    return { ...DEFAULT_WAITS };
+  }
+};
+
 // Automation rules: given the contact's last touch, what comes next and
 // after how many days of waiting
-const nextActionFor = (contact) => {
+const nextActionFor = (contact, waits = DEFAULT_WAITS) => {
   if (contact.do_not_contact) return null;
   if (CLOSED_CONTACT_STATUSES.includes(contact.status)) return null;
   if (contact.status === 'Wrong Contact') return null;
@@ -114,26 +151,27 @@ const nextActionFor = (contact) => {
 
   if (!type) return { action: 'Send Email 1', due: null, manual: false };
 
+  const w = (t) => waits[t] ?? DEFAULT_WAITS[t] ?? 5;
   switch (type) {
     case 'Research': return after(0, 'Send Email 1');
-    case 'Cold Email 1': return after(5, 'Send Email 2');
-    case 'Cold Email 2': return after(5, 'LinkedIn Connect');
-    case 'Cold Email 3': return after(5, 'LinkedIn Connect');
+    case 'Cold Email 1': return after(w(type), 'Send Email 2');
+    case 'Cold Email 2': return after(w(type), 'LinkedIn Connect');
+    case 'Cold Email 3': return after(w(type), 'LinkedIn Connect');
     case 'LinkedIn Connect':
       return result === 'Connected'
         ? after(0, 'Send LinkedIn Message')
-        : after(5, 'Send WhatsApp');
+        : after(w(type), 'Send WhatsApp');
     case 'LinkedIn Message':
     case 'Sales Navigator Message':
-      return after(3, 'Send WhatsApp');
-    case 'WhatsApp': return after(3, 'Call');
-    case 'Direct Call': return after(5, 'Follow-up');
-    case 'Follow-up': return after(5, 'Call');
+      return after(w(type), 'Send WhatsApp');
+    case 'WhatsApp': return after(w(type), 'Call');
+    case 'Direct Call': return after(w(type), 'Follow-up');
+    case 'Follow-up': return after(w(type), 'Call');
     case 'Meeting':
     case 'Demo':
-      return after(1, 'Send Proposal');
-    case 'Proposal Sent': return after(7, 'Follow up on Proposal');
-    case 'Visit': return after(3, 'Follow-up');
+      return after(w(type), 'Send Proposal');
+    case 'Proposal Sent': return after(w(type), 'Follow up on Proposal');
+    case 'Visit': return after(w(type), 'Follow-up');
     default: return after(5, 'Follow-up');
   }
 };
@@ -294,9 +332,10 @@ router.get('/queue', auth, async (req, res) => {
     const accountById = {};
     accounts.forEach((a) => (accountById[a.id] = a));
 
+    const waits = await loadWaits();
     const items = [];
     for (const c of contacts) {
-      const next = nextActionFor(c);
+      const next = nextActionFor(c, waits);
       if (!next) continue;
       // Due today or overdue (no due date = brand-new contact, always eligible)
       if (next.due && next.due > today) continue;
@@ -339,6 +378,46 @@ router.get('/queue', auth, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to build queue' });
+  }
+});
+
+// =====================================================
+// SETTINGS — editable sequence cadence
+// =====================================================
+router.get('/settings', auth, async (req, res) => {
+  try {
+    const waits = await loadWaits();
+    res.json({ sequence_waits: waits, defaults: DEFAULT_WAITS });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to fetch settings' });
+  }
+});
+
+router.put('/settings', auth, async (req, res) => {
+  try {
+    const incoming = req.body.sequence_waits || {};
+    const clean = {};
+    Object.keys(DEFAULT_WAITS).forEach((k) => {
+      const n = parseInt(incoming[k], 10);
+      if (Number.isFinite(n) && n >= 0 && n <= 365) clean[k] = n;
+    });
+    const { error } = await supabase
+      .from('abm_settings')
+      .upsert({
+        id: 1,
+        sequence_waits: clean,
+        updated_at: getISTTime(),
+        updated_by_name: req.user.name,
+      });
+    if (error) {
+      if (isMissingSchema(error)) return migrationResponse(res);
+      throw error;
+    }
+    res.json({ sequence_waits: { ...DEFAULT_WAITS, ...clean } });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to save settings' });
   }
 });
 
@@ -395,31 +474,35 @@ router.get('/accounts', auth, async (req, res) => {
 
 router.post('/accounts', auth, async (req, res) => {
   try {
-    const { name, country, industry, website, employees, revenue, priority, tier, status, owner, owner_name, notes } = req.body;
+    const { name, country, industry, website, employees, revenue, priority, tier, status, owner, owner_name, notes, division } = req.body;
     if (!name?.trim()) return res.status(400).json({ message: 'Company name is required' });
 
-    const { data, error } = await supabase
-      .from('abm_accounts')
-      .insert([{
-        name: name.trim(),
-        country: country || null,
-        industry: industry || null,
-        website: website || null,
-        employees: employees || null,
-        revenue: revenue || null,
-        priority: priority || 'Medium',
-        tier: tier || 'Tier 2',
-        status: status || 'Research',
-        owner: owner || req.user.id,
-        owner_name: owner_name || req.user.name,
-        notes: notes || null,
-        created_by: req.user.id,
-        created_by_name: req.user.name,
-        created_at: getISTTime(),
-        updated_at: getISTTime(),
-      }])
-      .select()
-      .single();
+    const insertRow = {
+      name: name.trim(),
+      country: country || null,
+      industry: industry || null,
+      website: website || null,
+      employees: employees || null,
+      revenue: revenue || null,
+      priority: priority || 'Medium',
+      tier: tier || 'Tier 2',
+      status: status || 'Research',
+      division: division || null,
+      owner: owner || req.user.id,
+      owner_name: owner_name || req.user.name,
+      notes: notes || null,
+      created_by: req.user.id,
+      created_by_name: req.user.name,
+      created_at: getISTTime(),
+      updated_at: getISTTime(),
+    };
+
+    let { data, error } = await supabase.from('abm_accounts').insert([insertRow]).select().single();
+    // division column not migrated yet — retry without it
+    if (error && error.code === 'PGRST204') {
+      const { division: _skip, ...withoutDivision } = insertRow;
+      ({ data, error } = await supabase.from('abm_accounts').insert([withoutDivision]).select().single());
+    }
     if (error) {
       if (isMissingSchema(error)) return migrationResponse(res);
       throw error;
@@ -475,17 +558,27 @@ router.get('/accounts/:id', auth, async (req, res) => {
 
 router.put('/accounts/:id', auth, async (req, res) => {
   try {
-    const allowed = ['name', 'country', 'industry', 'website', 'employees', 'revenue', 'priority', 'tier', 'status', 'owner', 'owner_name', 'notes'];
+    const allowed = ['name', 'country', 'industry', 'website', 'employees', 'revenue', 'priority', 'tier', 'status', 'owner', 'owner_name', 'notes', 'division'];
     const updateData = { updated_at: getISTTime() };
     allowed.forEach((k) => {
       if (req.body[k] !== undefined) updateData[k] = req.body[k];
     });
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('abm_accounts')
       .update(updateData)
       .eq('id', req.params.id)
       .select()
       .single();
+    // division column not migrated yet — retry without it
+    if (error && error.code === 'PGRST204' && 'division' in updateData) {
+      const { division: _skip, ...withoutDivision } = updateData;
+      ({ data, error } = await supabase
+        .from('abm_accounts')
+        .update(withoutDivision)
+        .eq('id', req.params.id)
+        .select()
+        .single());
+    }
     if (error) {
       if (isMissingSchema(error)) return migrationResponse(res);
       throw error;
@@ -581,15 +674,59 @@ router.post('/contacts', auth, async (req, res) => {
   }
 });
 
-// Bulk import — from CSV paste or Sales Navigator export
+// Normalized identity keys for duplicate detection
+const normEmail = (e) => (e || '').trim().toLowerCase() || null;
+const normLinkedin = (l) =>
+  (l || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .replace(/\/+$/, '') || null;
+const normName = (n) => (n || '').trim().toLowerCase().replace(/\s+/g, ' ') || null;
+
+// Bulk import — from CSV paste or Sales Navigator export.
+// Rows matching an existing contact in the same account (by email,
+// LinkedIn URL, or exact name) are skipped, as are duplicates inside the batch.
 router.post('/contacts/bulk', auth, async (req, res) => {
   try {
     const { account_id, contacts } = req.body;
     if (!account_id) return res.status(400).json({ message: 'account_id is required' });
-    const rows = (contacts || [])
+    let rows = (contacts || [])
       .filter((c) => c.name?.trim())
       .map((c) => contactRow(c, account_id));
     if (!rows.length) return res.status(400).json({ message: 'No valid contacts provided' });
+
+    let existing;
+    try {
+      existing = await fetchAll(
+        'abm_contacts',
+        'email, linkedin, name',
+        (q) => q.eq('account_id', account_id)
+      );
+    } catch (error) {
+      if (isMissingSchema(error)) return migrationResponse(res);
+      throw error;
+    }
+    const seenEmails = new Set(existing.map((c) => normEmail(c.email)).filter(Boolean));
+    const seenLinkedins = new Set(existing.map((c) => normLinkedin(c.linkedin)).filter(Boolean));
+    const seenNames = new Set(existing.map((c) => normName(c.name)).filter(Boolean));
+
+    let skipped = 0;
+    rows = rows.filter((r) => {
+      const em = normEmail(r.email);
+      const li = normLinkedin(r.linkedin);
+      const nm = normName(r.name);
+      if ((em && seenEmails.has(em)) || (li && seenLinkedins.has(li)) || (!em && !li && nm && seenNames.has(nm))) {
+        skipped += 1;
+        return false;
+      }
+      if (em) seenEmails.add(em);
+      if (li) seenLinkedins.add(li);
+      if (nm) seenNames.add(nm);
+      return true;
+    });
+    if (!rows.length) return res.json({ inserted: 0, skipped });
 
     // Insert in chunks to stay under request-size limits
     const CHUNK = 500;
@@ -605,7 +742,7 @@ router.post('/contacts/bulk', auth, async (req, res) => {
       }
       inserted += (data || []).length;
     }
-    res.status(201).json({ inserted });
+    res.status(201).json({ inserted, skipped });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to import contacts' });

@@ -6,6 +6,15 @@ export const canAccessAbm = (user) =>
   user?.id === "d5f32730-4953-4c7c-9185-c87e6eca329d" ||
   user?.email?.toLowerCase() === "mktganalyst@siegerglobal.net";
 
+// ABM-specific divisions (distinct from ticket divisions)
+export const ABM_DIVISIONS = [
+  "ASTOR - TEX",
+  "ASTOR - NON TEX",
+  "ILS",
+  "CPS",
+  "TMD EXP",
+];
+
 export const ACCOUNT_STATUSES = [
   "Research",
   "Contacting",

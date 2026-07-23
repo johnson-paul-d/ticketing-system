@@ -2,7 +2,7 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import {
   Menu, X, LayoutDashboard, Cpu, KanbanSquare, Calendar,
   Shield, BarChart3, LogOut, PlusCircle, ChevronRight, ClipboardCheck, FolderKanban,
-  Target, Building2, CalendarCheck, TrendingUp
+  Target, Building2, CalendarCheck, TrendingUp, Gauge
 } from "lucide-react";
 import { useState } from "react";
 import useAuthStore from "../store/authStore";
@@ -52,6 +52,7 @@ const canAccessLinkedIn =
           { label: "Admin Panel", path: "/admin", icon: Shield },
           { label: "Pending Requests", path: "/pending-approvals", icon: ClipboardCheck },
           { label: "Completion Report", path: "/completion-report", icon: TrendingUp },
+          { label: "Open Tickets Report", path: "/open-tickets-report", icon: Gauge },
         ]
       : []),
     ...(canAccessAbm(user)

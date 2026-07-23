@@ -8,7 +8,7 @@ import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
 import {
   ACCOUNT_STATUSES, CONTACT_STATUSES, ACTIVITY_TYPES, ACTIVITY_RESULTS,
-  ROLE_LEVELS, OPPORTUNITY_STAGES, accountStatusChip, contactStatusColor,
+  ROLE_LEVELS, OPPORTUNITY_STAGES, ABM_DIVISIONS, accountStatusChip, contactStatusColor,
 } from "../constants/abm";
 
 const PAGE_SIZE = 50;
@@ -242,7 +242,10 @@ export default function AbmAccountDetails() {
       const res = await api.post("/abm/contacts/bulk", { account_id: id, contacts: parsed });
       setShowImport(false);
       setCsvText("");
-      flash(`Imported ${res.data.inserted} contacts`);
+      flash(
+        `Imported ${res.data.inserted} contacts` +
+          (res.data.skipped ? ` · ${res.data.skipped} duplicates skipped` : "")
+      );
       fetchContacts();
       fetchAccount();
     } catch (err) {
@@ -276,6 +279,15 @@ export default function AbmAccountDetails() {
   const updateAccountStatus = async (status) => {
     try {
       await api.put(`/abm/accounts/${id}`, { status });
+      fetchAccount();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const updateAccountDivision = async (division) => {
+    try {
+      await api.put(`/abm/accounts/${id}`, { division: division || null });
       fetchAccount();
     } catch (err) {
       console.error(err);
@@ -332,6 +344,15 @@ export default function AbmAccountDetails() {
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            <select
+              value={account.division || ""}
+              onChange={(e) => updateAccountDivision(e.target.value)}
+              title="Division"
+              className="text-[12px] font-semibold px-2 py-1 rounded-full border cursor-pointer outline-none bg-[#9b2423]/10 text-[#9b2423] border-[#9b2423]/20"
+            >
+              <option value="">No division</option>
+              {ABM_DIVISIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
             <span className="text-[11px] font-semibold px-2 py-1 rounded-full bg-gray-100 text-gray-600">{account.tier}</span>
             <span className={`text-[11px] font-semibold px-2 py-1 rounded-full ${
               account.priority === "High" ? "bg-red-50 text-red-600" : "bg-gray-100 text-gray-500"

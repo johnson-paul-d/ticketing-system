@@ -6,12 +6,13 @@ import {
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
 import {
-  ACCOUNT_STATUSES, TIERS, PRIORITIES, accountStatusChip,
+  ACCOUNT_STATUSES, TIERS, PRIORITIES, ABM_DIVISIONS, accountStatusChip,
 } from "../constants/abm";
 
 const emptyForm = {
   name: "", country: "", industry: "", website: "",
   employees: "", revenue: "", priority: "Medium", tier: "Tier 2", status: "Research",
+  division: "",
 };
 
 export default function AbmAccounts() {
@@ -29,6 +30,7 @@ export default function AbmAccounts() {
   const [country, setCountry] = useState("");
   const [status, setStatus] = useState("");
   const [tier, setTier] = useState("");
+  const [division, setDivision] = useState("");
 
   const fetchAccounts = async () => {
     try {
@@ -59,9 +61,10 @@ export default function AbmAccounts() {
           (!search || a.name.toLowerCase().includes(search.toLowerCase())) &&
           (!country || a.country === country) &&
           (!status || a.status === status) &&
-          (!tier || a.tier === tier)
+          (!tier || a.tier === tier) &&
+          (!division || a.division === division)
       ),
-    [accounts, search, country, status, tier]
+    [accounts, search, country, status, tier, division]
   );
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -144,6 +147,10 @@ export default function AbmAccounts() {
             <option value="">All tiers</option>
             {TIERS.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
+          <select value={division} onChange={(e) => setDivision(e.target.value)} className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white outline-none">
+            <option value="">All divisions</option>
+            {ABM_DIVISIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
         </div>
       )}
 
@@ -167,6 +174,7 @@ export default function AbmAccounts() {
             <thead>
               <tr className="text-left text-xs text-gray-400 border-b">
                 <th className="px-5 py-3 font-medium">Company</th>
+                <th className="px-3 py-3 font-medium">Division</th>
                 <th className="px-3 py-3 font-medium">Country</th>
                 <th className="px-3 py-3 font-medium">Tier</th>
                 <th className="px-3 py-3 font-medium">Priority</th>
@@ -187,6 +195,11 @@ export default function AbmAccounts() {
                   <td className="px-5 py-3">
                     <div className="font-semibold text-gray-800">{a.name}</div>
                     {a.industry && <div className="text-[11px] text-gray-400">{a.industry}</div>}
+                  </td>
+                  <td className="px-3 py-3">
+                    {a.division
+                      ? <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[#9b2423]/10 text-[#9b2423]">{a.division}</span>
+                      : <span className="text-gray-300">—</span>}
                   </td>
                   <td className="px-3 py-3 text-gray-600">{a.country || "—"}</td>
                   <td className="px-3 py-3 text-gray-600">{a.tier}</td>
@@ -279,6 +292,13 @@ export default function AbmAccounts() {
                   <label className="block text-sm font-semibold text-gray-700 mb-1.5">Status</label>
                   <select value={form.status} onChange={set("status")} className={input}>
                     {ACCOUNT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Division</label>
+                  <select value={form.division} onChange={set("division")} className={input}>
+                    <option value="">— None —</option>
+                    {ABM_DIVISIONS.map((d) => <option key={d} value={d}>{d}</option>)}
                   </select>
                 </div>
               </div>
