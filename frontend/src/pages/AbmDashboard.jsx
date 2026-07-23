@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import {
   Target, Loader2, AlertTriangle, Globe2, Building2, Users,
   Mail, MessageCircle, Phone, CalendarCheck, Reply, ThumbsUp,
+  Settings, X,
 } from "lucide-react";
 
 function LinkedinIcon({ size = 14 }) {
@@ -28,10 +29,58 @@ const KPI_DEFS = [
   { key: "positive_responses", label: "Positive", icon: ThumbsUp },
 ];
 
+// Human description of what each wait leads to (mirrors backend rules)
+const WAIT_STEPS = [
+  ["Cold Email 1", "then send Email 2"],
+  ["Cold Email 2", "then LinkedIn Connect"],
+  ["Cold Email 3", "then LinkedIn Connect"],
+  ["LinkedIn Connect", "if not accepted, then WhatsApp"],
+  ["LinkedIn Message", "if no reply, then WhatsApp"],
+  ["Sales Navigator Message", "if no reply, then WhatsApp"],
+  ["WhatsApp", "if no reply, then Call"],
+  ["Direct Call", "then Follow-up"],
+  ["Follow-up", "then Call"],
+  ["Meeting", "then send Proposal"],
+  ["Demo", "then send Proposal"],
+  ["Proposal Sent", "then follow up on Proposal"],
+  ["Visit", "then Follow-up"],
+];
+
 export default function AbmDashboard() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [setupNeeded, setSetupNeeded] = useState(false);
+  const [showRules, setShowRules] = useState(false);
+  const [waits, setWaits] = useState(null);
+  const [savingRules, setSavingRules] = useState(false);
+  const [rulesMsg, setRulesMsg] = useState("");
+
+  const openRules = async () => {
+    setShowRules(true);
+    setRulesMsg("");
+    if (!waits) {
+      try {
+        const r = await api.get("/abm/settings");
+        setWaits(r.data.sequence_waits);
+      } catch {
+        setRulesMsg("Could not load settings");
+      }
+    }
+  };
+
+  const saveRules = async () => {
+    setSavingRules(true);
+    setRulesMsg("");
+    try {
+      const r = await api.put("/abm/settings", { sequence_waits: waits });
+      setWaits(r.data.sequence_waits);
+      setRulesMsg("Saved — the queue now uses the new cadence");
+    } catch (err) {
+      setRulesMsg(err.response?.data?.message || "Failed to save");
+    } finally {
+      setSavingRules(false);
+    }
+  };
 
   useEffect(() => {
     api
@@ -71,8 +120,87 @@ export default function AbmDashboard() {
           >
             Accounts
           </Link>
+          <button
+            onClick={openRules}
+            title="Sequence rules"
+            className="inline-flex items-center gap-2 border border-gray-200 hover:border-[#9b2423]/40 text-gray-700 font-semibold text-sm px-3 py-2.5 rounded-xl transition bg-white"
+          >
+            <Settings size={16} />
+          </button>
         </div>
       </div>
+
+      {/* Sequence rules modal */}
+      {showRules && (
+        <div className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-0 sm:p-6">
+          <div className="bg-white w-full sm:max-w-xl rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white flex items-center justify-between px-6 py-4 border-b z-10">
+              <h2 className="text-lg font-bold">Sequence Rules</h2>
+              <button onClick={() => setShowRules(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6">
+              <p className="text-xs text-gray-500 mb-4">
+                Days to wait after each activity before the next step appears in Today's Queue.
+                Positive replies always jump straight to "Schedule Meeting".
+              </p>
+              {rulesMsg && (
+                <div className={`text-sm px-4 py-2.5 rounded-xl border mb-4 ${
+                  rulesMsg.startsWith("Saved")
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    : "bg-red-50 text-red-700 border-red-200"
+                }`}>{rulesMsg}</div>
+              )}
+              {!waits ? (
+                <div className="flex items-center justify-center py-10 text-gray-400 gap-2">
+                  <Loader2 size={18} className="animate-spin" /> Loading…
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {WAIT_STEPS.map(([type, then]) => (
+                    <div key={type} className="flex items-center gap-3">
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-semibold text-gray-800">{type}</span>
+                        <span className="text-xs text-gray-400 ml-2">{then}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <input
+                          type="number"
+                          min="0"
+                          max="365"
+                          value={waits[type] ?? ""}
+                          onChange={(e) =>
+                            setWaits({ ...waits, [type]: e.target.value === "" ? 0 : parseInt(e.target.value, 10) })
+                          }
+                          className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-right bg-gray-50 outline-none focus:ring-2 focus:ring-[#9b2423]/40"
+                        />
+                        <span className="text-xs text-gray-400 w-8">days</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex gap-3">
+              <button
+                onClick={saveRules}
+                disabled={savingRules || !waits}
+                className="flex-1 inline-flex items-center justify-center gap-2 bg-[#9b2423] hover:bg-[#7d1d1c] disabled:opacity-60 text-white font-semibold text-sm px-4 py-3 rounded-xl transition"
+              >
+                {savingRules && <Loader2 size={16} className="animate-spin" />}
+                Save Rules
+              </button>
+              <button
+                onClick={() => setShowRules(false)}
+                className="px-5 py-3 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {setupNeeded && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 flex items-start gap-3 text-amber-800">
