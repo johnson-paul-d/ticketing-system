@@ -392,7 +392,7 @@ function PersonCard({ group, colorIndex }) {
 
 function Legend() {
   return (
-    <div className="flex items-center gap-4 text-xs text-gray-400 mb-3 px-1">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-400 mb-3 px-1">
       <span className="text-gray-500 font-medium">Progress bar</span>
       {[
         { color: "bg-green-500",  label: "Completed" },

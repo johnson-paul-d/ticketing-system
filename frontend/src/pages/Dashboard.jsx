@@ -393,6 +393,25 @@ function KpiCard({ label, value, sub, accentColor, accentBorder, trend }) {
   );
 }
 
+// Recharts' ResponsiveContainer can measure ~0 width on its first mount
+// inside an auto-fit grid (before the grid resolves its columns), which on
+// mobile leaves the chart SVG stuck tiny (width="8"). Remounting it one
+// animation frame later — once the grid ancestor is laid out — makes it
+// measure the real width. This wrapper does that transparently so every
+// chart renders full-width on phones without touching each chart's config.
+function ChartBox({ children, height, width = "100%" }) {
+  const [k, setK] = useState(0);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setK((v) => v + 1));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  return (
+    <ResponsiveContainer key={k} width={width} height={height}>
+      {children}
+    </ResponsiveContainer>
+  );
+}
+
 function Card({ children, style }) {
   return (
     <div
@@ -1110,9 +1129,12 @@ export default function Dashboard() {
   }
 
   /* ── Layout helpers ─────────────────────────────────────────────────── */
-  const g2 = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 };
-  const g3 = { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20, marginBottom: 20 };
-  const g4 = { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 };
+  /* auto-fit + minmax makes every grid reflow to fewer columns as the
+     screen narrows, so charts go full-width (and stay legible) on mobile
+     instead of squishing into fixed 2/3/4-column tracks. */
+  const g2 = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16, marginBottom: 20 };
+  const g3 = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16, marginBottom: 20 };
+  const g4 = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 24 };
 
   return (
     <MainLayout>
@@ -1281,7 +1303,7 @@ export default function Dashboard() {
         <div style={g2}>
           <Card>
             <CardHeader title="Status distribution" sub="Current breakdown by status" />
-            <ResponsiveContainer width="100%" height={260}>
+            <ChartBox width="100%" height={260}>
               <PieChart>
                 <Pie data={statusPieData} dataKey="value" outerRadius={90} innerRadius={55} paddingAngle={2}>
                   {statusPieData.map((entry, i) => (
@@ -1298,7 +1320,7 @@ export default function Dashboard() {
                   wrapperStyle={{ fontSize: 11, marginTop: 8 }}
                 />
               </PieChart>
-            </ResponsiveContainer>
+            </ChartBox>
           </Card>
 
           <Card>
@@ -1323,7 +1345,7 @@ export default function Dashboard() {
         <div style={g2}>
           <Card>
             <CardHeader title="Monthly Ticket Volume" sub="Created vs Completed by month" />
-            <ResponsiveContainer width="100%" height={280}>
+            <ChartBox width="100%" height={280}>
               <BarChart data={monthlyTrend}>
                 <CartesianGrid strokeDasharray="3 3" stroke={T.border} />
                 <XAxis dataKey="month" tick={{ fill: T.ink3, fontSize: 10 }} axisLine={false} tickLine={false} />
@@ -1333,12 +1355,12 @@ export default function Dashboard() {
                 <Bar dataKey="created" fill={T.open} name="Created" radius={[4,4,0,0]} />
                 <Bar dataKey="completed" fill={T.done} name="Completed" radius={[4,4,0,0]} />
               </BarChart>
-            </ResponsiveContainer>
+            </ChartBox>
           </Card>
 
           <Card>
             <CardHeader title="Monthly Completion Rate" sub="% of tickets resolved in month of creation" />
-            <ResponsiveContainer width="100%" height={280}>
+            <ChartBox width="100%" height={280}>
               <LineChart data={monthlyTrend}>
                 <CartesianGrid strokeDasharray="3 3" stroke={T.border} />
                 <XAxis dataKey="month" tick={{ fill: T.ink3, fontSize: 10 }} axisLine={false} tickLine={false} />
@@ -1347,7 +1369,7 @@ export default function Dashboard() {
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
                 <Line type="monotone" dataKey="completionRate" stroke={T.done} strokeWidth={3} name="Completion Rate %" dot={{ r: 4 }} />
               </LineChart>
-            </ResponsiveContainer>
+            </ChartBox>
           </Card>
         </div>
 
@@ -1355,7 +1377,7 @@ export default function Dashboard() {
         <div style={g2}>
           <Card>
             <CardHeader title="Resolution Time Trend" sub="Average days to close (monthly)" />
-            <ResponsiveContainer width="100%" height={260}>
+            <ChartBox width="100%" height={260}>
               <LineChart data={resolutionTrendData}>
                 <CartesianGrid strokeDasharray="3 3" stroke={T.border} />
                 <XAxis dataKey="month" tick={{ fill: T.ink3, fontSize: 10 }} axisLine={false} tickLine={false} />
@@ -1364,12 +1386,12 @@ export default function Dashboard() {
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
                 <Line type="monotone" dataKey="avgResolutionDays" stroke={T.violet} strokeWidth={2.5} name="Avg Resolution (days)" dot={{ r: 4 }} />
               </LineChart>
-            </ResponsiveContainer>
+            </ChartBox>
           </Card>
 
           <Card>
             <CardHeader title="Open Ticket Aging" sub="Age of unresolved tickets" />
-            <ResponsiveContainer width="100%" height={260}>
+            <ChartBox width="100%" height={260}>
               <PieChart>
                 <Pie data={agingData} dataKey="value" outerRadius={80} innerRadius={50} paddingAngle={2}>
                   {agingData.map((entry, i) => (
@@ -1379,7 +1401,7 @@ export default function Dashboard() {
                 <Tooltip content={<ChartTooltip />} />
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
               </PieChart>
-            </ResponsiveContainer>
+            </ChartBox>
           </Card>
         </div>
 
@@ -1387,7 +1409,7 @@ export default function Dashboard() {
         <div style={g2}>
           <Card>
             <CardHeader title="Daily Activity (Last 30 days)" sub="Created vs Completed" />
-            <ResponsiveContainer width="100%" height={260}>
+            <ChartBox width="100%" height={260}>
               <LineChart data={creationTrendData}>
                 <CartesianGrid strokeDasharray="3 3" stroke={T.border} />
                 <XAxis dataKey="date" tick={{ fill: T.ink3, fontSize: 9 }} axisLine={false} tickLine={false} angle={-45} textAnchor="end" height={50} interval="preserveStartEnd" />
@@ -1397,12 +1419,12 @@ export default function Dashboard() {
                 <Line type="monotone" dataKey="created" stroke={T.open} strokeWidth={2} name="Created" dot={{ r: 2 }} />
                 <Line type="monotone" dataKey="completed" stroke={T.done} strokeWidth={2} name="Completed" dot={{ r: 2 }} />
               </LineChart>
-            </ResponsiveContainer>
+            </ChartBox>
           </Card>
 
           <Card>
             <CardHeader title="Due Date Overview" sub="Tickets by due urgency" />
-            <ResponsiveContainer width="100%" height={260}>
+            <ChartBox width="100%" height={260}>
               <PieChart>
                 <Pie data={dueAnalysisData} dataKey="value" outerRadius={80} innerRadius={50} paddingAngle={2} label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}>
                   {dueAnalysisData.map((entry, i) => (
@@ -1412,7 +1434,7 @@ export default function Dashboard() {
                 <Tooltip content={<ChartTooltip />} />
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
               </PieChart>
-            </ResponsiveContainer>
+            </ChartBox>
           </Card>
         </div>
 
@@ -1424,7 +1446,7 @@ export default function Dashboard() {
         {/* Team Utilization Chart (Bar chart allocated vs consumed) */}
         <Card style={{ marginBottom: 20 }}>
           <CardHeader title="Team Utilization" sub="Consumed vs allocated effort per engineer" />
-          <ResponsiveContainer width="100%" height={320}>
+          <ChartBox width="100%" height={320}>
             <BarChart data={utilizationHeatmap}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="engineer" tick={{ fill: T.ink3, fontSize: 10 }} />
@@ -1434,13 +1456,13 @@ export default function Dashboard() {
               <Bar dataKey="allocated" fill={T.gold} radius={[4, 4, 0, 0]} />
               <Bar dataKey="consumed" fill={T.prog} radius={[4, 4, 0, 0]} />
             </BarChart>
-          </ResponsiveContainer>
+          </ChartBox>
         </Card>
 
         {/* Estimation Accuracy Chart (Scatter) */}
         <Card style={{ marginBottom: 20 }}>
           <CardHeader title="Estimation Accuracy" sub="Allocated vs consumed time per ticket" />
-          <ResponsiveContainer width="100%" height={320}>
+          <ChartBox width="100%" height={320}>
             <ScatterChart>
               <CartesianGrid />
               <XAxis type="number" dataKey="allotted_minutes" name="Allocated (min)" tick={{ fill: T.ink3, fontSize: 10 }} />
@@ -1448,7 +1470,7 @@ export default function Dashboard() {
               <Tooltip cursor={{ strokeDasharray: '3 3' }} content={<ChartTooltip />} />
               <Scatter name="Tickets" data={estimationScatter} fill={T.violet} />
             </ScatterChart>
-          </ResponsiveContainer>
+          </ChartBox>
         </Card>
 
         {/* Productivity Leaderboard */}
@@ -1476,7 +1498,7 @@ export default function Dashboard() {
         {/* Overdue Recovery Trend */}
         <Card style={{ marginBottom: 20 }}>
           <CardHeader title="Overdue Recovery Trend" sub="Resolved tickets vs overdue backlog over time" />
-          <ResponsiveContainer width="100%" height={300}>
+          <ChartBox width="100%" height={300}>
             <LineChart data={overdueRecoveryTrend}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="date" tick={{ fill: T.ink3, fontSize: 10 }} />
@@ -1486,13 +1508,13 @@ export default function Dashboard() {
               <Line type="monotone" dataKey="resolved" stroke={T.done} strokeWidth={3} name="Resolved" />
               <Line type="monotone" dataKey="overdue" stroke={T.crit} strokeWidth={3} name="Overdue" />
             </LineChart>
-          </ResponsiveContainer>
+          </ChartBox>
         </Card>
 
         {/* Workload Distribution Chart */}
         <Card style={{ marginBottom: 20 }}>
           <CardHeader title="Workload Distribution" sub="Open vs completed workload per engineer" />
-          <ResponsiveContainer width="100%" height={320}>
+          <ChartBox width="100%" height={320}>
             <BarChart data={workloadDistribution}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" tick={{ fill: T.ink3, fontSize: 10 }} />
@@ -1502,7 +1524,7 @@ export default function Dashboard() {
               <Bar dataKey="open" stackId="a" fill={T.open} name="Open" />
               <Bar dataKey="completed" stackId="a" fill={T.done} name="Completed" />
             </BarChart>
-          </ResponsiveContainer>
+          </ChartBox>
         </Card>
 
         {/* ── Existing Team efficiency matrix ── */}
@@ -1560,7 +1582,7 @@ export default function Dashboard() {
           <div style={g2}>
             <Card>
               <CardHeader title="Division performance" sub="Ticket status breakdown per division" />
-              <ResponsiveContainer width="100%" height={280}>
+              <ChartBox width="100%" height={280}>
                 <BarChart data={divPerf} layout="vertical" barCategoryGap={8}>
                   <CartesianGrid strokeDasharray="2 4" horizontal={false} />
                   <XAxis type="number" tick={{ fill: T.ink3, fontSize: 10 }} axisLine={false} tickLine={false} />
@@ -1571,12 +1593,12 @@ export default function Dashboard() {
                   <Bar dataKey="In Progress" stackId="a" fill={T.prog} />
                   <Bar dataKey="Open" stackId="a" fill={T.open} radius={[4, 4, 0, 0]} />
                 </BarChart>
-              </ResponsiveContainer>
+              </ChartBox>
             </Card>
 
             <Card>
               <CardHeader title="Weekly activity pattern" sub="Open vs. completed by day of week" />
-              <ResponsiveContainer width="100%" height={280}>
+              <ChartBox width="100%" height={280}>
                 <AreaChart data={weeklyData}>
                   <CartesianGrid strokeDasharray="3 3" stroke={T.border} />
                   <XAxis dataKey="day" tick={{ fill: T.ink3, fontSize: 11 }} axisLine={false} tickLine={false} />
@@ -1586,7 +1608,7 @@ export default function Dashboard() {
                   <Area type="monotone" dataKey="Open" stroke={T.open} fill={T.openBg} strokeWidth={2.5} strokeDasharray="5 3" />
                   <Area type="monotone" dataKey="Completed" stroke={T.done} fill={T.doneBg} strokeWidth={2.5} />
                 </AreaChart>
-              </ResponsiveContainer>
+              </ChartBox>
             </Card>
           </div>
         )}
