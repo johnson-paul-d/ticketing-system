@@ -11,7 +11,7 @@ export default defineConfig({
       manifest: {
         name: 'Sieger MKT — Partnering Progress',
         short_name: 'Sieger MKT',
-        description: 'Marketing workflow & ticketing platform for Sieger teams',
+        description: 'Partnering Progress — marketing workflow & ticketing platform for Sieger teams',
         theme_color: '#9b2423',
         background_color: '#f3ece0',
         display: 'standalone',
