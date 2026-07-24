@@ -23,6 +23,13 @@ import {
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
 import { excludeDisabledUsers } from "../utils/reportFilters";
+import {
+  consumedMinutes,
+  allottedMinutes,
+  completionDate,
+  resolutionDays,
+  metDueDate,
+} from "../utils/ticketMetrics";
 import useAuthStore from "../store/authStore";
 
 /* ─── Design tokens ─────────────────────────────────────────────────────── */
@@ -130,12 +137,12 @@ function buildCreationTrend(tickets) {
         dateMap.set(createdDate, { date: createdDate, created: 1, completed: 0 });
       }
     }
-    if (t.status === "Completed" && t.updated_at) {
-      const completedDate = new Date(t.updated_at).toISOString().split('T')[0];
-      if (dateMap.has(completedDate)) {
-        dateMap.get(completedDate).completed++;
-      } else if (new Date(completedDate) >= thirtyDaysAgo) {
-        dateMap.set(completedDate, { date: completedDate, created: 0, completed: 1 });
+    const doneOn = completionDate(t);
+    if (doneOn) {
+      if (dateMap.has(doneOn)) {
+        dateMap.get(doneOn).completed++;
+      } else if (new Date(doneOn) >= thirtyDaysAgo) {
+        dateMap.set(doneOn, { date: doneOn, created: 0, completed: 1 });
       }
     }
   });
@@ -177,33 +184,30 @@ function buildMonthlyTrend(tickets) {
   }));
 }
 
-// Calculate average resolution time in days for completed tickets
+// Average resolution time (days) for resolved tickets — measured from
+// created_at to the traceable completion date (never updated_at).
 function avgResolutionDays(tickets) {
-  const completedTickets = tickets.filter(t => t.status === "Completed" && t.created_at && t.updated_at);
-  if (completedTickets.length === 0) return 0;
-  const totalDays = completedTickets.reduce((sum, t) => {
-    const created = new Date(t.created_at);
-    const resolved = new Date(t.updated_at);
-    const diffDays = Math.max(0, (resolved - created) / (1000 * 60 * 60 * 24));
-    return sum + diffDays;
-  }, 0);
-  return Math.round((totalDays / completedTickets.length) * 10) / 10;
+  const days = tickets.map(resolutionDays).filter((d) => d !== null);
+  if (days.length === 0) return 0;
+  const total = days.reduce((sum, d) => sum + d, 0);
+  return Math.round((total / days.length) * 10) / 10;
 }
 
-// Resolution time trend by month
+// Resolution-time trend, bucketed by the month the ticket was completed.
 function resolutionTrend(tickets) {
-  const completed = tickets.filter(t => t.status === "Completed" && t.created_at && t.updated_at);
   const monthMap = new Map();
-  completed.forEach(t => {
-    const compDate = new Date(t.updated_at);
+  tickets.forEach((t) => {
+    const done = completionDate(t);
+    const days = resolutionDays(t);
+    if (!done || days === null) return;
+    const compDate = new Date(done);
     const monthKey = `${compDate.getFullYear()}-${String(compDate.getMonth() + 1).padStart(2, '0')}`;
     const monthName = compDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
-    const resolutionDays = (new Date(t.updated_at) - new Date(t.created_at)) / (1000 * 60 * 60 * 24);
     if (!monthMap.has(monthKey)) {
       monthMap.set(monthKey, { month: monthName, totalDays: 0, count: 0 });
     }
     const entry = monthMap.get(monthKey);
-    entry.totalDays += resolutionDays;
+    entry.totalDays += days;
     entry.count++;
   });
   const sorted = Array.from(monthMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
@@ -234,16 +238,13 @@ function openTicketAging(tickets) {
   return Object.entries(buckets).map(([name, value]) => ({ name, value, color: value > 0 ? T.crit : T.ink3 }));
 }
 
-// SLA compliance: tickets completed before due date
+// SLA compliance = share of resolved tickets that met their due date
+// (using the traceable completion date, not updated_at).
 function slaCompliance(tickets) {
-  const ticketsWithDue = tickets.filter(t => t.due_date && t.status === "Completed" && t.updated_at);
-  if (ticketsWithDue.length === 0) return null;
-  const onTime = ticketsWithDue.filter(t => {
-    const due = new Date(t.due_date);
-    const resolved = new Date(t.updated_at);
-    return resolved <= due;
-  }).length;
-  return pct(onTime, ticketsWithDue.length);
+  const assessed = tickets.map(metDueDate).filter((v) => v !== null);
+  if (assessed.length === 0) return null;
+  const onTime = assessed.filter(Boolean).length;
+  return pct(onTime, assessed.length);
 }
 
 // Backlog forecast (simple linear regression on open tickets over last 6 weeks)
@@ -921,32 +922,30 @@ export default function Dashboard() {
   }, [tickets]);
 
   // ======================= NEW ADVANCED KPIs & CHARTS =======================
-  // 1. Team Utilization KPI
-  const totalAllocatedMinutes = tickets.reduce(
-    (sum, t) => sum + (t.allotted_minutes || 0),
-    0
-  );
-  const totalConsumedMinutes = tickets.reduce(
-    (sum, t) => sum + (t.consumed_minutes || 0),
-    0
-  );
+  // 1. Team Utilization KPI — actual logged time vs allotted time.
+  //    "Consumed" comes from time_entries (there is no consumed_minutes
+  //    column); utilization is only meaningful over tickets that carry
+  //    both an estimate and some logged time.
+  const totalAllocatedMinutes = tickets.reduce((sum, t) => sum + allottedMinutes(t), 0);
+  const totalConsumedMinutes = tickets.reduce((sum, t) => sum + consumedMinutes(t), 0);
   const utilizationRate = totalAllocatedMinutes
     ? Math.round((totalConsumedMinutes / totalAllocatedMinutes) * 100)
     : 0;
 
-  // 2. Estimation Accuracy KPI
-  const estimationAccuracy = tickets.length
+  // 2. Estimation Accuracy KPI — averaged only over tickets that actually
+  //    have an estimate AND logged time (so unestimated tickets don't
+  //    dilute the score down to zero, as the old version did).
+  const estimatableTickets = tickets.filter(
+    (t) => allottedMinutes(t) > 0 && consumedMinutes(t) > 0
+  );
+  const estimationAccuracy = estimatableTickets.length
     ? Math.round(
-        tickets.reduce((acc, t) => {
-          const allotted = t.allotted_minutes || 0;
-          const consumed = t.consumed_minutes || 0;
-          if (!allotted) return acc;
-          const accuracy = Math.max(
-            0,
-            100 - Math.abs(consumed - allotted) / allotted * 100
-          );
+        estimatableTickets.reduce((acc, t) => {
+          const allotted = allottedMinutes(t);
+          const consumed = consumedMinutes(t);
+          const accuracy = Math.max(0, 100 - (Math.abs(consumed - allotted) / allotted) * 100);
           return acc + accuracy;
-        }, 0) / tickets.length
+        }, 0) / estimatableTickets.length
       )
     : 0;
 
@@ -963,13 +962,16 @@ export default function Dashboard() {
     (a) => a.openCount >= 5 && a.eff < 50
   ).length;
 
-  // 5. Team Health Index
+  // 5. Team Health Index — weighted blend of the (now correct) sub-scores.
+  //    The overdue term is a normalised rate (% of tickets NOT overdue),
+  //    not a raw count, so it can't drive the index negative.
+  const notOverdueRate = total ? 100 - pct(overdueTickets.length, total) : 100;
   const teamHealthIndex = Math.round(
     completionRate * 0.30 +
     (sla || 0) * 0.25 +
     estimationAccuracy * 0.20 +
     utilizationRate * 0.15 +
-    (100 - overdueTickets.length * 2) * 0.10
+    notOverdueRate * 0.10
   );
 
   // 6. Utilization Heatmap Data
@@ -977,14 +979,8 @@ export default function Dashboard() {
     const engineerTickets = tickets.filter(
       (t) => t.assigned_to_name === a.name
     );
-    const allocated = engineerTickets.reduce(
-      (sum, t) => sum + (t.allotted_minutes || 0),
-      0
-    );
-    const consumed = engineerTickets.reduce(
-      (sum, t) => sum + (t.consumed_minutes || 0),
-      0
-    );
+    const allocated = engineerTickets.reduce((sum, t) => sum + allottedMinutes(t), 0);
+    const consumed = engineerTickets.reduce((sum, t) => sum + consumedMinutes(t), 0);
     return {
       engineer: a.name,
       allocated,
@@ -992,6 +988,16 @@ export default function Dashboard() {
       utilization: allocated ? Math.round((consumed / allocated) * 100) : 0,
     };
   });
+
+  // Estimation-accuracy scatter: allotted vs actual logged time, one point
+  // per ticket that carries an estimate (consumed derived from time_entries).
+  const estimationScatter = tickets
+    .filter((t) => allottedMinutes(t) > 0)
+    .map((t) => ({
+      title: t.title,
+      allotted_minutes: allottedMinutes(t),
+      consumed_minutes: consumedMinutes(t),
+    }));
 
   // 7. Productivity Leaderboard
   const productivityLeaderboard = assigneePerf.map((a) => {
@@ -1001,12 +1007,19 @@ export default function Dashboard() {
     return { ...a, score };
   }).sort((a, b) => b.score - a.score).slice(0, 10);
 
-  // 8. Overdue Recovery Trend
-  const overdueRecoveryTrend = creationTrendData.map((d) => ({
-    date: d.date,
-    resolved: d.completed,
-    overdue: overdueTickets.length,
-  }));
+  // 8. Overdue Recovery Trend — a real historical backlog line. For each
+  //    day we count tickets that were past due AND still unresolved as of
+  //    that day (was previously a flat constant = today's overdue count).
+  const overdueRecoveryTrend = creationTrendData.map((d) => {
+    const day = d.date;
+    const overdueAsOf = tickets.filter((t) => {
+      if (!t.due_date) return false;
+      if (String(t.due_date).split("T")[0] >= day) return false; // not due yet on this day
+      const done = completionDate(t);
+      return !done || done > day; // still unresolved as of this day
+    }).length;
+    return { date: day, resolved: d.completed, overdue: overdueAsOf };
+  });
 
   // 9. Workload Distribution
   const workloadDistribution = assigneePerf.map((a) => ({
@@ -1432,8 +1445,8 @@ export default function Dashboard() {
               <CartesianGrid />
               <XAxis type="number" dataKey="allotted_minutes" name="Allocated (min)" tick={{ fill: T.ink3, fontSize: 10 }} />
               <YAxis type="number" dataKey="consumed_minutes" name="Consumed (min)" tick={{ fill: T.ink3, fontSize: 10 }} />
-              <Tooltip cursor={{ strokeDasharray: '3 3' }} />
-              <Scatter name="Tickets" data={tickets} fill={T.violet} />
+              <Tooltip cursor={{ strokeDasharray: '3 3' }} content={<ChartTooltip />} />
+              <Scatter name="Tickets" data={estimationScatter} fill={T.violet} />
             </ScatterChart>
           </ResponsiveContainer>
         </Card>
