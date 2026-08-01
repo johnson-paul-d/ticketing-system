@@ -154,7 +154,8 @@
       "Bash(node -e \"const fs=require\\('fs'\\);const b=fs.readFileSync\\('src/assets/Sieger_logo.png'\\);console.log\\('PNG',b.readUInt32BE\\(16\\)+'x'+b.readUInt32BE\\(20\\)\\);const w=fs.readFileSync\\('src/assets/sieger white logo.png'\\);console.log\\('white PNG',w.readUInt32BE\\(16\\)+'x'+w.readUInt32BE\\(20\\)\\);\")",
       "PowerShell(cd D:\\\\Ticketing-System\\\\backend; Start-Process -NoNewWindow node -ArgumentList \"icon-writer.tmp.js\"; Start-Sleep -Seconds 2; try { \\(Invoke-WebRequest -Uri http://localhost:5099 -Method OPTIONS -TimeoutSec 5\\).StatusCode } catch { $_.Exception.Message })",
       "Bash(npm run *)",
-      "Bash(node seed-superadmin.js)"
+      "Bash(node seed-superadmin.js)",
+      "Bash(node --check routes/abm.js)"
     ]
   }
 }

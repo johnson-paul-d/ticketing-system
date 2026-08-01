@@ -36,6 +36,13 @@ export const getTeam = (user) => {
 
 export const isServiceTeam = (user) => getTeam(user) === "Service";
 
+// Team-aware branding for the home page + sidebar. Service users see "Service"
+// wherever Marketing users see the marketing branding.
+export const teamBrand = (user) =>
+  isServiceTeam(user)
+    ? { short: "SIEGER SERVICE", sub: "SERVICE TEAM", dashboard: "SERVICE TEAM DASHBOARD" }
+    : { short: "SIEGER MKT", sub: "MARKETING TEAM", dashboard: "MARKETING TEAM DASHBOARD" };
+
 // Requirement #4 — the Service team has no access to the ad dashboards.
 // Preserves the prior gates (admins + the specific power users) while
 // excluding anyone on the Service team.

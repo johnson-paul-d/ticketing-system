@@ -4,12 +4,13 @@ const router = express.Router();
 const supabase = require('../config/supabase');
 const auth = require('../middleware/auth');
 const getISTTime = require('../utils/time');
-const { isAdmin } = require('../utils/roles');
+const { isAdmin, getUserTeam } = require('../utils/roles');
 
-// ABM is restricted to admins + Johnson Paul D
+// ABM is restricted to admins + Johnson Paul D. The Service team never has access.
 const ABM_USER_IDS = ['d5f32730-4953-4c7c-9185-c87e6eca329d'];
 const abmAccess = (req, res, next) => {
-  if (isAdmin(req.user) || ABM_USER_IDS.includes(req.user.id)) return next();
+  const isService = getUserTeam(req.user) === 'Service';
+  if (!isService && (isAdmin(req.user) || ABM_USER_IDS.includes(req.user.id))) return next();
   return res.status(403).json({ message: 'You do not have access to the ABM CRM' });
 };
 router.use(auth, abmAccess);

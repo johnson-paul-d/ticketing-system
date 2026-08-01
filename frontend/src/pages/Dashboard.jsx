@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from "react";
-import { isAdmin as isAdminRole, isTeamMember as isTeamMemberRole } from "../constants/roles";
+import { isAdmin as isAdminRole, isTeamMember as isTeamMemberRole, teamBrand } from "../constants/roles";
 import {
   BarChart,
   Bar,
@@ -786,6 +786,7 @@ export default function Dashboard() {
   const [dueEndDate, setDueEndDate] = useState(null);
 
   const isAdmin = isAdminRole(user);
+  const brand = teamBrand(user);
   const isManager = user?.role === "Manager";
   const isAdminOrManager = isAdmin || isManager;
   const isDirector = isAdmin || isManager; // For director-level views
@@ -1161,7 +1162,7 @@ export default function Dashboard() {
                 margin: 0,
               }}
             >
-              MARKETING TEAM DASHBOARD
+              {brand.dashboard}
             </h1>
             <p style={{ fontSize: 13, color: T.ink3, marginTop: 4 }}>
               {user?.role} · {user?.name}

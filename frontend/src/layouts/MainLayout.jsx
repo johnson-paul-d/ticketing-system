@@ -8,7 +8,7 @@ import { useState } from "react";
 import useAuthStore from "../store/authStore";
 import NotificationBell from "../components/NotificationBell";
 import { canAccessAbm } from "../constants/abm";
-import { isAdmin, isTeamMember, canAccessGoogleAds, canAccessLinkedIn } from "../constants/roles";
+import { isAdmin, isTeamMember, canAccessGoogleAds, canAccessLinkedIn, teamBrand } from "../constants/roles";
 
 function LinkedInIcon({ size = 16 }) {
   return (
@@ -35,6 +35,7 @@ export default function MainLayout({ children }) {
   };
 
   const admin = isAdmin(user);
+  const brand = teamBrand(user);
 
   // Dashboard-type overview pages
   const dashboardChildren = [
@@ -743,9 +744,9 @@ export default function MainLayout({ children }) {
               <div className="ml-logo-icon">
                 <Cpu strokeWidth={1.8} />
               </div>
-              <span className="ml-logo-title">SIEGER MKT</span>
+              <span className="ml-logo-title">{brand.short}</span>
             </div>
-            <p className="ml-logo-sub">MARKETING TEAM</p>
+            <p className="ml-logo-sub">{brand.sub}</p>
             <button className="ml-close-btn" onClick={() => setOpen(false)}>
               <X size={18} />
             </button>
@@ -850,7 +851,7 @@ export default function MainLayout({ children }) {
             <button className="ml-menu-btn" onClick={() => setOpen(true)}>
               <Menu size={20} strokeWidth={1.6} />
             </button>
-            <span className="ml-topbar-title">SIEGER MKT</span>
+            <span className="ml-topbar-title">{brand.short}</span>
             <div className="ml-topbar-notif">
               <NotificationBell />
             </div>

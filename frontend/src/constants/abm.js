@@ -1,11 +1,13 @@
 // ABM CRM dropdown values — keep in sync with backend/routes/abm.js rules
-import { isAdmin } from "./roles";
+import { isAdmin, isServiceTeam } from "./roles";
 
-// ABM is restricted to admins + Johnson Paul D (also enforced server-side)
+// ABM is restricted to admins + Johnson Paul D (also enforced server-side).
+// The Service team never has ABM access.
 export const canAccessAbm = (user) =>
-  isAdmin(user) ||
-  user?.id === "d5f32730-4953-4c7c-9185-c87e6eca329d" ||
-  user?.email?.toLowerCase() === "mktganalyst@siegerglobal.net";
+  !isServiceTeam(user) &&
+  (isAdmin(user) ||
+    user?.id === "d5f32730-4953-4c7c-9185-c87e6eca329d" ||
+    user?.email?.toLowerCase() === "mktganalyst@siegerglobal.net");
 
 // ABM-specific divisions (distinct from ticket divisions)
 export const ABM_DIVISIONS = [
