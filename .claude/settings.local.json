@@ -150,7 +150,11 @@
       "PowerShell(cd D:\\\\Ticketing-System\\\\backend; $env:NODE_OPTIONS='--use-system-ca'; node e2e-disabled.tmp.js 2>&1 | Select-String -NotMatch 'injected env'; Remove-Item e2e-disabled.tmp.js -Force)",
       "PowerShell(cd D:\\\\Ticketing-System\\\\backend; $env:NODE_OPTIONS='--use-system-ca'; node -e \"require\\('dotenv'\\).config\\({quiet:true}\\); const s=require\\('./config/supabase'\\); \\(async\\(\\)=>{ const {error}=await s.from\\('abm_accounts'\\).select\\('division'\\).limit\\(1\\); console.log\\(error? 'abm_accounts.division NOT migrated -> '+error.code : 'abm_accounts.division EXISTS'\\); }\\)\\(\\)\" 2>&1 | Select-String -NotMatch 'injected env')",
       "PowerShell(cd D:\\\\Ticketing-System\\\\backend; $env:NODE_OPTIONS='--use-system-ca'; node e2e-abmdiv.tmp.js 2>&1 | Select-String -NotMatch 'injected env'; Remove-Item e2e-abmdiv.tmp.js -Force)",
-      "PowerShell(cd D:\\\\Ticketing-System\\\\backend; $env:NODE_OPTIONS='--use-system-ca'; node verify-metrics.tmp.js 2>&1 | Select-String -NotMatch 'injected env'; Remove-Item verify-metrics.tmp.js -Force)"
+      "PowerShell(cd D:\\\\Ticketing-System\\\\backend; $env:NODE_OPTIONS='--use-system-ca'; node verify-metrics.tmp.js 2>&1 | Select-String -NotMatch 'injected env'; Remove-Item verify-metrics.tmp.js -Force)",
+      "Bash(node -e \"const fs=require\\('fs'\\);const b=fs.readFileSync\\('src/assets/Sieger_logo.png'\\);console.log\\('PNG',b.readUInt32BE\\(16\\)+'x'+b.readUInt32BE\\(20\\)\\);const w=fs.readFileSync\\('src/assets/sieger white logo.png'\\);console.log\\('white PNG',w.readUInt32BE\\(16\\)+'x'+w.readUInt32BE\\(20\\)\\);\")",
+      "PowerShell(cd D:\\\\Ticketing-System\\\\backend; Start-Process -NoNewWindow node -ArgumentList \"icon-writer.tmp.js\"; Start-Sleep -Seconds 2; try { \\(Invoke-WebRequest -Uri http://localhost:5099 -Method OPTIONS -TimeoutSec 5\\).StatusCode } catch { $_.Exception.Message })",
+      "Bash(npm run *)",
+      "Bash(node seed-superadmin.js)"
     ]
   }
 }

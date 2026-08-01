@@ -5,6 +5,7 @@ import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
 import { excludeDisabledUsers } from "../utils/reportFilters";
 import useAuthStore from "../store/authStore";
+import { isAdmin as isAdminRole } from "../constants/roles";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 
@@ -447,7 +448,7 @@ export default function AdminAnalytics() {
   const groupedHierarchy = useMemo(() => {
     const filtered = tickets.filter((t) => {
       // STEP 2: Non‑admins see only their own tickets
-      if (user?.role !== "Admin" && user?.role !== "Super Admin") {
+      if (!isAdminRole(user)) {
         const isOwnTicket = t.assigned_to === user.id || t.assigned_to_name === user.name;
         if (!isOwnTicket) return false;
       }

@@ -8,6 +8,7 @@ import { useState } from "react";
 import useAuthStore from "../store/authStore";
 import NotificationBell from "../components/NotificationBell";
 import { canAccessAbm } from "../constants/abm";
+import { isAdmin, isTeamMember, canAccessGoogleAds, canAccessLinkedIn } from "../constants/roles";
 
 function LinkedInIcon({ size = 16 }) {
   return (
@@ -33,23 +34,15 @@ export default function MainLayout({ children }) {
     navigate("/");
   };
 
-const canAccessGoogleAds =
-  user?.role === "Admin" ||
-  user?.email?.toLowerCase() === "digitalmarketing@siegerglobal.net";
-
-const canAccessLinkedIn =
-  user?.role === "Admin" ||
-  user?.id === "072c5ff4-7d6e-4930-b271-e47e261f604d";
-
-  const isAdmin = user?.role === "Admin";
+  const admin = isAdmin(user);
 
   // Dashboard-type overview pages
   const dashboardChildren = [
     { label: "Overview", path: "/dashboard", icon: LayoutDashboard },
-    ...(canAccessGoogleAds
+    ...(canAccessGoogleAds(user)
       ? [{ label: "Google Ads", path: "/google-ads", icon: BarChart3 }]
       : []),
-    ...(canAccessLinkedIn
+    ...(canAccessLinkedIn(user)
       ? [{ label: "LinkedIn Analytics", path: "/linkedin", icon: LinkedInIcon }]
       : []),
   ];
@@ -57,7 +50,7 @@ const canAccessLinkedIn =
   // All reporting pages live under one "Reports" group
   const reportChildren = [
     { label: "Analytics", path: "/admin-analytics", icon: BarChart3 },
-    ...(isAdmin
+    ...(admin
       ? [
           { label: "Completion Report", path: "/completion-report", icon: TrendingUp },
           { label: "Open Tickets Report", path: "/open-tickets-report", icon: Gauge },
@@ -73,7 +66,7 @@ const canAccessLinkedIn =
       ]
     : [];
 
-  const adminChildren = isAdmin
+  const adminChildren = admin
     ? [
         { label: "Admin Panel", path: "/admin", icon: Shield },
         { label: "Pending Requests", path: "/pending-approvals", icon: ClipboardCheck },
@@ -84,7 +77,7 @@ const canAccessLinkedIn =
     { type: "group", key: "dashboard", label: "Dashboard", icon: LayoutDashboard, children: dashboardChildren },
     { type: "link", label: "Tickets", path: "/tickets", icon: Cpu },
     { type: "link", label: "Projects", path: "/projects", icon: FolderKanban },
-    ...(user?.role !== "Team Member"
+    ...(!isTeamMember(user)
       ? [{ type: "link", label: "Create Ticket", path: "/create-ticket", icon: PlusCircle }]
       : []),
     { type: "link", label: "Kanban", path: "/kanban", icon: KanbanSquare },

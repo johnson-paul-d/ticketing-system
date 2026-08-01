@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { UserPlus, Users, Search, Loader2, ShieldCheck } from "lucide-react";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
+import { ROLE_OPTIONS, ALL_ROLES } from "../constants/roles";
 
-const roleChip = {
-  Admin: "bg-[#9b2423]/10 text-[#9b2423]",
-  "Team Member": "bg-blue-50 text-blue-700",
-  User: "bg-gray-100 text-gray-600",
+const roleChipClass = (role = "") => {
+  if (role === "Super Admin") return "bg-purple-100 text-purple-700";
+  if (role.startsWith("Admin")) return "bg-[#9b2423]/10 text-[#9b2423]";
+  if (role.startsWith("Team Member")) return "bg-blue-50 text-blue-700";
+  return "bg-gray-100 text-gray-600";
 };
 
 const avatarColor = (name = "") => {
@@ -24,7 +26,7 @@ export default function AdminPanel() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("User");
+  const [role, setRole] = useState("User - MKTG");
   const [division, setDivision] = useState("CPS");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -70,6 +72,20 @@ export default function AdminPanel() {
     setBusyId(user.id);
     try {
       await api.put(`/users/${user.id}`, { active: !user.active });
+      fetchUsers();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  // Reassign a user's role/team (also how legacy roles get normalised)
+  const changeRole = async (user, newRole) => {
+    if (!newRole || newRole === user.role) return;
+    setBusyId(user.id);
+    try {
+      await api.put(`/users/${user.id}`, { role: newRole });
       fetchUsers();
     } catch (err) {
       console.error(err);
@@ -132,9 +148,13 @@ export default function AdminPanel() {
           <div>
             <label className="block text-xs font-semibold text-gray-500 mb-1.5">Role</label>
             <select value={role} onChange={(e) => setRole(e.target.value)} className={inputCls}>
-              <option>Admin</option>
-              <option>Team Member</option>
-              <option>User</option>
+              {ROLE_OPTIONS.map((g) => (
+                <optgroup key={g.group} label={g.group}>
+                  {g.roles.map((r) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
           </div>
           <div>
@@ -202,7 +222,23 @@ export default function AdminPanel() {
                     </td>
                     <td className="px-4 py-3 text-gray-600">{user.email}</td>
                     <td className="px-4 py-3">
-                      <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${roleChip[user.role] || roleChip.User}`}>{user.role}</span>
+                      <select
+                        value={ALL_ROLES.includes(user.role) ? user.role : ""}
+                        onChange={(e) => changeRole(user, e.target.value)}
+                        disabled={busyId === user.id}
+                        className={`text-[11px] font-semibold px-2 py-1 rounded-lg border border-gray-200 outline-none focus:ring-2 focus:ring-[#9b2423]/40 disabled:opacity-50 ${roleChipClass(user.role)}`}
+                      >
+                        {!ALL_ROLES.includes(user.role) && (
+                          <option value="" disabled>{user.role || "—"}</option>
+                        )}
+                        {ROLE_OPTIONS.map((g) => (
+                          <optgroup key={g.group} label={g.group}>
+                            {g.roles.map((r) => (
+                              <option key={r} value={r}>{r}</option>
+                            ))}
+                          </optgroup>
+                        ))}
+                      </select>
                     </td>
                     <td className="px-4 py-3 text-gray-600">{user.division}</td>
                     <td className="px-4 py-3">
@@ -247,7 +283,23 @@ export default function AdminPanel() {
                 </div>
                 <div className="flex items-center justify-between mt-3">
                   <div className="flex items-center gap-1.5">
-                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${roleChip[user.role] || roleChip.User}`}>{user.role}</span>
+                    <select
+                      value={ALL_ROLES.includes(user.role) ? user.role : ""}
+                      onChange={(e) => changeRole(user, e.target.value)}
+                      disabled={busyId === user.id}
+                      className={`text-[10px] font-semibold px-2 py-1 rounded-lg border border-gray-200 outline-none disabled:opacity-50 ${roleChipClass(user.role)}`}
+                    >
+                      {!ALL_ROLES.includes(user.role) && (
+                        <option value="" disabled>{user.role || "—"}</option>
+                      )}
+                      {ROLE_OPTIONS.map((g) => (
+                        <optgroup key={g.group} label={g.group}>
+                          {g.roles.map((r) => (
+                            <option key={r} value={r}>{r}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
                     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{user.division}</span>
                   </div>
                   <button

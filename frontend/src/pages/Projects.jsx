@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { isTeamMember as isTeamMemberRole } from "../constants/roles";
 import {
   FolderKanban,
   Plus,
@@ -117,7 +118,7 @@ export default function Projects() {
   const [ownerId, setOwnerId] = useState("");
   const [memberIds, setMemberIds] = useState([]);
 
-  const canCreate = user?.role !== "Team Member";
+  const canCreate = !isTeamMemberRole(user);
 
   const fetchProjects = async () => {
     try {

@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
 import { TICKET_STATUSES } from "../constants/statuses";
+import { isAdmin as isAdminRole } from "../constants/roles";
 
 export default function EditTicket() {
   const { id } = useParams();
@@ -11,7 +12,7 @@ export default function EditTicket() {
   // Get current user role from localStorage (or your auth context)
   const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
   const currentUserRole = storedUser.role || "";
-  const isAdmin = currentUserRole === "Admin" || currentUserRole === "Super Admin";
+  const isAdmin = isAdminRole(storedUser);
 
   const [formData, setFormData] = useState({
     title: "",

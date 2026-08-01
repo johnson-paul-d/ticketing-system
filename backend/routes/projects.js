@@ -5,9 +5,23 @@ const supabase = require('../config/supabase');
 const auth = require('../middleware/auth');
 const getISTTime = require('../utils/time');
 const { notifyUser } = require('../services/notificationService');
+const { isAdmin, isSuperAdmin, isTeamMember, teamFromRole } = require('../utils/roles');
 
-const isAdmin = (user) =>
-  user.role === 'Admin' || user.role === 'Super Admin';
+// A project belongs to the team of whoever created it (falling back to its
+// owner). Used to keep team admins scoped to their own team's projects.
+const projectTeam = (project, roleById) =>
+  teamFromRole(roleById[project.created_by]) ||
+  teamFromRole(roleById[project.owner]) ||
+  'Marketing';
+
+const rolesByIdFor = async (projects) => {
+  const ids = [
+    ...new Set(projects.flatMap((p) => [p.created_by, p.owner]).filter(Boolean)),
+  ];
+  if (!ids.length) return {};
+  const { data } = await supabase.from('users').select('id, role').in('id', ids);
+  return Object.fromEntries((data || []).map((u) => [u.id, u.role]));
+};
 
 // Migration not run yet → tell the client clearly instead of a generic 500
 const isMissingSchema = (error) =>
@@ -96,18 +110,26 @@ router.get('/', auth, async (req, res) => {
       return { ...p, stats: taskStats(tasks, p.target_date) };
     });
 
-    // Non-admins only see projects they own, belong to, or have a task in
-    const visible = isAdmin(req.user)
-      ? enriched
-      : enriched.filter(
-          (p) =>
-            (p.members || []).includes(req.user.id) ||
-            p.created_by === req.user.id ||
-            p.owner === req.user.id ||
-            (projectTickets || []).some(
-              (t) => t.project_id === p.id && t.assigned_to === req.user.id
-            )
-        );
+    let visible;
+    if (isSuperAdmin(req.user)) {
+      visible = enriched;
+    } else if (isAdmin(req.user)) {
+      // Team admins only see their own team's projects (by creator's team)
+      const roleById = await rolesByIdFor(enriched);
+      const myTeam = teamFromRole(req.user.role);
+      visible = enriched.filter((p) => projectTeam(p, roleById) === myTeam);
+    } else {
+      // Everyone else only sees projects they own, belong to, or have a task in
+      visible = enriched.filter(
+        (p) =>
+          (p.members || []).includes(req.user.id) ||
+          p.created_by === req.user.id ||
+          p.owner === req.user.id ||
+          (projectTickets || []).some(
+            (t) => t.project_id === p.id && t.assigned_to === req.user.id
+          )
+      );
+    }
 
     res.json(visible);
   } catch (err) {
@@ -121,7 +143,7 @@ router.get('/', auth, async (req, res) => {
 // =====================================================
 router.post('/', auth, async (req, res) => {
   try {
-    if (req.user.role === 'Team Member') {
+    if (isTeamMember(req.user)) {
       return res.status(403).json({ message: 'Team members cannot create projects' });
     }
     const { name, description, target_date, members, color, division, owner } = req.body;
@@ -195,9 +217,14 @@ router.get('/:id', auth, async (req, res) => {
       .eq('project_id', project.id)
       .order('created_at', { ascending: true });
 
-    // Access: admin, owner, member, creator, or assignee of any task
+    // Access: admin (scoped to their team), owner, member, creator, or
+    // assignee of any task
+    const roleById = await rolesByIdFor([project]);
+    const adminScoped =
+      isSuperAdmin(req.user) ||
+      (isAdmin(req.user) && projectTeam(project, roleById) === teamFromRole(req.user.role));
     const hasAccess =
-      isAdmin(req.user) ||
+      adminScoped ||
       (project.members || []).includes(req.user.id) ||
       project.created_by === req.user.id ||
       project.owner === req.user.id ||

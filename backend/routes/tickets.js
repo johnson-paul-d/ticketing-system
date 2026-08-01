@@ -4,6 +4,7 @@ const router = express.Router();
 const supabase = require('../config/supabase');
 const auth = require('../middleware/auth');
 const getISTTime = require('../utils/time');
+const { TEAM, isAdmin, isSuperAdmin, teamFromRole, getUserTeam } = require('../utils/roles');
 
 const { Resend } = require('resend');
 
@@ -20,6 +21,31 @@ const { notifyAdmins, notifyUser } = require('../services/notificationService');
 
 // Today's date in IST (date-only, for tickets.completed_date)
 const todayIST = () => new Date(Date.now() + 330 * 60000).toISOString().split('T')[0];
+
+// =====================================================
+// TEAM SCOPING
+// A ticket belongs to the team of its assignee, falling back to its creator.
+// Team admins (Admin - Marketing / Admin - Service) only see and act on their
+// own team's tickets; Super Admins span every team; everyone else is limited
+// to tickets assigned to them.
+// =====================================================
+const ticketTeam = async (ticket) => {
+  const ids = [ticket.assigned_to, ticket.created_by].filter(Boolean);
+  if (!ids.length) return TEAM.MARKETING;
+  const { data: users } = await supabase.from('users').select('id, role').in('id', ids);
+  const roleOf = (id) => users?.find((u) => u.id === id)?.role;
+  return (
+    teamFromRole(roleOf(ticket.assigned_to)) ||
+    teamFromRole(roleOf(ticket.created_by)) ||
+    TEAM.MARKETING
+  );
+};
+
+const canAccessTicket = async (user, ticket) => {
+  if (isSuperAdmin(user)) return true;
+  if (isAdmin(user)) return (await ticketTeam(ticket)) === getUserTeam(user);
+  return ticket.assigned_to === user.id;
+};
 
 // =====================================================
 // PROJECT HELPERS (tasks inside a project)
@@ -143,9 +169,11 @@ const sendDueDateApprovalEmail = async (
 
 router.get('/', auth, async (req, res) => {
   try {
+    const admin = isAdmin(req.user);
     let query = supabase.from('tickets').select('*');
 
-    if (req.user.role !== 'Admin' && req.user.role !== 'Super Admin') {
+    // Non-admins only ever see tickets assigned to them
+    if (!admin) {
       query = query.eq('assigned_to', req.user.id);
     }
 
@@ -159,15 +187,26 @@ router.get('/', auth, async (req, res) => {
     const { data: timeEntries, error: timeError } = await supabase.from('ticket_time_entries').select('*');
     if (timeError) console.error('Time entry fetch error:', timeError);
 
-    const assignedIds = [...new Set(tickets.map(t => t.assigned_to).filter(Boolean))];
+    // Resolve assignee + creator: name/active for display, role for team scoping
+    const userIds = [
+      ...new Set(
+        [...tickets.map((t) => t.assigned_to), ...tickets.map((t) => t.created_by)].filter(Boolean)
+      ),
+    ];
     let users = [];
-    if (assignedIds.length > 0) {
-      const { data: fetchedUsers, error: userError } = await supabase.from('users').select('id, name, active').in('id', assignedIds);
+    if (userIds.length > 0) {
+      const { data: fetchedUsers, error: userError } = await supabase
+        .from('users')
+        .select('id, name, active, role')
+        .in('id', userIds);
       if (!userError && fetchedUsers) users = fetchedUsers;
       else console.error('User fetch error:', userError);
     }
+    const roleOf = (id) => users.find((u) => u.id === id)?.role;
+    const teamOfTicket = (t) =>
+      teamFromRole(roleOf(t.assigned_to)) || teamFromRole(roleOf(t.created_by)) || TEAM.MARKETING;
 
-    const mappedTickets = tickets.map((ticket) => {
+    let mappedTickets = tickets.map((ticket) => {
       const entries = (timeEntries || []).filter(entry => entry.ticket_id === ticket.id);
       const assignedUser = users?.find(u => u.id === ticket.assigned_to);
       return {
@@ -176,9 +215,16 @@ router.get('/', auth, async (req, res) => {
         // Reports and dashboards hide work owned by disabled people.
         // Unassigned tickets stay visible (nobody is disabled).
         assigned_to_active: ticket.assigned_to ? assignedUser?.active !== false : true,
+        team: teamOfTicket(ticket),
         time_entries: entries || [],
       };
     });
+
+    // Team admins only see their own team's tickets (Super Admin sees all)
+    if (admin && !isSuperAdmin(req.user)) {
+      const myTeam = getUserTeam(req.user);
+      mappedTickets = mappedTickets.filter((t) => t.team === myTeam);
+    }
 
     res.json(mappedTickets);
   } catch (err) {
@@ -199,10 +245,8 @@ router.get('/:id', auth, async (req, res) => {
       return res.status(404).json({ message: 'Ticket not found' });
     }
 
-    if (req.user.role !== 'Admin' && req.user.role !== 'Super Admin') {
-      if (ticket.assigned_to !== req.user.id) {
-        return res.status(403).json({ message: 'Access denied' });
-      }
+    if (!(await canAccessTicket(req.user, ticket))) {
+      return res.status(403).json({ message: 'Access denied' });
     }
 
     const { data: timeEntries, error: timeError } = await supabase
@@ -272,7 +316,7 @@ router.post('/', auth, async (req, res) => {
         return res.status(400).json({ message: 'Project not found' });
       }
       if (due_date && project.target_date && due_date > project.target_date) {
-        if (req.user.role === 'Admin' || req.user.role === 'Super Admin') {
+        if (isAdmin(req.user)) {
           extendProjectTo = due_date;
         } else {
           return res.status(400).json({
@@ -393,10 +437,8 @@ router.put('/:id', auth, async (req, res) => {
       return res.status(404).json({ message: 'Ticket not found' });
     }
 
-    if (req.user.role !== 'Admin' && req.user.role !== 'Super Admin') {
-      if (existing.assigned_to !== req.user.id) {
-        return res.status(403).json({ message: 'Access denied' });
-      }
+    if (!(await canAccessTicket(req.user, existing))) {
+      return res.status(403).json({ message: 'Access denied' });
     }
 
     let timeline = existing.timeline || [];
@@ -430,7 +472,7 @@ router.put('/:id', auth, async (req, res) => {
       // target date (admins extend the timeline instead)
       const effectiveDue = due_date || existing.due_date;
       if (effectiveDue && projectContext.target_date && effectiveDue > projectContext.target_date) {
-        if (req.user.role === 'Admin' || req.user.role === 'Super Admin') {
+        if (isAdmin(req.user)) {
           extendProjectTo = effectiveDue;
         } else {
           return res.status(400).json({
@@ -456,7 +498,7 @@ router.put('/:id', auth, async (req, res) => {
 
     // Approve
     if (due_date_change_status === 'Approved' && existing.requested_due_date) {
-      if (req.user.role !== 'Admin' && req.user.role !== 'Super Admin') {
+      if (!isAdmin(req.user)) {
         return res.status(403).json({ message: 'Only admin can approve due date changes' });
       }
       updateData.due_date = existing.requested_due_date;
@@ -491,7 +533,7 @@ router.put('/:id', auth, async (req, res) => {
 
     // Reject
     if (due_date_change_status === 'Rejected') {
-      if (req.user.role !== 'Admin' && req.user.role !== 'Super Admin') {
+      if (!isAdmin(req.user)) {
         return res.status(403).json({ message: 'Only admin can reject due date changes' });
       }
       updateData.requested_due_date = null;
@@ -533,7 +575,7 @@ router.put('/:id', auth, async (req, res) => {
     // =====================================================
     // 2. DIRECT DUE DATE UPDATE (Admin — no approval needed)
     // =====================================================
-    if (due_date && (req.user.role === 'Admin' || req.user.role === 'Super Admin')) {
+    if (due_date && isAdmin(req.user)) {
       updateData.due_date = due_date;
       timeline.push({
         type: 'due_date',
@@ -553,8 +595,7 @@ router.put('/:id', auth, async (req, res) => {
       requested_due_date &&
       due_date_change_status === 'Pending' &&
       existing.due_date_change_status !== 'Pending' &&
-      req.user.role !== 'Admin' &&
-      req.user.role !== 'Super Admin'
+      !isAdmin(req.user)
     ) {
       // Approval is only needed when the ticket has a "Given By" (someone
       // commissioned it), or when the new date would extend the project
@@ -579,7 +620,8 @@ router.put('/:id', auth, async (req, res) => {
         await notifyAdmins(
           'Due Date Change Requested',
           `${req.user.name} requested a due date change for "${existing.title}" from ${existing.due_date || 'Not set'} to ${requested_due_date}`,
-          existing.id
+          existing.id,
+          getUserTeam(req.user)
         );
         notificationsCreated = true;
 
@@ -668,7 +710,7 @@ router.put('/:id', auth, async (req, res) => {
     // 6. STATUS & APPROVAL REQUEST FOR COMPLETION
     // =====================================================
     if (status && approvalTriggers.includes(status)) {
-      if (req.user.role === 'Admin' || req.user.role === 'Super Admin') {
+      if (isAdmin(req.user)) {
         // Admins apply the status directly — no self-approval loop
         updateData.status = status;
         updateData.approval_required = false;
@@ -709,7 +751,8 @@ router.put('/:id', auth, async (req, res) => {
         await notifyAdmins(
           'Approval Required',
           `${req.user.name} requested approval for "${existing.title}"`,
-          existing.id
+          existing.id,
+          getUserTeam(req.user)
         );
         notificationsCreated = true;
         if (process.env.ADMIN_EMAIL) {
@@ -784,10 +827,14 @@ router.put('/:id', auth, async (req, res) => {
 
 router.put('/:id/approve', auth, async (req, res) => {
   try {
-    if (req.user.role !== 'Admin' && req.user.role !== 'Super Admin') {
+    if (!isAdmin(req.user)) {
       return res.status(403).json({ message: 'Only admin can approve' });
     }
     const { data: ticket } = await supabase.from('tickets').select('*').eq('id', req.params.id).single();
+    if (!ticket) return res.status(404).json({ message: 'Ticket not found' });
+    if (!(await canAccessTicket(req.user, ticket))) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
     let timeline = Array.isArray(ticket.timeline) ? ticket.timeline : [];
     timeline.push({
       type: 'approval',
@@ -850,10 +897,14 @@ router.put('/:id/approve', auth, async (req, res) => {
 
 router.put('/:id/reject', auth, async (req, res) => {
   try {
-    if (req.user.role !== 'Admin' && req.user.role !== 'Super Admin') {
+    if (!isAdmin(req.user)) {
       return res.status(403).json({ message: 'Only admin can reject' });
     }
     const { data: ticket } = await supabase.from('tickets').select('*').eq('id', req.params.id).single();
+    if (!ticket) return res.status(404).json({ message: 'Ticket not found' });
+    if (!(await canAccessTicket(req.user, ticket))) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
     let timeline = Array.isArray(ticket.timeline) ? ticket.timeline : [];
     timeline.push({
       type: 'approval',
@@ -910,6 +961,12 @@ router.put('/:id/assign', auth, async (req, res) => {
       .eq('id', req.params.id)
       .single();
 
+    if (!existing) return res.status(404).json({ message: 'Ticket not found' });
+    // Assigning is an admin action, and team admins stay within their team
+    if (!isAdmin(req.user) || !(await canAccessTicket(req.user, existing))) {
+      return res.status(403).json({ message: 'Only admin can assign tickets' });
+    }
+
     const { data, error } = await supabase
       .from('tickets')
       .update({
@@ -953,8 +1010,13 @@ router.put('/:id/assign', auth, async (req, res) => {
 
 router.delete('/:id', auth, async (req, res) => {
   try {
-    if (req.user.role !== 'Admin' && req.user.role !== 'Super Admin') {
+    if (!isAdmin(req.user)) {
       return res.status(403).json({ message: 'Only admin can delete tickets' });
+    }
+    const { data: existing } = await supabase.from('tickets').select('*').eq('id', req.params.id).single();
+    if (!existing) return res.status(404).json({ message: 'Ticket not found' });
+    if (!(await canAccessTicket(req.user, existing))) {
+      return res.status(403).json({ message: 'Access denied' });
     }
     const { error } = await supabase.from('tickets').delete().eq('id', req.params.id);
     if (error) return res.status(500).json({ message: 'Delete failed' });

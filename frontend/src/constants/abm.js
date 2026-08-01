@@ -1,8 +1,9 @@
 // ABM CRM dropdown values — keep in sync with backend/routes/abm.js rules
+import { isAdmin } from "./roles";
 
 // ABM is restricted to admins + Johnson Paul D (also enforced server-side)
 export const canAccessAbm = (user) =>
-  user?.role === "Admin" ||
+  isAdmin(user) ||
   user?.id === "d5f32730-4953-4c7c-9185-c87e6eca329d" ||
   user?.email?.toLowerCase() === "mktganalyst@siegerglobal.net";
 

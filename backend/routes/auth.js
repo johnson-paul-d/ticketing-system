@@ -69,7 +69,7 @@ router.post('/setup-admin', async (req, res) => {
       name: 'Admin',
       email,
       password: hashedPassword,
-      role: 'Admin',
+      role: 'Super Admin',
       division: 'CPS',
       active: true,
     }]);
@@ -87,7 +87,7 @@ router.get('/team-members', async (req, res) => {
     const { data, error } = await supabase
       .from('users')
       .select('id,name,email,role,division')
-      .eq('role', 'Team Member')
+      .like('role', 'Team Member%')
       .eq('active', true);
     if (error) throw error;
     res.json(data);

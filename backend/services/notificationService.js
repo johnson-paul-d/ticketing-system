@@ -1,4 +1,5 @@
 const supabase = require('../config/supabase');
+const { isAdmin, isSuperAdmin, getUserTeam } = require('../utils/roles');
 
 // Insert notification rows. If notifications.ticket_id is still the legacy
 // bigint type (tickets use uuid ids), the typed insert fails with 22P02 —
@@ -16,18 +17,26 @@ const insertNotifications = async (rows) => {
 };
 
 // Insert one notification per active admin (matched by real name,
-// since GET /notifications filters on user_name = req.user.name)
-const notifyAdmins = async (title, message, ticketId) => {
+// since GET /notifications filters on user_name = req.user.name).
+// When a team is given, only that team's admins (plus Super Admins, who span
+// every team) are notified — keeping approval requests within the requester's
+// team.
+const notifyAdmins = async (title, message, ticketId, team = null) => {
   try {
-    const { data: admins, error } = await supabase
+    const { data: users, error } = await supabase
       .from('users')
-      .select('name')
-      .in('role', ['Admin', 'Super Admin'])
+      .select('name, role')
       .eq('active', true);
-    if (error || !admins?.length) {
+    if (error || !users?.length) {
       if (error) console.error('Admin lookup for notification failed:', error);
       return;
     }
+    const admins = users.filter((u) => {
+      if (!isAdmin(u)) return false;
+      if (!team) return true;
+      return isSuperAdmin(u) || getUserTeam(u) === team;
+    });
+    if (!admins.length) return;
     const rows = admins.map((a) => ({
       user_name: a.name,
       title,

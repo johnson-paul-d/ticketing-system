@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { isAdmin as isAdminRole } from "../constants/roles";
 import {
   ArrowLeft,
   Plus,
@@ -93,7 +94,7 @@ export default function ProjectDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
-  const isAdmin = user?.role === "Admin" || user?.role === "Super Admin";
+  const isAdmin = isAdminRole(user);
 
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);

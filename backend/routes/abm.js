@@ -4,8 +4,7 @@ const router = express.Router();
 const supabase = require('../config/supabase');
 const auth = require('../middleware/auth');
 const getISTTime = require('../utils/time');
-
-const isAdmin = (user) => user.role === 'Admin' || user.role === 'Super Admin';
+const { isAdmin } = require('../utils/roles');
 
 // ABM is restricted to admins + Johnson Paul D
 const ABM_USER_IDS = ['d5f32730-4953-4c7c-9185-c87e6eca329d'];

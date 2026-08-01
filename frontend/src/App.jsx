@@ -26,12 +26,10 @@ import AbmAccountDetails from "./pages/AbmAccountDetails";
 import AbmToday from "./pages/AbmToday";
 import useAuthStore from "./store/authStore";
 import { canAccessAbm } from "./constants/abm";
+import { canAccessGoogleAds } from "./constants/roles";
 
 function App() {
   const user = useAuthStore((state) => state.user);
-const canAccessGoogleAds =
-  user?.role === "Admin" ||
-  user?.email?.toLowerCase() === "digitalmarketing@siegerglobal.net";
 
   return (
     <BrowserRouter>
@@ -177,7 +175,7 @@ const canAccessGoogleAds =
   path="/google-ads"
   element={
     <ProtectedRoute>
-      {canAccessGoogleAds ? (
+      {canAccessGoogleAds(user) ? (
         <GoogleAdsDashboard />
       ) : (
         <Navigate to="/dashboard" replace />

@@ -8,6 +8,7 @@ import moment from "moment";
 import { TICKET_CATEGORIES } from "../constants/categories";
 import { TICKET_DIVISIONS } from "../constants/divisions";
 import { TICKET_STATUSES } from "../constants/statuses";
+import { isAdmin as isAdminRole } from "../constants/roles";
 
 export default function TicketDetails() {
   const { id } = useParams();
@@ -43,7 +44,7 @@ export default function TicketDetails() {
 
   useEffect(() => {
     fetchTicket();
-    if (user?.role === "Admin") fetchUsers();
+    if (isAdmin) fetchUsers();
     socket.on("ticketUpdated", fetchTicket);
     return () => socket.off("ticketUpdated", fetchTicket);
   }, [user]);
@@ -122,7 +123,7 @@ export default function TicketDetails() {
     }
   };
 
-  const isAdmin = user?.role === "Admin" || user?.role === "Super Admin";
+  const isAdmin = isAdminRole(user);
   const canEditTitle = isAdmin || ticket?.assigned_to === user?.id;
 
   const revertDueDateRequest = async () => {
@@ -425,13 +426,13 @@ export default function TicketDetails() {
               )}
             </div>
           </div>
-          {user?.role === "Admin" && (
+          {isAdmin && (
             <button onClick={deleteTicket} className="bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-2xl">Delete Ticket</button>
           )}
         </div>
 
         {/* APPROVAL */}
-        {ticket.status === "Waiting For Approval" && user?.role === "Admin" && (
+        {ticket.status === "Waiting For Approval" && isAdmin && (
           <div className="mt-8 bg-yellow-50 border border-yellow-200 rounded-3xl p-6">
             <h2 className="text-2xl font-bold">Approval Required</h2>
             <p className="text-gray-600 mt-2">This ticket requires manager approval.</p>
@@ -443,7 +444,7 @@ export default function TicketDetails() {
         )}
 
         {/* NEW: Admin approval UI for due date change */}
-        {user?.role === "Admin" && ticket.due_date_change_status === "Pending" && (
+        {isAdmin && ticket.due_date_change_status === "Pending" && (
           <div className="mt-8 bg-orange-50 border border-orange-200 rounded-2xl p-5">
             <h3 className="font-bold text-xl">Due Date Change Approval Required</h3>
             <div className="mt-4 space-y-2">
@@ -484,7 +485,7 @@ export default function TicketDetails() {
             {/* DESCRIPTION */}
             <div>
               <p className="font-semibold text-gray-500">Description</p>
-              {user?.role === "Admin" ? (
+              {isAdmin ? (
                 <div className="flex flex-col gap-3 mt-3">
                   <textarea
                     value={ticket.description || ""}
@@ -522,7 +523,7 @@ export default function TicketDetails() {
             {/* PRIORITY */}
             <div>
               <p className="font-semibold text-gray-500">Priority</p>
-              {user?.role === "Admin" ? (
+              {isAdmin ? (
                 <div className="flex gap-4 mt-3">
                   <select
                     value={ticket.priority || ""}
@@ -565,7 +566,7 @@ export default function TicketDetails() {
             {/* CATEGORY */}
             <div>
               <p className="font-semibold text-gray-500">Category</p>
-              {user?.role === "Admin" ? (
+              {isAdmin ? (
                 <div className="flex gap-4 mt-3">
                   <select
                     value={ticket.category || ""}
@@ -623,7 +624,7 @@ export default function TicketDetails() {
             {/* DIVISION */}
             <div>
               <p className="font-semibold text-gray-500">Division</p>
-              {user?.role === "Admin" ? (
+              {isAdmin ? (
                 <div className="flex gap-4 mt-3">
                   <select
                     value={ticket.division || ""}
@@ -668,7 +669,7 @@ export default function TicketDetails() {
             {/* GIVEN BY */}
             <div>
               <p className="font-semibold text-gray-500">Given By</p>
-              {user?.role === "Admin" ? (
+              {isAdmin ? (
                 <div className="flex flex-col sm:flex-row gap-4 mt-3">
                   <input
                     type="text"
@@ -792,7 +793,7 @@ export default function TicketDetails() {
             </div>
 
             {/* ASSIGN TICKET */}
-            {user?.role === "Admin" && (
+            {isAdmin && (
               <div className="mt-8">
                 <p className="font-semibold text-gray-500 mb-3">Assign Team Member</p>
                 <div className="flex flex-col sm:flex-row gap-4">
@@ -836,7 +837,7 @@ export default function TicketDetails() {
             <div className="bg-white/10 rounded-2xl p-5"><div className="text-sm opacity-80">Consumed</div><div className="text-3xl font-bold mt-2">{formatMinutes(totalMinutes)}</div></div>
             <div className="bg-white/10 rounded-2xl p-5"><div className="text-sm opacity-80">Remaining</div><div className="text-3xl font-bold mt-2">{formatMinutes(remainingMinutes)}</div></div>
           </div>
-          {user?.role === "Admin" && (
+          {isAdmin && (
             <div className="mt-8 flex flex-wrap items-end gap-4">
               <div><label className="block text-sm mb-2">Days</label><input type="number" min="0" value={allottedDays} onChange={(e) => setAllottedDays(Math.max(0, Number(e.target.value)))} className="border rounded-2xl px-5 py-3 text-black w-28" /></div>
               <div><label className="block text-sm mb-2">Hours</label><input type="number" min="0" max="23" value={allottedHours} onChange={(e) => setAllottedHours(Math.min(23, Math.max(0, Number(e.target.value))))} className="border rounded-2xl px-5 py-3 text-black w-28" /></div>

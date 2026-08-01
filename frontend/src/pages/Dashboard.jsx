@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from "react";
+import { isAdmin as isAdminRole, isTeamMember as isTeamMemberRole } from "../constants/roles";
 import {
   BarChart,
   Bar,
@@ -784,7 +785,7 @@ export default function Dashboard() {
   const [dueStartDate, setDueStartDate] = useState(null);
   const [dueEndDate, setDueEndDate] = useState(null);
 
-  const isAdmin = user?.role === "Admin";
+  const isAdmin = isAdminRole(user);
   const isManager = user?.role === "Manager";
   const isAdminOrManager = isAdmin || isManager;
   const isDirector = isAdmin || isManager; // For director-level views
@@ -801,7 +802,7 @@ export default function Dashboard() {
     try {
       const res = await api.get("/tickets");
       let data = excludeDisabledUsers(res.data);
-      if (user?.role === "Team Member") {
+      if (isTeamMemberRole(user)) {
         data = data.filter((t) => t.assigned_to_name === user.name);
       }
       setAllTickets(data);

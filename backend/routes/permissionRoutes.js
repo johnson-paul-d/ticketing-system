@@ -4,6 +4,7 @@ const router = express.Router();
 const supabase = require("../config/supabase");
 const auth = require("../middleware/auth");
 const getISTTime = require("../utils/time");
+const { isAdmin } = require("../utils/roles");
 
 // =====================================================
 // CREATE PERMISSION REQUEST
@@ -68,10 +69,7 @@ router.get("/", auth, async (req, res) => {
         ascending: false,
       });
 
-    if (
-      req.user.role !== "Admin" &&
-      req.user.role !== "Super Admin"
-    ) {
+    if (!isAdmin(req.user)) {
       query = query.eq(
         "user_id",
         req.user.id
