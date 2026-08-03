@@ -5,26 +5,7 @@ const router = express.Router();
 const supabase = require('../config/supabase');
 const requireAuth = require('../middleware/auth');
 const { isAdmin } = require('../utils/roles');
-const { Resend } = require('resend');
-
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
-
-const nodemailer = require('nodemailer');
-// Optional SMTP sender (e.g. Gmail). Preferred over Resend when configured, and
-// can deliver to any recipient. For Gmail: enable 2-Step Verification and use a
-// 16-char App Password as SMTP_PASS.
-const smtpTransport =
-  process.env.SMTP_USER && process.env.SMTP_PASS
-    ? nodemailer.createTransport({
-        host: process.env.SMTP_HOST || 'smtp.gmail.com',
-        port: Number(process.env.SMTP_PORT) || 587,
-        secure: Number(process.env.SMTP_PORT) === 465,
-        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-      })
-    : null;
-
-if (!smtpTransport && !resend)
-  console.error('❌ No email sender configured — set SMTP_USER/SMTP_PASS or RESEND_API_KEY');
+const { sendMail } = require('../services/mailService');
 
 // =====================================================
 // PASSWORD RESET — OTP (in-memory, short-lived)
@@ -40,56 +21,20 @@ setInterval(() => {
   for (const [key, val] of otpStore) if (val.expires < now) otpStore.delete(key);
 }, 5 * 60 * 1000).unref();
 
-// Returns { ok, error }. Prefers SMTP (e.g. Gmail) when configured, falling
-// back to Resend. The Resend SDK reports API failures in the resolved `error`
-// field (it does not throw), so that path is checked explicitly.
-const sendOtpEmail = async (to, name, otp) => {
-  const subject = 'Your Sieger password reset code';
-  const html = `
+// Emails the OTP via the shared mailer (SMTP → Resend). Returns { ok, error }.
+const sendOtpEmail = async (to, name, otp) =>
+  sendMail({
+    to,
+    subject: 'Your Sieger password reset code',
+    html: `
         <div style="font-family:sans-serif;max-width:480px;margin:auto;">
           <h2 style="color:#9b2423;margin-bottom:4px;">Password Reset</h2>
           <p>Hi ${name || 'there'}, use the code below to reset your Sieger account password:</p>
           <div style="font-size:32px;font-weight:700;letter-spacing:8px;color:#111;background:#f3ece0;padding:16px;border-radius:12px;text-align:center;margin:16px 0;">${otp}</div>
           <p style="color:#666;font-size:14px;">This code expires in 10 minutes. If you didn't request a password reset, you can safely ignore this email.</p>
         </div>
-      `;
-
-  if (smtpTransport) {
-    try {
-      await smtpTransport.sendMail({
-        from: process.env.SMTP_FROM || `Sieger Ticketing <${process.env.SMTP_USER}>`,
-        to,
-        subject,
-        html,
-      });
-      return { ok: true };
-    } catch (err) {
-      console.error('OTP email error (SMTP):', err);
-      return { ok: false, error: err.message || 'SMTP send failed' };
-    }
-  }
-
-  if (resend) {
-    try {
-      const { error } = await resend.emails.send({
-        from: process.env.FROM_EMAIL || 'onboarding@resend.dev',
-        to,
-        subject,
-        html,
-      });
-      if (error) {
-        console.error('OTP email error (Resend):', error);
-        return { ok: false, error: error.message || 'Email provider rejected the message' };
-      }
-      return { ok: true };
-    } catch (err) {
-      console.error('OTP email error (Resend):', err);
-      return { ok: false, error: err.message || 'Email send failed' };
-    }
-  }
-
-  return { ok: false, error: 'Email not configured — set SMTP_USER/SMTP_PASS (or RESEND_API_KEY)' };
-};
+      `,
+  });
 
 // LOGIN
 router.post('/login', async (req, res) => {

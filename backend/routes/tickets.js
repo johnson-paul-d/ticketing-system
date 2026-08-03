@@ -6,16 +6,7 @@ const auth = require('../middleware/auth');
 const getISTTime = require('../utils/time');
 const { TEAM, isAdmin, isSuperAdmin, teamFromRole, getUserTeam } = require('../utils/roles');
 
-const { Resend } = require('resend');
-
-// =====================================================
-// RESEND
-// =====================================================
-
-if (!process.env.RESEND_API_KEY)
-  console.error('❌ RESEND_API_KEY missing — approval emails disabled');
-
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+const { sendMail } = require('../services/mailService');
 
 const { notifyAdmins, notifyUser } = require('../services/notificationService');
 
@@ -106,13 +97,10 @@ const extendProjectTimeline = async (project, newDate, actorName, io) => {
 // =====================================================
 
 const sendApprovalEmail = async (to, ticketTitle, requesterName, ticketId) => {
-  if (!resend) return false;
-  try {
-    await resend.emails.send({
-      from: process.env.FROM_EMAIL,
-      to,
-      subject: `Approval Required: ${ticketTitle}`,
-      html: `
+  const { ok } = await sendMail({
+    to,
+    subject: `Approval Required: ${ticketTitle}`,
+    html: `
         <div style="font-family:sans-serif;">
           <h2>Approval Required</h2>
           <p>${requesterName} requested approval for:</p>
@@ -120,12 +108,8 @@ const sendApprovalEmail = async (to, ticketTitle, requesterName, ticketId) => {
           <a href="${process.env.FRONTEND_URL}/tickets/${ticketId}" style="background:black;color:white;padding:10px 16px;border-radius:8px;text-decoration:none;display:inline-block;">View Ticket</a>
         </div>
       `,
-    });
-    return true;
-  } catch (err) {
-    console.error('Email error:', err);
-    return false;
-  }
+  });
+  return ok;
 };
 
 // NEW: Email for due date change requests
@@ -137,13 +121,10 @@ const sendDueDateApprovalEmail = async (
   requesterName,
   ticketId
 ) => {
-  if (!resend) return false;
-  try {
-    await resend.emails.send({
-      from: process.env.FROM_EMAIL,
-      to,
-      subject: `Due Date Change Approval Required`,
-      html: `
+  const { ok } = await sendMail({
+    to,
+    subject: `Due Date Change Approval Required`,
+    html: `
         <div style="font-family:sans-serif;">
           <h2>Due Date Change Request</h2>
           <p><strong>Ticket:</strong> ${ticketTitle}</p>
@@ -155,12 +136,8 @@ const sendDueDateApprovalEmail = async (
           </a>
         </div>
       `,
-    });
-    return true;
-  } catch (err) {
-    console.error('Due date approval email error:', err);
-    return false;
-  }
+  });
+  return ok;
 };
 
 // =====================================================
