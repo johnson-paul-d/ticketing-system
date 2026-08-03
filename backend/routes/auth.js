@@ -158,7 +158,11 @@ router.post('/forgot-password', async (req, res) => {
     const hash = await bcrypt.hash(otp, 10);
     otpStore.set(email, { hash, expires: Date.now() + OTP_TTL_MS, attempts: 0, userId: user.id });
 
-    await sendOtpEmail(user.email, user.name, otp);
+    // Send in the background so a slow/blocked email provider never hangs the
+    // response (the generic reply doesn't depend on delivery anyway).
+    sendOtpEmail(user.email, user.name, otp).then((r) => {
+      if (!r.ok) console.error('OTP send failed:', r.error);
+    });
     return res.json(generic);
   } catch (err) {
     console.error('forgot-password error:', err);

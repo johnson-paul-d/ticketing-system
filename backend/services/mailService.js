@@ -13,6 +13,11 @@ const smtpTransport =
         port: Number(process.env.SMTP_PORT) || 587,
         secure: Number(process.env.SMTP_PORT) === 465,
         auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+        // Fail fast when the host blocks outbound SMTP (e.g. Render and most
+        // PaaS platforms) instead of hanging ~2 minutes on the socket timeout.
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000,
       })
     : null;
 
@@ -29,6 +34,7 @@ if (!smtpTransport && !resend) {
 // Send an email. Returns { ok, error }. The Resend SDK reports API failures in
 // the resolved `error` field (it does not throw), so that path is checked.
 const sendMail = async ({ to, subject, html, text }) => {
+  let smtpError = null;
   if (smtpTransport) {
     try {
       await smtpTransport.sendMail({
@@ -40,8 +46,9 @@ const sendMail = async ({ to, subject, html, text }) => {
       });
       return { ok: true };
     } catch (err) {
-      console.error("Email error (SMTP):", err);
-      return { ok: false, error: err.message || "SMTP send failed" };
+      console.error("Email error (SMTP), trying Resend fallback:", err.message);
+      smtpError = err.message || "SMTP send failed";
+      // fall through to Resend
     }
   }
 
@@ -65,7 +72,7 @@ const sendMail = async ({ to, subject, html, text }) => {
     }
   }
 
-  return { ok: false, error: "Email not configured — set SMTP_USER/SMTP_PASS (or RESEND_API_KEY)" };
+  return { ok: false, error: smtpError || "Email not configured — set SMTP_USER/SMTP_PASS (or RESEND_API_KEY)" };
 };
 
 module.exports = { sendMail };
