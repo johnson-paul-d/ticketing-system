@@ -13,6 +13,12 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Password reset flow: "login" -> "forgot" (enter email) -> "reset" (code + new password)
+  const [mode, setMode] = useState("login");
+  const [otp, setOtp] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [info, setInfo] = useState("");
+
   const handleLogin = async () => {
     if (!email || !password) {
       setError("Please enter both email and password");
@@ -35,6 +41,71 @@ export default function Login() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const requestOtp = async () => {
+    if (!email) {
+      setError("Please enter your email");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    setInfo("");
+    try {
+      const res = await api.post("/auth/forgot-password", { email });
+      setInfo(res.data?.message || "If an account exists, a reset code has been sent.");
+      setMode("reset");
+    } catch (err) {
+      setError(err?.response?.data?.message || "Failed to send reset code");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitReset = async () => {
+    if (!otp || !newPassword) {
+      setError("Enter the code and a new password");
+      return;
+    }
+    if (newPassword.length < 6) {
+      setError("Password must be at least 6 characters");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    setInfo("");
+    try {
+      await api.post("/auth/reset-password", { email, otp, newPassword });
+      setInfo("Password reset successful. Please sign in with your new password.");
+      setMode("login");
+      setPassword("");
+      setOtp("");
+      setNewPassword("");
+    } catch (err) {
+      setError(err?.response?.data?.message || "Failed to reset password");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const backToLogin = () => {
+    setMode("login");
+    setError("");
+    setInfo("");
+    setOtp("");
+    setNewPassword("");
+  };
+
+  const linkStyle = {
+    background: "none",
+    border: "none",
+    color: "#c8102e",
+    fontWeight: 600,
+    fontSize: "0.85rem",
+    cursor: "pointer",
+    marginTop: 16,
+    padding: 0,
+    fontFamily: "inherit",
   };
 
   return (
@@ -388,53 +459,158 @@ export default function Login() {
             </div>
 
             <div className="sg-title">
-              Sign In
+              {mode === "login" ? "Sign In" : mode === "forgot" ? "Reset Password" : "Enter Code"}
             </div>
 
             <div className="sg-desc">
-              Secure access for Sieger team
+              {mode === "login"
+                ? "Secure access for Sieger team"
+                : mode === "forgot"
+                ? "Enter your email to receive a reset code"
+                : `We sent a 6-digit code to ${email}`}
             </div>
 
-            {error && (
-              <div className="sg-error">
-                {error}
+            {error && <div className="sg-error">{error}</div>}
+            {info && (
+              <div
+                className="sg-error"
+                style={{
+                  background: "rgba(21,128,61,0.08)",
+                  color: "#15803d",
+                  borderColor: "rgba(21,128,61,0.25)",
+                }}
+              >
+                {info}
               </div>
             )}
 
-            <div className="sg-field">
-              <label className="sg-label">Email Address</label>
+            {mode === "login" && (
+              <>
+                <div className="sg-field">
+                  <label className="sg-label">Email Address</label>
+                  <input
+                    type="email"
+                    className="sg-input"
+                    placeholder="you@siegerglobal.net"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </div>
 
-              <input
-                type="email"
-                className="sg-input"
-                placeholder="you@siegerglobal.net"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
+                <div className="sg-field">
+                  <label className="sg-label">Password</label>
+                  <input
+                    type="password"
+                    className="sg-input"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                  />
+                </div>
 
-            <div className="sg-field">
-              <label className="sg-label">Password</label>
+                <button className="sg-btn" onClick={handleLogin} disabled={loading}>
+                  {loading ? "VERIFYING..." : "SIGN IN"}
+                </button>
 
-              <input
-                type="password"
-                className="sg-input"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={(e) =>
-                  e.key === "Enter" && handleLogin()
-                }
-              />
-            </div>
+                <div>
+                  <button
+                    type="button"
+                    style={linkStyle}
+                    onClick={() => {
+                      setMode("forgot");
+                      setError("");
+                      setInfo("");
+                    }}
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+              </>
+            )}
 
-            <button
-              className="sg-btn"
-              onClick={handleLogin}
-              disabled={loading}
-            >
-              {loading ? "VERIFYING..." : "SIGN IN"}
-            </button>
+            {mode === "forgot" && (
+              <>
+                <div className="sg-field">
+                  <label className="sg-label">Email Address</label>
+                  <input
+                    type="email"
+                    className="sg-input"
+                    placeholder="you@siegerglobal.net"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && requestOtp()}
+                  />
+                </div>
+
+                <button className="sg-btn" onClick={requestOtp} disabled={loading}>
+                  {loading ? "SENDING..." : "SEND RESET CODE"}
+                </button>
+
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                  <button
+                    type="button"
+                    style={linkStyle}
+                    onClick={() => {
+                      if (!email) {
+                        setError("Enter your email first");
+                        return;
+                      }
+                      setError("");
+                      setInfo("");
+                      setMode("reset");
+                    }}
+                  >
+                    Already have a code?
+                  </button>
+                  <button type="button" style={linkStyle} onClick={backToLogin}>
+                    Back to sign in
+                  </button>
+                </div>
+              </>
+            )}
+
+            {mode === "reset" && (
+              <>
+                <div className="sg-field">
+                  <label className="sg-label">Reset Code</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    className="sg-input"
+                    placeholder="6-digit code"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+                  />
+                </div>
+
+                <div className="sg-field">
+                  <label className="sg-label">New Password</label>
+                  <input
+                    type="password"
+                    className="sg-input"
+                    placeholder="At least 6 characters"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && submitReset()}
+                  />
+                </div>
+
+                <button className="sg-btn" onClick={submitReset} disabled={loading}>
+                  {loading ? "RESETTING..." : "RESET PASSWORD"}
+                </button>
+
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                  <button type="button" style={linkStyle} onClick={requestOtp} disabled={loading}>
+                    Resend code
+                  </button>
+                  <button type="button" style={linkStyle} onClick={backToLogin}>
+                    Back to sign in
+                  </button>
+                </div>
+              </>
+            )}
 
             <div className="sg-footer">
               Protected • Sieger Professional Access

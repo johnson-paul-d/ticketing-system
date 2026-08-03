@@ -32,6 +32,8 @@ export default function AdminPanel() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [busyId, setBusyId] = useState(null);
+  const [resettingId, setResettingId] = useState(null);
+  const [notice, setNotice] = useState("");
 
   const fetchUsers = async () => {
     try {
@@ -91,6 +93,20 @@ export default function AdminPanel() {
       console.error(err);
     } finally {
       setBusyId(null);
+    }
+  };
+
+  // Email the user a password reset code (they complete it on the login page)
+  const sendReset = async (user) => {
+    setResettingId(user.id);
+    setNotice("");
+    try {
+      const res = await api.post("/auth/admin-send-reset", { email: user.email });
+      setNotice(res.data?.message || `Reset code sent to ${user.email}`);
+    } catch (err) {
+      setNotice(err?.response?.data?.message || "Failed to send reset code");
+    } finally {
+      setResettingId(null);
     }
   };
 
@@ -178,6 +194,13 @@ export default function AdminPanel() {
         </button>
       </div>
 
+      {notice && (
+        <div className="mb-4 bg-blue-50 text-blue-700 text-sm px-4 py-3 rounded-xl border border-blue-200 flex items-center justify-between gap-3">
+          <span>{notice}</span>
+          <button onClick={() => setNotice("")} className="text-blue-400 hover:text-blue-600 font-bold flex-shrink-0">✕</button>
+        </div>
+      )}
+
       {/* SEARCH */}
       <div className="relative mb-4 max-w-sm">
         <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -247,17 +270,27 @@ export default function AdminPanel() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => toggleUser(user)}
-                        disabled={busyId === user.id}
-                        className={`text-xs font-semibold px-4 py-2 rounded-lg transition disabled:opacity-50 ${
-                          user.active
-                            ? "bg-white border border-red-200 text-red-600 hover:bg-red-50"
-                            : "bg-[#9b2423] hover:bg-[#7d1d1c] text-white"
-                        }`}
-                      >
-                        {busyId === user.id ? "…" : user.active ? "Disable" : "Enable"}
-                      </button>
+                      <div className="inline-flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => sendReset(user)}
+                          disabled={resettingId === user.id || !user.active}
+                          title="Email this user a password reset code"
+                          className="text-xs font-semibold px-3 py-2 rounded-lg bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          {resettingId === user.id ? "Sending…" : "Reset PW"}
+                        </button>
+                        <button
+                          onClick={() => toggleUser(user)}
+                          disabled={busyId === user.id}
+                          className={`text-xs font-semibold px-4 py-2 rounded-lg transition disabled:opacity-50 ${
+                            user.active
+                              ? "bg-white border border-red-200 text-red-600 hover:bg-red-50"
+                              : "bg-[#9b2423] hover:bg-[#7d1d1c] text-white"
+                          }`}
+                        >
+                          {busyId === user.id ? "…" : user.active ? "Disable" : "Enable"}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -314,6 +347,13 @@ export default function AdminPanel() {
                     {busyId === user.id ? "…" : user.active ? "Disable" : "Enable"}
                   </button>
                 </div>
+                <button
+                  onClick={() => sendReset(user)}
+                  disabled={resettingId === user.id || !user.active}
+                  className="mt-2 w-full text-xs font-semibold px-3 py-2 rounded-lg bg-white border border-gray-200 text-gray-700 disabled:opacity-50"
+                >
+                  {resettingId === user.id ? "Sending reset code…" : "Reset Password"}
+                </button>
               </div>
             ))}
           </div>
