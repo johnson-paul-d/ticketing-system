@@ -155,7 +155,10 @@
       "PowerShell(cd D:\\\\Ticketing-System\\\\backend; Start-Process -NoNewWindow node -ArgumentList \"icon-writer.tmp.js\"; Start-Sleep -Seconds 2; try { \\(Invoke-WebRequest -Uri http://localhost:5099 -Method OPTIONS -TimeoutSec 5\\).StatusCode } catch { $_.Exception.Message })",
       "Bash(npm run *)",
       "Bash(node seed-superadmin.js)",
-      "Bash(node --check routes/abm.js)"
+      "Bash(node --check routes/abm.js)",
+      "Bash(git status *)",
+      "Bash(git checkout *)",
+      "Bash(git commit *)"
     ]
   }
 }
