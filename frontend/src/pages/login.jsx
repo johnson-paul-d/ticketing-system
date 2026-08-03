@@ -384,7 +384,7 @@ export default function Login() {
           <div className="sg-form-card">
 
             <div className="sg-mini">
-               MKT Ticketing System
+               Sieger Ticketing System
             </div>
 
             <div className="sg-title">
@@ -392,7 +392,7 @@ export default function Login() {
             </div>
 
             <div className="sg-desc">
-              Secure access for Sieger Marketing team
+              Secure access for Sieger team
             </div>
 
             {error && (
