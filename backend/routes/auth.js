@@ -24,10 +24,13 @@ setInterval(() => {
   for (const [key, val] of otpStore) if (val.expires < now) otpStore.delete(key);
 }, 5 * 60 * 1000).unref();
 
+// Returns { ok, error }. The Resend SDK reports API failures in the resolved
+// `error` field (it does not throw), so both paths must be checked.
 const sendOtpEmail = async (to, name, otp) => {
-  if (!resend) return false;
+  if (!resend)
+    return { ok: false, error: 'Email service not configured (RESEND_API_KEY missing)' };
   try {
-    await resend.emails.send({
+    const { error } = await resend.emails.send({
       from: process.env.FROM_EMAIL || 'onboarding@resend.dev',
       to,
       subject: 'Your Sieger password reset code',
@@ -40,10 +43,14 @@ const sendOtpEmail = async (to, name, otp) => {
         </div>
       `,
     });
-    return true;
+    if (error) {
+      console.error('OTP email error:', error);
+      return { ok: false, error: error.message || 'Email provider rejected the message' };
+    }
+    return { ok: true };
   } catch (err) {
     console.error('OTP email error:', err);
-    return false;
+    return { ok: false, error: err.message || 'Email send failed' };
   }
 };
 
@@ -253,7 +260,7 @@ router.post('/admin-send-reset', requireAuth, async (req, res) => {
     otpStore.set(email, { hash, expires: Date.now() + OTP_TTL_MS, attempts: 0, userId: user.id });
 
     const sent = await sendOtpEmail(user.email, user.name, otp);
-    if (!sent) return res.status(500).json({ message: 'Failed to send email — check RESEND configuration' });
+    if (!sent.ok) return res.status(500).json({ message: sent.error || 'Failed to send email' });
 
     return res.json({ message: `Reset code sent to ${user.email}` });
   } catch (err) {
