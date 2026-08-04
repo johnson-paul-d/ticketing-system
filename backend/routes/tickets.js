@@ -5,6 +5,7 @@ const supabase = require('../config/supabase');
 const auth = require('../middleware/auth');
 const getISTTime = require('../utils/time');
 const { TEAM, isAdmin, isSuperAdmin, teamFromRole, getUserTeam } = require('../utils/roles');
+const { isValidInterval, addInterval, occurrenceTitle } = require('../utils/recurrence');
 
 const { sendMail } = require('../services/mailService');
 
@@ -277,6 +278,8 @@ router.post('/', auth, async (req, res) => {
       allotted_minutes,
       given_by,
       project_id,
+      is_recurring,
+      recurrence_interval,
     } = req.body;
 
     if (!title || !description) {
@@ -344,10 +347,29 @@ router.post('/', auth, async (req, res) => {
       ],
     };
 
+    // Recurring task: this row becomes the first occurrence and the active
+    // spawner. The name gets a period suffix, the due date is one interval
+    // ahead, and the backend scheduler generates each subsequent occurrence.
+    if (is_recurring && isValidInterval(recurrence_interval)) {
+      const today = todayIST();
+      insertData.title = occurrenceTitle(title, today, recurrence_interval);
+      insertData.due_date = addInterval(today, recurrence_interval);
+      insertData.is_recurring = true;
+      insertData.recurrence_interval = recurrence_interval;
+      insertData.recurrence_base_title = title;
+      insertData.recurrence_next = addInterval(today, recurrence_interval);
+    }
+
     const { data, error } = await supabase.from('tickets').insert([insertData]).select().single();
 
     if (error) {
       console.error(error);
+      if (insertData.is_recurring && ['42703', 'PGRST204'].includes(error.code)) {
+        return res.status(503).json({
+          message: 'Recurring tasks are not set up yet. Run backend/database/recurring-tasks-migration.sql in Supabase.',
+          code: 'RECURRENCE_MIGRATION_REQUIRED',
+        });
+      }
       return res.status(500).json({ message: 'Ticket creation failed', error: error.message });
     }
 

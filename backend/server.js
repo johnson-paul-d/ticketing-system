@@ -85,5 +85,10 @@ app.use(
   "/api/permission-requests",
   permissionRoutes
 );
+const { startRecurrenceScheduler } = require('./services/recurrenceScheduler');
+
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  startRecurrenceScheduler(io);
+});

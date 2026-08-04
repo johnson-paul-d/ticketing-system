@@ -21,12 +21,36 @@ export default function CreateTicket() {
   const [allottedMins, setAllottedMins] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurrenceInterval, setRecurrenceInterval] = useState("weekly");
 
   useEffect(() => {
     api.get("/projects").then((r) => setProjects(r.data || [])).catch(() => {});
   }, []);
 
   const selectedProject = projects.find((p) => p.id === projectId);
+
+  // --- Recurring-task preview (mirrors backend/utils/recurrence.js) ---
+  const intervalWord =
+    recurrenceInterval === "daily" ? "day" : recurrenceInterval === "weekly" ? "week" : "month";
+  const recPeriodSuffix = (d, interval) => {
+    const day = d.getDate();
+    const m = d.toLocaleString("en-US", { month: "short" });
+    const y = d.getFullYear();
+    if (interval === "daily") return `${day} ${m} ${y}`;
+    if (interval === "weekly") return `Week of ${day} ${m} ${y}`;
+    return `${m} ${y}`;
+  };
+  const recAddInterval = (d, interval) => {
+    const n = new Date(d);
+    if (interval === "daily") n.setDate(n.getDate() + 1);
+    else if (interval === "weekly") n.setDate(n.getDate() + 7);
+    else n.setMonth(n.getMonth() + 1);
+    return n;
+  };
+  const recToday = new Date();
+  const recName = `${title.trim() || "Task"} — ${recPeriodSuffix(recToday, recurrenceInterval)}`;
+  const recDue = recAddInterval(recToday, recurrenceInterval).toISOString().split("T")[0];
 
   // Tasks in a project take the project's division
   useEffect(() => {
@@ -47,9 +71,11 @@ export default function CreateTicket() {
         priority,
         category,
         division,
-        due_date: dueDate || null,
+        due_date: isRecurring ? null : dueDate || null,
         given_by: givenBy,
         project_id: projectId || null,
+        is_recurring: isRecurring,
+        recurrence_interval: isRecurring ? recurrenceInterval : null,
         allotted_minutes:
           Math.max(0, allottedDays) * 1440 +
           Math.max(0, allottedHours) * 60 +
@@ -178,18 +204,66 @@ export default function CreateTicket() {
               </label>
               <input
                 type="date"
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm sm:text-base focus:ring-2 focus:ring-[#9b2423]/40 focus:border-transparent transition-all outline-none bg-gray-50"
-                value={dueDate}
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm sm:text-base focus:ring-2 focus:ring-[#9b2423]/40 focus:border-transparent transition-all outline-none bg-gray-50 disabled:opacity-60"
+                value={isRecurring ? recDue : dueDate}
                 max={selectedProject?.target_date || undefined}
                 onChange={(e) => setDueDate(e.target.value)}
-                disabled={loading}
+                disabled={loading || isRecurring}
               />
-              {selectedProject?.target_date && (
+              {isRecurring ? (
                 <p className="text-xs text-gray-400 mt-1.5">
-                  Capped at project target date: {selectedProject.target_date}
+                  Set automatically — one {intervalWord} ahead
                 </p>
+              ) : (
+                selectedProject?.target_date && (
+                  <p className="text-xs text-gray-400 mt-1.5">
+                    Capped at project target date: {selectedProject.target_date}
+                  </p>
+                )
               )}
             </div>
+          </div>
+
+          {/* Recurring */}
+          <div className="mb-6">
+            <label className="flex items-center gap-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={isRecurring}
+                onChange={(e) => setIsRecurring(e.target.checked)}
+                disabled={loading}
+                className="w-4 h-4 accent-[#9b2423]"
+              />
+              <span className="text-sm font-semibold text-gray-700">🔁 Make this a recurring task</span>
+            </label>
+
+            {isRecurring && (
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    Repeat every
+                  </label>
+                  <select
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm sm:text-base focus:ring-2 focus:ring-[#9b2423]/40 bg-gray-50 outline-none cursor-pointer"
+                    value={recurrenceInterval}
+                    onChange={(e) => setRecurrenceInterval(e.target.value)}
+                    disabled={loading}
+                  >
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                </div>
+                <div className="rounded-xl bg-[#9b2423]/5 border border-[#9b2423]/15 p-3 text-xs text-gray-600">
+                  <p className="font-semibold text-[#9b2423] mb-1">Preview</p>
+                  <p>Name: <span className="font-medium text-gray-800">{recName}</span></p>
+                  <p>Due: <span className="font-medium text-gray-800">{recDue}</span></p>
+                  <p className="mt-1 text-gray-500">
+                    A new occurrence is created automatically every {intervalWord}.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Project (optional) */}
