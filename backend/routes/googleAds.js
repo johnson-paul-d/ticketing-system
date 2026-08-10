@@ -3,6 +3,12 @@ const router = express.Router();
 
 const supabase = require("../config/supabase");
 const auth = require("../middleware/auth");
+const requireAccess = require("../middleware/requireAccess");
+const { canAccessGoogleAds } = require("../utils/roles");
+
+// Every endpoint below reads campaign and spend data. `auth` was imported but
+// never applied, leaving all of it public.
+router.use(auth, requireAccess(canAccessGoogleAds));
 
 // =====================================================
 // GOOGLE ADS OVERVIEW

@@ -2,7 +2,6 @@ import { useEffect, useState, useMemo } from "react";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
 import { excludeDisabledUsers } from "../utils/reportFilters";
-import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import { useNavigate } from "react-router-dom";
 
@@ -69,7 +68,10 @@ export default function Reports() {
     closed:    tickets.filter((t) => t.status === "Closed").length,
   }), [tickets]);
 
-  const exportExcel = () => {
+  const exportExcel = async () => {
+    // Loaded on demand — xlsx is ~400 KB and only the export path needs it.
+    // `.default || m` covers both CJS-interop shapes the bundler can produce.
+    const XLSX = await import("xlsx").then((m) => m.default || m);
     const rows = filtered.map((t) => ({
       ID: t.id,
       Title: t.title,

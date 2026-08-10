@@ -6,7 +6,6 @@ import api from "../services/api";
 import { excludeDisabledUsers } from "../utils/reportFilters";
 import useAuthStore from "../store/authStore";
 import { isAdmin as isAdminRole } from "../constants/roles";
-import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -519,7 +518,10 @@ export default function AdminAnalytics() {
     };
   }, [groupedHierarchy]);
 
-  const exportExcel = () => {
+  const exportExcel = async () => {
+    // Loaded on demand — xlsx is ~400 KB and only the export path needs it.
+    // `.default || m` covers both CJS-interop shapes the bundler can produce.
+    const XLSX = await import("xlsx").then((m) => m.default || m);
     const rows = [];
     for (const group of Object.values(groupedHierarchy)) {
       for (const month of Object.values(group.months)) {

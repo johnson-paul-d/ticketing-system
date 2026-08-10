@@ -6,13 +6,53 @@ const auth = require('../middleware/auth');
 const getISTTime = require('../utils/time');
 const { TEAM, isAdmin, isSuperAdmin, teamFromRole, getUserTeam } = require('../utils/roles');
 const { isValidInterval, addInterval, occurrenceTitle } = require('../utils/recurrence');
+const { isValidCategory } = require('../utils/categories');
+const { ticketTeam, ticketAudience } = require('../utils/ticketTeam');
 
 const { sendMail } = require('../services/mailService');
 
-const { notifyAdmins, notifyUser } = require('../services/notificationService');
+const { notifyAdmins, notifyUser, insertNotifications } = require('../services/notificationService');
+
+const { emitScoped } = require('../utils/realtime');
 
 // Today's date in IST (date-only, for tickets.completed_date)
 const todayIST = () => new Date(Date.now() + 330 * 60000).toISOString().split('T')[0];
+
+// =====================================================
+// QUERY HELPERS
+// =====================================================
+// Supabase REST caps a response at 1000 rows and reports no error when it
+// truncates, so an unpaged .select() silently returns partial data that the
+// code then treats as complete. Both helpers below page explicitly.
+
+const PAGE = 1000;
+
+// `build` must return a fresh query each call — a PostgREST query builder can
+// only be awaited once. A stable .order() is required: without one Postgres
+// gives no guaranteed row order, so pages can overlap or skip rows.
+const fetchAllRows = async (build) => {
+  const out = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await build().range(from, from + PAGE - 1);
+    if (error) throw error;
+    if (!data?.length) break;
+    out.push(...data);
+    if (data.length < PAGE) break;
+  }
+  return out;
+};
+
+// PostgREST puts .in() lists in the URL, so a few thousand ids would blow the
+// request-line limit. Chunk them.
+const fetchByIdChunks = async (build, ids, chunkSize = 200) => {
+  const out = [];
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const { data, error } = await build(ids.slice(i, i + chunkSize));
+    if (error) throw error;
+    if (data?.length) out.push(...data);
+  }
+  return out;
+};
 
 // =====================================================
 // TEAM SCOPING
@@ -21,22 +61,14 @@ const todayIST = () => new Date(Date.now() + 330 * 60000).toISOString().split('T
 // own team's tickets; Super Admins span every team; everyone else is limited
 // to tickets assigned to them.
 // =====================================================
-const ticketTeam = async (ticket) => {
-  const ids = [ticket.assigned_to, ticket.created_by].filter(Boolean);
-  if (!ids.length) return TEAM.MARKETING;
-  const { data: users } = await supabase.from('users').select('id, role').in('id', ids);
-  const roleOf = (id) => users?.find((u) => u.id === id)?.role;
-  return (
-    teamFromRole(roleOf(ticket.assigned_to)) ||
-    teamFromRole(roleOf(ticket.created_by)) ||
-    TEAM.MARKETING
-  );
-};
-
+// Creators keep access to what they filed. Without this a non-admin who raises
+// a ticket loses it the moment it is created: the create form sends no
+// assignee, so assigned_to is null, and the ticket disappears from their list
+// and 403s on open, edit and delete until an admin assigns it back to them.
 const canAccessTicket = async (user, ticket) => {
   if (isSuperAdmin(user)) return true;
   if (isAdmin(user)) return (await ticketTeam(ticket)) === getUserTeam(user);
-  return ticket.assigned_to === user.id;
+  return ticket.assigned_to === user.id || ticket.created_by === user.id;
 };
 
 // =====================================================
@@ -78,24 +110,67 @@ const extendProjectTimeline = async (project, newDate, actorName, io) => {
       .from('users')
       .select('name')
       .in('id', memberIds);
-    for (const u of users || []) {
-      await notifyUser(
-        u.name,
-        'Project Timeline Extended',
-        `${actorName} extended the "${project.name}" project target date to ${newDate}`,
-        null
-      );
-    }
+
+    // One insert for the whole set rather than a round trip per member.
+    const rows = (users || [])
+      .filter((u) => u.name)
+      .map((u) => ({
+        user_name: u.name,
+        title: 'Project Timeline Extended',
+        message: `${actorName} extended the "${project.name}" project target date to ${newDate}`,
+        ticket_id: null,
+      }));
+    if (rows.length) await insertNotifications(rows);
   }
   if (io) {
-    io.emit('projectUpdated', updated);
-    io.emit('notificationReceived');
+    // A project row carries no team of its own, so reach its members and
+    // owners directly and let admins see it through their team feed.
+    const audience = {
+      allAdmins: true,
+      userIds: [...memberIds, project.created_by, project.owner],
+    };
+    emitScoped(io, 'projectUpdated', updated, audience);
+    emitScoped(io, 'notificationReceived', undefined, audience);
   }
 };
 
 // =====================================================
 // EMAIL FUNCTIONS
 // =====================================================
+
+// Ticket titles and user names are attacker-controlled and land inside an HTML
+// email, so a title like `<a href="https://evil">Approve</a>` would otherwise
+// render as a working link in a mail the admin trusts.
+const esc = (value) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+// FRONTEND_URL is interpolated into an href — unset, every button in every
+// approval mail points at "undefined/tickets/...".
+const ticketUrl = (ticketId) => {
+  const base = (process.env.FRONTEND_URL || '').replace(/\/+$/, '');
+  return base ? `${base}/tickets/${encodeURIComponent(ticketId)}` : null;
+};
+
+const viewButton = (ticketId, label) => {
+  const url = ticketUrl(ticketId);
+  if (!url) return '';
+  return `<a href="${esc(url)}" style="background:black;color:white;padding:10px 16px;border-radius:8px;text-decoration:none;display:inline-block;">${esc(label)}</a>`;
+};
+
+// Mail delivery must never hold up a response: sendMail allows roughly 25s of
+// SMTP timeouts before falling back to Resend.
+const fireAndForgetEmail = (label, promise) => {
+  Promise.resolve(promise)
+    .then((ok) => {
+      if (ok === false) console.error(`Email send failed (${label})`);
+    })
+    .catch((err) => console.error(`Email send threw (${label}):`, err));
+};
 
 const sendApprovalEmail = async (to, ticketTitle, requesterName, ticketId) => {
   const { ok } = await sendMail({
@@ -104,9 +179,9 @@ const sendApprovalEmail = async (to, ticketTitle, requesterName, ticketId) => {
     html: `
         <div style="font-family:sans-serif;">
           <h2>Approval Required</h2>
-          <p>${requesterName} requested approval for:</p>
-          <h3>${ticketTitle}</h3>
-          <a href="${process.env.FRONTEND_URL}/tickets/${ticketId}" style="background:black;color:white;padding:10px 16px;border-radius:8px;text-decoration:none;display:inline-block;">View Ticket</a>
+          <p>${esc(requesterName)} requested approval for:</p>
+          <h3>${esc(ticketTitle)}</h3>
+          ${viewButton(ticketId, 'View Ticket')}
         </div>
       `,
   });
@@ -128,13 +203,11 @@ const sendDueDateApprovalEmail = async (
     html: `
         <div style="font-family:sans-serif;">
           <h2>Due Date Change Request</h2>
-          <p><strong>Ticket:</strong> ${ticketTitle}</p>
-          <p><strong>Current Due Date:</strong> ${currentDueDate || 'Not Set'}</p>
-          <p><strong>Requested Due Date:</strong> ${requestedDueDate}</p>
-          <p><strong>Requested By:</strong> ${requesterName}</p>
-          <a href="${process.env.FRONTEND_URL}/tickets/${ticketId}" style="background:black;color:white;padding:10px 16px;border-radius:8px;text-decoration:none;display:inline-block;">
-            Review Request
-          </a>
+          <p><strong>Ticket:</strong> ${esc(ticketTitle)}</p>
+          <p><strong>Current Due Date:</strong> ${esc(currentDueDate || 'Not Set')}</p>
+          <p><strong>Requested Due Date:</strong> ${esc(requestedDueDate)}</p>
+          <p><strong>Requested By:</strong> ${esc(requesterName)}</p>
+          ${viewButton(ticketId, 'Review Request')}
         </div>
       `,
   });
@@ -148,22 +221,39 @@ const sendDueDateApprovalEmail = async (
 router.get('/', auth, async (req, res) => {
   try {
     const admin = isAdmin(req.user);
-    let query = supabase.from('tickets').select('*');
 
-    // Non-admins only ever see tickets assigned to them
-    if (!admin) {
-      query = query.eq('assigned_to', req.user.id);
-    }
+    // Non-admins see tickets assigned to them plus the ones they raised. The
+    // creator clause matters: the create form sends no assignee, so their own
+    // tickets would otherwise be invisible to them.
+    const buildTickets = () => {
+      let q = supabase.from('tickets').select('*');
+      if (!admin) {
+        q = q.or(`assigned_to.eq.${req.user.id},created_by.eq.${req.user.id}`);
+      }
+      // Secondary key on id keeps paging stable when due_date ties or is null.
+      return q.order('due_date', { ascending: true }).order('id', { ascending: true });
+    };
 
-    const { data: tickets, error } = await query.order('due_date', { ascending: true });
-
-    if (error) {
+    let tickets;
+    try {
+      tickets = await fetchAllRows(buildTickets);
+    } catch (error) {
       console.error(error);
-      return res.status(500).json({ message: 'Failed to fetch tickets', error });
+      return res.status(500).json({ message: 'Failed to fetch tickets' });
     }
 
-    const { data: timeEntries, error: timeError } = await supabase.from('ticket_time_entries').select('*');
-    if (timeError) console.error('Time entry fetch error:', timeError);
+    // Fetch only the entries belonging to these tickets. The previous
+    // unfiltered select returned the first 1000 rows in the whole table, so
+    // once the log grew, newer tickets rendered as having no logged work.
+    let timeEntries = [];
+    try {
+      timeEntries = await fetchByIdChunks(
+        (chunk) => supabase.from('ticket_time_entries').select('*').in('ticket_id', chunk),
+        tickets.map((t) => t.id)
+      );
+    } catch (timeError) {
+      console.error('Time entry fetch error:', timeError);
+    }
 
     // Resolve assignee + creator: name/active for display, role for team scoping
     const userIds = [
@@ -253,6 +343,8 @@ router.get('/:id', auth, async (req, res) => {
       assigned_to_name: assignedToName,
       project_name: project?.name || null,
       project_target_date: project?.target_date || null,
+      // Drives the team-specific category list on the ticket page.
+      team: await ticketTeam(ticket),
       time_entries: timeEntries || [],
     });
   } catch (err) {
@@ -312,10 +404,21 @@ router.post('/', auth, async (req, res) => {
     if (assigned_to) {
       const { data: fetchedUser } = await supabase
         .from('users')
-        .select('id, name')
+        .select('id, name, role')
         .eq('id', assigned_to)
         .single();
       assignedUser = fetchedUser;
+    }
+
+    // A new ticket belongs to its assignee's team, falling back to the
+    // creator's — the same rule ticketTeam applies to existing rows.
+    const newTicketTeam =
+      teamFromRole(assignedUser?.role) || getUserTeam(req.user) || TEAM.MARKETING;
+
+    if (!isValidCategory(newTicketTeam, category)) {
+      return res.status(400).json({
+        message: `"${category}" is not a valid category for the ${newTicketTeam} team`,
+      });
     }
 
     const insertData = {
@@ -370,7 +473,8 @@ router.post('/', auth, async (req, res) => {
           code: 'RECURRENCE_MIGRATION_REQUIRED',
         });
       }
-      return res.status(500).json({ message: 'Ticket creation failed', error: error.message });
+      console.error('Ticket creation failed:', error);
+      return res.status(500).json({ message: 'Ticket creation failed' });
     }
 
     if (assigned_to && assignedUser) {
@@ -389,8 +493,9 @@ router.post('/', auth, async (req, res) => {
     }
 
     if (io) {
-      io.emit('ticketCreated', data);
-      io.emit('notificationReceived');
+      const audience = await ticketAudience(data);
+      emitScoped(io, 'ticketCreated', data, audience);
+      emitScoped(io, 'notificationReceived', undefined, audience);
     }
 
     res.status(201).json(data);
@@ -624,15 +729,19 @@ router.put('/:id', auth, async (req, res) => {
         );
         notificationsCreated = true;
 
-        // Send email to admin
+        // Not awaited: sendMail allows ~25s of SMTP timeouts before falling
+        // back to Resend, and the user is waiting on this response.
         if (process.env.ADMIN_EMAIL) {
-          await sendDueDateApprovalEmail(
-            process.env.ADMIN_EMAIL,
-            existing.title,
-            existing.due_date,
-            requested_due_date,
-            req.user.name,
-            existing.id
+          fireAndForgetEmail(
+            'due date approval',
+            sendDueDateApprovalEmail(
+              process.env.ADMIN_EMAIL,
+              existing.title,
+              existing.due_date,
+              requested_due_date,
+              req.user.name,
+              existing.id
+            )
           );
         }
       } else {
@@ -681,28 +790,61 @@ router.put('/:id', auth, async (req, res) => {
     // =====================================================
     // 5. OTHER UPDATE FIELDS
     // =====================================================
+    // Only two fields are genuinely privileged. allotted_minutes is the time
+    // budget SLA reporting is measured against, so an assignee who could raise
+    // it would grade their own homework. given_by decides whether a due-date
+    // change needs approval at all (see needsApproval below), so clearing it
+    // removes the approval step entirely.
+    //
+    // Everything else here stays open to anyone who can already reach the
+    // ticket. description in particular must remain writable: closing a ticket
+    // appends the closure reason to it (TicketDetails.jsx closeTicket), and
+    // that flow is deliberately available to non-admins. category is guarded
+    // separately, by team, rather than by role.
+    const privilegedFields = { given_by, allotted_minutes };
+    const attemptedPrivilegedEdit = Object.entries(privilegedFields).some(
+      ([field, value]) => value !== undefined && value !== existing[field]
+    );
+
+    if (attemptedPrivilegedEdit && !isAdmin(req.user)) {
+      return res.status(403).json({
+        message: 'Only an admin can change Given By or the allotted time',
+      });
+    }
+
     if (title !== undefined) updateData.title = title;
     if (description !== undefined) updateData.description = description;
     if (priority !== undefined) updateData.priority = priority;
-    if (category !== undefined) updateData.category = category;
     if (division !== undefined) updateData.division = division;
-    if (given_by !== undefined) {
-      updateData.given_by = given_by;
-      timeline.push({
-        type: 'given_by',
-        action: `Given By updated to ${given_by}`,
-        user: req.user.name,
-        created_at: getISTTime(),
-      });
+
+    if (category !== undefined && category !== existing.category) {
+      if (!isValidCategory(await ticketTeam(existing), category)) {
+        return res.status(400).json({
+          message: `"${category}" is not a valid category for this ticket's team`,
+        });
+      }
+      updateData.category = category;
     }
-    if (allotted_minutes !== undefined && allotted_minutes !== existing.allotted_minutes) {
-      timeline.push({
-        type: 'allotted_time',
-        action: `Allotted time changed from ${existing.allotted_minutes || 0} mins to ${allotted_minutes} mins`,
-        user: req.user.name,
-        created_at: getISTTime(),
-      });
-      updateData.allotted_minutes = allotted_minutes;
+
+    if (isAdmin(req.user)) {
+      if (given_by !== undefined && given_by !== existing.given_by) {
+        updateData.given_by = given_by;
+        timeline.push({
+          type: 'given_by',
+          action: `Given By updated to ${given_by}`,
+          user: req.user.name,
+          created_at: getISTTime(),
+        });
+      }
+      if (allotted_minutes !== undefined && allotted_minutes !== existing.allotted_minutes) {
+        timeline.push({
+          type: 'allotted_time',
+          action: `Allotted time changed from ${existing.allotted_minutes || 0} mins to ${allotted_minutes} mins`,
+          user: req.user.name,
+          created_at: getISTTime(),
+        });
+        updateData.allotted_minutes = allotted_minutes;
+      }
     }
 
     // =====================================================
@@ -755,7 +897,10 @@ router.put('/:id', auth, async (req, res) => {
         );
         notificationsCreated = true;
         if (process.env.ADMIN_EMAIL) {
-          await sendApprovalEmail(process.env.ADMIN_EMAIL, existing.title, req.user.name, existing.id);
+          fireAndForgetEmail(
+            'completion approval',
+            sendApprovalEmail(process.env.ADMIN_EMAIL, existing.title, req.user.name, existing.id)
+          );
         }
       }
     } else if (status !== undefined) {
@@ -799,7 +944,8 @@ router.put('/:id', auth, async (req, res) => {
 
     if (error) {
       console.error(error);
-      return res.status(500).json({ message: 'Update failed', error: error.message });
+      console.error('Ticket update failed:', error);
+      return res.status(500).json({ message: 'Update failed' });
     }
 
     const io = req.app.get('io');
@@ -809,8 +955,9 @@ router.put('/:id', auth, async (req, res) => {
     }
 
     if (io) {
-      io.emit('ticketUpdated', data);
-      if (notificationsCreated) io.emit('notificationReceived');
+      const audience = await ticketAudience(data);
+      emitScoped(io, 'ticketUpdated', data, audience);
+      if (notificationsCreated) emitScoped(io, 'notificationReceived', undefined, audience);
     }
 
     res.json(data);
@@ -880,8 +1027,9 @@ router.put('/:id/approve', auth, async (req, res) => {
 
     const io = req.app.get('io');
     if (io) {
-      io.emit('ticketUpdated', data);
-      io.emit('notificationReceived');
+      const audience = await ticketAudience(data);
+      emitScoped(io, 'ticketUpdated', data, audience);
+      emitScoped(io, 'notificationReceived', undefined, audience);
     }
     res.json(data);
   } catch (err) {
@@ -936,8 +1084,9 @@ router.put('/:id/reject', auth, async (req, res) => {
 
     const io = req.app.get('io');
     if (io) {
-      io.emit('ticketUpdated', data);
-      io.emit('notificationReceived');
+      const audience = await ticketAudience(data);
+      emitScoped(io, 'ticketUpdated', data, audience);
+      emitScoped(io, 'notificationReceived', undefined, audience);
     }
     res.json(data);
   } catch (err) {
@@ -952,7 +1101,7 @@ router.put('/:id/reject', auth, async (req, res) => {
 
 router.put('/:id/assign', auth, async (req, res) => {
   try {
-    const { assigned_to, assigned_to_name } = req.body;
+    const { assigned_to } = req.body;
 
     const { data: existing } = await supabase
       .from('tickets')
@@ -966,11 +1115,35 @@ router.put('/:id/assign', auth, async (req, res) => {
       return res.status(403).json({ message: 'Only admin can assign tickets' });
     }
 
+    // Resolve the assignee server-side. The client used to supply both the id
+    // and the display name: a mismatched pair left the ticket showing the wrong
+    // owner permanently, and an unknown id orphaned it — assigned_to pointing
+    // nowhere makes ticketTeam fall back to Marketing regardless of the truth.
+    let assignee = null;
+    if (assigned_to) {
+      const { data: found } = await supabase
+        .from('users')
+        .select('id, name, role, active')
+        .eq('id', assigned_to)
+        .single();
+
+      if (!found) return res.status(400).json({ message: 'Assignee not found' });
+      if (!found.active) return res.status(400).json({ message: 'Cannot assign to a disabled user' });
+
+      // A team admin must not hand work to the other team, which would move the
+      // ticket out of their own scope and out of their team's reporting.
+      if (!isSuperAdmin(req.user) && teamFromRole(found.role) !== getUserTeam(req.user)) {
+        return res.status(403).json({ message: 'Cannot assign to a user on another team' });
+      }
+
+      assignee = found;
+    }
+
     const { data, error } = await supabase
       .from('tickets')
       .update({
-        assigned_to,
-        assigned_to_name,
+        assigned_to: assignee?.id || null,
+        assigned_to_name: assignee?.name || null,
         updated_at: getISTTime()
       })
       .eq('id', req.params.id)
@@ -981,18 +1154,23 @@ router.put('/:id/assign', auth, async (req, res) => {
       return res.status(500).json({ message: 'Assignment failed' });
     }
 
-    await notifyUser(
-      assigned_to_name,
-      'Ticket Assigned',
-      `${req.user.name} assigned "${existing.title}" to you`,
-      existing.id
-    );
+    if (assignee) {
+      await notifyUser(
+        assignee.name,
+        'Ticket Assigned',
+        `${req.user.name} assigned "${existing.title}" to you`,
+        existing.id
+      );
+    }
 
     const io = req.app.get('io');
 
     if (io) {
-      io.emit('ticketUpdated', data);
-      io.emit('notificationReceived');
+      // Include the previous assignee so their board drops the ticket too.
+      const audience = await ticketAudience(data);
+      audience.userIds.push(existing.assigned_to);
+      emitScoped(io, 'ticketUpdated', data, audience);
+      emitScoped(io, 'notificationReceived', undefined, audience);
     }
 
     res.json(data);

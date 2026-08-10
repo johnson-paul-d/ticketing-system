@@ -1,5 +1,5 @@
 import { Bell, CheckCheck, ExternalLink } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
@@ -16,7 +16,7 @@ export default function NotificationBell() {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     if (!user?.name) return;
     try {
       const res = await api.get("/notifications");
@@ -25,13 +25,13 @@ export default function NotificationBell() {
     } catch (error) {
       console.error("Fetch notifications error", error);
     }
-  };
+  }, [user?.name]);
 
   useEffect(() => {
     fetchNotifications();
     socket.on("notificationReceived", fetchNotifications);
     return () => socket.off("notificationReceived", fetchNotifications);
-  }, [user?.name]);
+  }, [fetchNotifications]);
 
   // Close when clicking outside the bell or the panel
   useEffect(() => {

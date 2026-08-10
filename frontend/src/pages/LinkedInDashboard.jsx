@@ -2,6 +2,7 @@ import { useMemo, useState, useCallback, useEffect } from "react";
 import MainLayout from "../layouts/MainLayout";
 import useLinkedInData from "../hooks/useLinkedInData";
 import api from "../services/api";
+import { LINKEDIN_OAUTH_STATE_KEY, newLinkedInOAuthState } from "../constants/linkedin";
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -166,10 +167,10 @@ function ruleBasedInsights(posts, followerRows, catStats) {
   return out;
 }
 
-function buildAuthUrl(clientId, redirectUri) {
+function buildAuthUrl(clientId, redirectUri, state) {
   return `https://www.linkedin.com/oauth/v2/authorization?response_type=code` +
     `&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}` +
-    `&scope=${OAUTH_SCOPES}&state=${Math.random().toString(36).slice(2)}`;
+    `&scope=${OAUTH_SCOPES}&state=${encodeURIComponent(state)}`;
 }
 
 // ─── Micro-components ─────────────────────────────────────────────────────────
@@ -1579,7 +1580,14 @@ function StrategySection({ posts, followerRows }) {
 function ConnectScreen() {
   const clientId   = import.meta.env.VITE_LINKEDIN_CLIENT_ID;
   const redirectUri = import.meta.env.VITE_LINKEDIN_REDIRECT_URI || `${window.location.origin}/auth/linkedin/callback`;
-  const authUrl    = buildAuthUrl(clientId, redirectUri);
+
+  // State is minted on click, not during render, so the value we persist is
+  // always the one that actually goes out to LinkedIn.
+  const connect = () => {
+    const state = newLinkedInOAuthState();
+    sessionStorage.setItem(LINKEDIN_OAUTH_STATE_KEY, state);
+    window.location.href = buildAuthUrl(clientId, redirectUri, state);
+  };
 
   return (
     <MainLayout>
@@ -1594,11 +1602,11 @@ function ConnectScreen() {
           <p className="text-gray-500 text-sm mb-8">
             Connect your LinkedIn company pages to track follower growth, content performance, and get AI-driven strategy recommendations.
           </p>
-          <a href={authUrl}
+          <button onClick={connect}
             className="inline-flex items-center justify-center gap-2 w-full py-3 rounded-2xl text-white font-semibold text-sm"
             style={{ background:LI_BLUE }}>
             Connect LinkedIn Pages
-          </a>
+          </button>
           <p className="text-xs text-gray-400 mt-4">Requires admin access to your LinkedIn company page</p>
         </div>
       </div>

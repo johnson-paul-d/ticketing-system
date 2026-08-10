@@ -2,12 +2,19 @@ const express = require("express");
 const router  = express.Router();
 const supabase = require("../config/supabase");
 const auth     = require("../middleware/auth");
+const requireAccess = require("../middleware/requireAccess");
+const { canAccessLinkedIn } = require("../utils/roles");
+const { rateLimit }         = require("../utils/rateLimit");
 
 const CLIENT_ID     = process.env.LINKEDIN_CLIENT_ID;
 const CLIENT_SECRET = process.env.LINKEDIN_CLIENT_SECRET;
 const REDIRECT_URI  = process.env.LINKEDIN_REDIRECT_URI || "http://localhost:3000/auth/linkedin/callback";
 const LI_API        = "https://api.linkedin.com/v2";
 const LI_AUTH       = "https://www.linkedin.com/oauth/v2";
+
+// Every route below reads or rotates the shared LinkedIn page token and its
+// analytics. Mounted router-wide so a new route cannot be added unprotected.
+router.use(auth, requireAccess(canAccessLinkedIn));
 
 // ─── Core fetch wrapper ───────────────────────────────────────────────────────
 // Builds URL manually so List() notation is not double-encoded by URLSearchParams
@@ -135,8 +142,8 @@ router.post("/exchange-token", async (req, res) => {
 
     res.json({ success: true, orgs, needsPicker: orgs.length > 1 });
   } catch (err) {
-    console.error("exchange-token:", err.message);
-    res.status(500).json({ message: err.message });
+    console.error("exchange-token:", err);
+    res.status(500).json({ message: "Failed to complete LinkedIn authorization" });
   }
 });
 
@@ -168,10 +175,14 @@ router.post("/refresh-orgs", async (req, res) => {
       .update({ all_orgs: orgs })
       .eq("id", t.id);
 
-    if (error) return res.status(500).json({ message: error.message });
+    if (error) {
+      console.error("refresh-orgs update:", error);
+      return res.status(500).json({ message: "Failed to refresh LinkedIn organizations" });
+    }
     res.json({ success: true, orgs, count: orgs.length });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("refresh-orgs:", err);
+    res.status(500).json({ message: "Failed to refresh LinkedIn organizations" });
   }
 });
 
@@ -181,11 +192,22 @@ router.post("/select-org", async (req, res) => {
   const { orgId, orgName, orgUrn } = req.body;
   if (!orgId) return res.status(400).json({ message: "orgId required" });
   try {
-    await supabase.from("linkedin_tokens")
+    // An update without .eq() would rewrite every stored token row — order()
+    // and limit() do not narrow an update in PostgREST.
+    const t = await getStoredToken();
+    const { error } = await supabase.from("linkedin_tokens")
       .update({ org_id: orgId, org_name: orgName, org_urn: orgUrn })
-      .order("created_at", { ascending: false }).limit(1);
+      .eq("id", t.id);
+
+    if (error) {
+      console.error("select-org update:", error);
+      return res.status(500).json({ message: "Failed to select LinkedIn organization" });
+    }
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) {
+    console.error("select-org:", err);
+    res.status(500).json({ message: "Failed to select LinkedIn organization" });
+  }
 });
 
 // ─── 3. Status ───────────────────────────────────────────────────────────────
@@ -205,14 +227,14 @@ router.get("/status", async (req, res) => {
 
 // ─── 4. Disconnect ────────────────────────────────────────────────────────────
 
-router.delete("/disconnect", auth, async (req, res) => {
+router.delete("/disconnect", async (req, res) => {
   await supabase.from("linkedin_tokens").delete().neq("id", "00000000-0000-0000-0000-000000000000");
   res.json({ success: true });
 });
 
 // ─── 5. Debug — raw API response for one org ─────────────────────────────────
 
-router.get("/debug", auth, async (req, res) => {
+router.get("/debug", async (req, res) => {
   try {
     const t      = await getStoredToken();
     const token  = t.access_token;
@@ -256,12 +278,15 @@ router.get("/debug", auth, async (req, res) => {
       share_with_ugclist:  { elements: cnt(shareList),    sample: ok(shareList)?.elements?.[0],    error: ok(shareList)?.error,
                              tested_urns: postUrns },
     });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) {
+    console.error("debug:", err);
+    res.status(500).json({ message: "Failed to fetch LinkedIn debug data" });
+  }
 });
 
 // ─── 6. Sync — loops ALL orgs ─────────────────────────────────────────────────
 
-router.post("/sync", auth, async (req, res) => {
+router.post("/sync", async (req, res) => {
   try {
     const t      = await getStoredToken();
     const token  = t.access_token;
@@ -462,8 +487,8 @@ router.post("/sync", auth, async (req, res) => {
 
     res.json({ success: true, summary, dedupDeleted: dedup.deleted });
   } catch (err) {
-    console.error("sync:", err.message);
-    res.status(500).json({ message: err.message });
+    console.error("sync:", err);
+    res.status(500).json({ message: "Failed to sync LinkedIn data" });
   }
 });
 
@@ -476,7 +501,10 @@ router.get("/follower-stats", async (req, res) => {
     const { data, error } = await q;
     if (error) throw error;
     res.json(data || []);
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) {
+    console.error("follower-stats:", err);
+    res.status(500).json({ message: "Failed to fetch follower stats" });
+  }
 });
 
 router.get("/page-analytics", async (req, res) => {
@@ -486,7 +514,10 @@ router.get("/page-analytics", async (req, res) => {
     const { data, error } = await q;
     if (error) throw error;
     res.json(data || []);
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) {
+    console.error("page-analytics:", err);
+    res.status(500).json({ message: "Failed to fetch page analytics" });
+  }
 });
 
 router.get("/posts", async (req, res) => {
@@ -496,7 +527,10 @@ router.get("/posts", async (req, res) => {
     const { data, error } = await q;
     if (error) throw error;
     res.json(data || []);
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) {
+    console.error("posts:", err);
+    res.status(500).json({ message: "Failed to fetch post analytics" });
+  }
 });
 
 router.get("/ad-analytics", async (req, res) => {
@@ -510,7 +544,10 @@ router.get("/ad-analytics", async (req, res) => {
       throw error;
     }
     res.json(data || []);
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) {
+    console.error("ad-analytics:", err);
+    res.status(500).json({ message: "Failed to fetch ad analytics" });
+  }
 });
 
 // ─── AI helper: call Gemini (tries models in order, throws on all failures) ───
@@ -552,7 +589,11 @@ const AI_CATEGORIES = [
   "Customer Success", "Recruitment & Careers",
 ];
 
-router.post("/ai-classify", async (req, res) => {
+// Shared bucket: both AI routes bill against the same paid Gemini quota, so a
+// caller cannot dodge the limit by alternating between them.
+const aiLimit = rateLimit({ name: "linkedin-ai", windowMs: 60 * 1000, max: 10 });
+
+router.post("/ai-classify", aiLimit, async (req, res) => {
   const { posts } = req.body || {};
   if (!posts?.length) return res.json({ classifications: {}, aiPowered: false });
 
@@ -589,14 +630,14 @@ router.post("/ai-classify", async (req, res) => {
       aiPowered: false,
       message: isQuota
         ? "Gemini quota exceeded — using keyword classifier instead"
-        : err.message,
+        : "AI classification unavailable — using keyword classifier instead",
     });
   }
 });
 
 // ─── AI: Generate insights via Gemini Flash ───────────────────────────────────
 
-router.get("/ai-insights", async (req, res) => {
+router.get("/ai-insights", aiLimit, async (req, res) => {
   try {
     const orgId  = req.query.orgId;
     const days   = parseInt(req.query.days || "30");
@@ -647,7 +688,7 @@ router.get("/ai-insights", async (req, res) => {
       followers: [],
       message: isQuota
         ? "Gemini quota exceeded — showing rule-based insights"
-        : err.message,
+        : "AI insights unavailable — showing rule-based insights",
     });
   }
 });
@@ -657,7 +698,7 @@ const multer = require("multer");
 const XLSX   = require("xlsx");
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
-router.post("/import-followers", auth, upload.single("file"), async (req, res) => {
+router.post("/import-followers", upload.single("file"), async (req, res) => {
   try {
     const { orgId, orgName } = req.body;
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
@@ -757,7 +798,7 @@ router.post("/import-followers", auth, upload.single("file"), async (req, res) =
     });
   } catch (e) {
     console.error("import-followers error:", e);
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: "Failed to import follower data" });
   }
 });
 
@@ -771,7 +812,10 @@ async function dedupFollowerStats() {
     .select("id, date, org_id, total_followers")
     .order("date", { ascending: true });
 
-  if (error || !allRows) return { deleted: 0, error: error?.message };
+  if (error || !allRows) {
+    console.error("dedupFollowerStats select:", error);
+    return { deleted: 0, error: error?.message };
+  }
 
   const groups = {};
   for (const row of allRows) {
@@ -783,8 +827,11 @@ async function dedupFollowerStats() {
   const toDelete = [];
   for (const rows of Object.values(groups)) {
     if (rows.length <= 1) continue;
-    // Keep the row with the highest total; break ties by keeping highest id
-    rows.sort((a, b) => (b.total_followers - a.total_followers) || (b.id - a.id));
+    // Keep the row with the highest total; on a tie keep the id that sorts last
+    // as a string, since ids are UUIDs and would subtract to NaN.
+    rows.sort((a, b) =>
+      (b.total_followers - a.total_followers) || String(b.id).localeCompare(String(a.id))
+    );
     toDelete.push(...rows.slice(1).map(r => r.id));
   }
 
@@ -806,12 +853,13 @@ async function dedupFollowerStats() {
 
 // ─── Dedup endpoint ───────────────────────────────────────────────────────────
 
-router.post("/dedup-followers", auth, async (req, res) => {
+router.post("/dedup-followers", async (req, res) => {
   try {
     const result = await dedupFollowerStats();
     res.json({ success: true, ...result });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error("dedup-followers:", e);
+    res.status(500).json({ error: "Failed to deduplicate follower stats" });
   }
 });
 

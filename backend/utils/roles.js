@@ -47,6 +47,19 @@ const sameTeam = (a, b) => {
   return ta === null || tb === null || ta === tb;
 };
 
+const isServiceTeam = (user) => getUserTeam(user) === TEAM.SERVICE;
+
+// Ad-dashboard access. These mirror canAccessGoogleAds / canAccessLinkedIn in
+// frontend/src/constants/roles.js — the client uses them to hide navigation,
+// the server uses them to actually enforce access. Keep the two in sync.
+const canAccessGoogleAds = (user) =>
+  !isServiceTeam(user) &&
+  (isAdmin(user) || String(user?.email || '').toLowerCase() === 'digitalmarketing@siegerglobal.net');
+
+const canAccessLinkedIn = (user) =>
+  !isServiceTeam(user) &&
+  (isAdmin(user) || user?.id === '072c5ff4-7d6e-4930-b271-e47e261f604d');
+
 module.exports = {
   TEAM,
   isSuperAdmin,
@@ -55,4 +68,7 @@ module.exports = {
   teamFromRole,
   getUserTeam,
   sameTeam,
+  isServiceTeam,
+  canAccessGoogleAds,
+  canAccessLinkedIn,
 };

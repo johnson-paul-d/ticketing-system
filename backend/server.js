@@ -3,6 +3,18 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
+
+const { TEAM, isAdmin, isSuperAdmin, getUserTeam } = require('./utils/roles');
+const { teamRoom, userRoom } = require('./utils/realtime');
+
+// Fail fast rather than booting an app whose auth silently accepts nothing.
+for (const key of ['JWT_SECRET', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']) {
+  if (!process.env[key]) {
+    console.error(`FATAL: ${key} is not set. Refusing to start.`);
+    process.exit(1);
+  }
+}
 
 const authRoutes = require('./routes/auth');
 const ticketRoutes = require('./routes/tickets');
@@ -24,7 +36,10 @@ const linkedinRoutes   = require("./routes/linkedin");
 
 app.use(express.json());
 
-app.use(express.text());
+// NOTE: express.text() used to be mounted globally so the Salesforce webhook
+// could read its text/plain body. That turned req.body into a String on every
+// route, so destructuring silently produced undefined instead of failing. The
+// text parser is now scoped to that one route inside routes/salesforce.js.
 
 app.use(express.urlencoded({ extended: true }));
 
@@ -61,6 +76,46 @@ const io = new Server(server, {
   },
 });
 
+// =====================================================
+// SOCKET AUTH + ROOMS
+// =====================================================
+// Sockets used to connect anonymously and receive a global io.emit of every
+// ticket row, which bypassed the team scoping the REST routes enforce. Now the
+// handshake requires the same JWT the API uses, and each socket joins only the
+// rooms it is entitled to. See utils/realtime.js for the emit side.
+io.use((socket, next) => {
+  try {
+    const raw =
+      socket.handshake.auth?.token ||
+      (socket.handshake.headers?.authorization || '').replace(/^Bearer\s+/i, '');
+
+    if (!raw) return next(new Error('Authentication required'));
+
+    socket.user = jwt.verify(raw, process.env.JWT_SECRET);
+    next();
+  } catch {
+    next(new Error('Invalid token'));
+  }
+});
+
+io.on('connection', (socket) => {
+  const user = socket.user;
+
+  socket.join(userRoom(user.id));
+
+  // Only admins get a team feed; everyone else is reached through their own
+  // user room when they are assigned to or created the record.
+  if (isAdmin(user)) {
+    if (isSuperAdmin(user)) {
+      socket.join(teamRoom(TEAM.MARKETING));
+      socket.join(teamRoom(TEAM.SERVICE));
+    } else {
+      const team = getUserTeam(user);
+      if (team) socket.join(teamRoom(team));
+    }
+  }
+});
+
 app.set('io', io);
 
 // Test route
@@ -86,6 +141,46 @@ app.use(
   permissionRoutes
 );
 const { startRecurrenceScheduler } = require('./services/recurrenceScheduler');
+
+// =====================================================
+// ERROR HANDLING
+// =====================================================
+// Without this, Express's default handler answers with the full stack trace
+// (absolute paths, module layout) whenever NODE_ENV isn't 'production' — which
+// it never was here. The CORS rejection above is the easiest way to trigger it.
+app.use((req, res) => {
+  res.status(404).json({ message: 'Not found' });
+});
+
+// eslint-disable-next-line no-unused-vars -- Express identifies the error
+// handler by its four-argument signature.
+app.use((err, req, res, next) => {
+  if (err?.message === 'Not allowed by CORS') {
+    return res.status(403).json({ message: 'Origin not allowed' });
+  }
+
+  // body-parser reports a malformed or oversized body as a 4xx. Reporting that
+  // as a 500 would send the client hunting for a server fault that isn't there.
+  const status = err?.status || err?.statusCode;
+  if (status >= 400 && status < 500) {
+    return res.status(status).json({
+      message: err.type === 'entity.too.large' ? 'Request body too large' : 'Malformed request body',
+    });
+  }
+
+  console.error('UNHANDLED ROUTE ERROR:', err);
+  res.status(500).json({ message: 'Server error' });
+});
+
+// Log and keep serving rather than dying on a stray rejection; a crash here
+// takes every connected socket with it.
+process.on('unhandledRejection', (reason) => {
+  console.error('UNHANDLED REJECTION:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION:', err);
+});
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {

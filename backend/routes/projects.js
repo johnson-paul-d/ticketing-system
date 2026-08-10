@@ -4,8 +4,9 @@ const router = express.Router();
 const supabase = require('../config/supabase');
 const auth = require('../middleware/auth');
 const getISTTime = require('../utils/time');
-const { notifyUser } = require('../services/notificationService');
+const { notifyUser, insertNotifications } = require('../services/notificationService');
 const { isAdmin, isSuperAdmin, isTeamMember, teamFromRole } = require('../utils/roles');
+const { emitScoped } = require('../utils/realtime');
 
 // A project belongs to the team of whoever created it (falling back to its
 // owner). Used to keep team admins scoped to their own team's projects.
@@ -22,6 +23,50 @@ const rolesByIdFor = async (projects) => {
   const { data } = await supabase.from('users').select('id, role').in('id', ids);
   return Object.fromEntries((data || []).map((u) => [u.id, u.role]));
 };
+
+// An admin may act on a project only within their own team; Super Admin spans
+// every team.
+const adminScopedTo = (user, project, roleById) =>
+  isSuperAdmin(user) ||
+  (isAdmin(user) && projectTeam(project, roleById) === teamFromRole(user.role));
+
+// Supabase REST caps a response at 1000 rows without reporting an error, so an
+// unbounded select would silently under-count task stats. Page until exhausted,
+// ordered by a unique column — without a stable order Postgres may repeat or
+// skip rows between pages.
+const PAGE = 1000;
+
+// `build` must return a fresh query each call — a PostgREST builder can only be
+// awaited once. `onError` decides whether a failure is fatal or degrades to the
+// rows gathered so far.
+const fetchPaged = async (build, onError) => {
+  const rows = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await build().range(from, from + PAGE - 1);
+    if (error) {
+      if (onError) return onError(error, rows);
+      throw error;
+    }
+    rows.push(...(data || []));
+    if (!data || data.length < PAGE) return rows;
+  }
+};
+
+const fetchProjectTickets = () =>
+  fetchPaged(
+    () =>
+      supabase
+        .from('tickets')
+        .select('id, project_id, status, due_date, assigned_to')
+        .not('project_id', 'is', null)
+        .order('id', { ascending: true }),
+    // A missing tickets.project_id column means the migration has not run yet —
+    // degrade to empty stats rather than 500-ing the whole project list.
+    (error, rows) => {
+      console.error('Project task lookup failed:', error);
+      return rows;
+    }
+  );
 
 // Migration not run yet → tell the client clearly instead of a generic 500
 const isMissingSchema = (error) =>
@@ -55,17 +100,26 @@ const taskStats = (tasks, targetDate) => {
   };
 };
 
+// Returns the ids actually notified, so the socket nudge can be aimed at them.
 const notifyMembers = async (memberIds, excludeUserId, title, message) => {
-  if (!memberIds?.length) return;
+  if (!memberIds?.length) return [];
   const ids = memberIds.filter((id) => id && id !== excludeUserId);
-  if (!ids.length) return;
+  if (!ids.length) return [];
   const { data: users } = await supabase
     .from('users')
     .select('id, name')
     .in('id', ids);
-  for (const u of users || []) {
-    await notifyUser(u.name, title, message, null);
-  }
+  if (!users?.length) return [];
+  await insertNotifications(
+    users.map((u) => ({
+      user_id: u.id,
+      user_name: u.name,
+      title,
+      message,
+      ticket_id: null,
+    }))
+  );
+  return users.map((u) => u.id);
 };
 
 // =====================================================
@@ -91,22 +145,25 @@ router.get('/meta/members', auth, async (req, res) => {
 // =====================================================
 router.get('/', auth, async (req, res) => {
   try {
-    const { data: projects, error } = await supabase
-      .from('projects')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (error) {
+    let projects;
+    try {
+      projects = await fetchPaged(() =>
+        supabase
+          .from('projects')
+          .select('*')
+          // created_at alone is not unique, so pages could repeat or skip rows.
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: true })
+      );
+    } catch (error) {
       if (isMissingSchema(error)) return migrationResponse(res);
       throw error;
     }
 
-    const { data: projectTickets } = await supabase
-      .from('tickets')
-      .select('id, project_id, status, due_date, assigned_to')
-      .not('project_id', 'is', null);
+    const projectTickets = await fetchProjectTickets();
 
     const enriched = (projects || []).map((p) => {
-      const tasks = (projectTickets || []).filter((t) => t.project_id === p.id);
+      const tasks = projectTickets.filter((t) => t.project_id === p.id);
       return { ...p, stats: taskStats(tasks, p.target_date) };
     });
 
@@ -125,7 +182,7 @@ router.get('/', auth, async (req, res) => {
           (p.members || []).includes(req.user.id) ||
           p.created_by === req.user.id ||
           p.owner === req.user.id ||
-          (projectTickets || []).some(
+          projectTickets.some(
             (t) => t.project_id === p.id && t.assigned_to === req.user.id
           )
       );
@@ -177,7 +234,7 @@ router.post('/', auth, async (req, res) => {
       throw error;
     }
 
-    await notifyMembers(
+    const notified = await notifyMembers(
       data.members,
       req.user.id,
       'Added to Project',
@@ -186,8 +243,12 @@ router.post('/', auth, async (req, res) => {
 
     const io = req.app.get('io');
     if (io) {
-      io.emit('projectCreated', data);
-      io.emit('notificationReceived');
+      const roleById = await rolesByIdFor([data]);
+      emitScoped(io, 'projectCreated', data, {
+        team: projectTeam(data, roleById),
+        userIds: [data.created_by, data.owner, ...(data.members || [])],
+      });
+      emitScoped(io, 'notificationReceived', undefined, { userIds: notified });
     }
     res.status(201).json(data);
   } catch (err) {
@@ -220,11 +281,8 @@ router.get('/:id', auth, async (req, res) => {
     // Access: admin (scoped to their team), owner, member, creator, or
     // assignee of any task
     const roleById = await rolesByIdFor([project]);
-    const adminScoped =
-      isSuperAdmin(req.user) ||
-      (isAdmin(req.user) && projectTeam(project, roleById) === teamFromRole(req.user.role));
     const hasAccess =
-      adminScoped ||
+      adminScopedTo(req.user, project, roleById) ||
       (project.members || []).includes(req.user.id) ||
       project.created_by === req.user.id ||
       project.owner === req.user.id ||
@@ -307,8 +365,11 @@ router.put('/:id', auth, async (req, res) => {
       if (isMissingSchema(fetchError)) return migrationResponse(res);
       return res.status(404).json({ message: 'Project not found' });
     }
+    // Same rule as the read paths: an admin only reaches their own team's
+    // projects, so a Service admin cannot edit a Marketing project.
+    const roleById = await rolesByIdFor([existing]);
     if (
-      !isAdmin(req.user) &&
+      !adminScopedTo(req.user, existing, roleById) &&
       existing.created_by !== req.user.id &&
       existing.owner !== req.user.id
     ) {
@@ -364,6 +425,8 @@ router.put('/:id', auth, async (req, res) => {
     }
     if (error) throw error;
 
+    const notified = [];
+
     // Tell the new owner
     if (owner && owner !== existing.owner && owner !== req.user.id) {
       const { data: ownerUser } = await supabase
@@ -378,6 +441,7 @@ router.put('/:id', auth, async (req, res) => {
           `${req.user.name} made you the owner of the project "${data.name}"`,
           null
         );
+        notified.push(owner);
       }
     }
 
@@ -394,18 +458,24 @@ router.put('/:id', auth, async (req, res) => {
       const added = (members || []).filter(
         (id) => !(existing.members || []).includes(id)
       );
-      await notifyMembers(
-        added,
-        req.user.id,
-        'Added to Project',
-        `${req.user.name} added you to the project "${data.name}"`
+      notified.push(
+        ...(await notifyMembers(
+          added,
+          req.user.id,
+          'Added to Project',
+          `${req.user.name} added you to the project "${data.name}"`
+        ))
       );
     }
 
     const io = req.app.get('io');
     if (io) {
-      io.emit('projectUpdated', data);
-      io.emit('notificationReceived');
+      const audienceRoles = await rolesByIdFor([data]);
+      emitScoped(io, 'projectUpdated', data, {
+        team: projectTeam(data, audienceRoles),
+        userIds: [data.created_by, data.owner, ...(data.members || [])],
+      });
+      emitScoped(io, 'notificationReceived', undefined, { userIds: notified });
     }
     res.json(data);
   } catch (err) {
@@ -422,17 +492,36 @@ router.delete('/:id', auth, async (req, res) => {
     if (!isAdmin(req.user)) {
       return res.status(403).json({ message: 'Only admin can delete projects' });
     }
+
+    const { data: existing, error: fetchError } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+    if (fetchError || !existing) {
+      if (isMissingSchema(fetchError)) return migrationResponse(res);
+      return res.status(404).json({ message: 'Project not found' });
+    }
+
+    const roleById = await rolesByIdFor([existing]);
+    if (!adminScopedTo(req.user, existing, roleById)) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
     await supabase
       .from('tickets')
       .update({ project_id: null })
-      .eq('project_id', req.params.id);
-    const { error } = await supabase.from('projects').delete().eq('id', req.params.id);
+      .eq('project_id', existing.id);
+    const { error } = await supabase.from('projects').delete().eq('id', existing.id);
     if (error) {
       if (isMissingSchema(error)) return migrationResponse(res);
       throw error;
     }
     const io = req.app.get('io');
-    if (io) io.emit('projectDeleted', { id: req.params.id });
+    emitScoped(io, 'projectDeleted', { id: existing.id }, {
+      team: projectTeam(existing, roleById),
+      userIds: [existing.created_by, existing.owner, ...(existing.members || [])],
+    });
     res.json({ success: true });
   } catch (err) {
     console.error(err);

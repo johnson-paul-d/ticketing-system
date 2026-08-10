@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../services/api";
+import { LINKEDIN_OAUTH_STATE_KEY } from "../constants/linkedin";
 
 const LI_BLUE = "#0077B5";
 
@@ -31,8 +32,24 @@ export default function LinkedInCallback() {
     const code    = searchParams.get("code");
     const err     = searchParams.get("error");
     const errDesc = searchParams.get("error_description");
+    const state   = searchParams.get("state");
+
+    // Single-use: read and clear before any early return, so a stored state can
+    // never be replayed against a second callback.
+    const expectedState = sessionStorage.getItem(LINKEDIN_OAUTH_STATE_KEY);
+    sessionStorage.removeItem(LINKEDIN_OAUTH_STATE_KEY);
 
     if (err) { setError(errDesc || err); setPhase("error"); return; }
+
+    if (!expectedState || !state || state !== expectedState) {
+      setError(
+        "Security check failed: this sign-in response doesn't match the request " +
+        "that started it. Please return to the dashboard and connect again."
+      );
+      setPhase("error");
+      return;
+    }
+
     if (!code) { setError("No authorization code received from LinkedIn."); setPhase("error"); return; }
 
     (async () => {

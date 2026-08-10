@@ -2,15 +2,24 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
-import { TICKET_CATEGORIES } from "../constants/categories";
+import { categoriesForTeam } from "../constants/categories";
 import { TICKET_DIVISIONS } from "../constants/divisions";
+import { getTeam } from "../constants/roles";
+import useAuthStore from "../store/authStore";
 
 export default function CreateTicket() {
   const navigate = useNavigate();
+  const user = useAuthStore((state) => state.user);
+
+  // A ticket is raised into the creator's team, so it takes that team's
+  // categories. Super Admins have no team of their own and get the Marketing
+  // list, which is what categoriesForTeam falls back to.
+  const categories = categoriesForTeam(getTeam(user));
+
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("Medium");
-  const [category, setCategory] = useState("Exhibition");
+  const [category, setCategory] = useState(categories[0]);
   const [division, setDivision] = useState("CPS");
   const [dueDate, setDueDate] = useState("");
   const [givenBy, setGivenBy] = useState("");
@@ -154,7 +163,7 @@ export default function CreateTicket() {
                 onChange={(e) => setCategory(e.target.value)}
                 disabled={loading}
               >
-                {TICKET_CATEGORIES.map((cat) => (
+                {categories.map((cat) => (
                   <option key={cat} value={cat}>
                     {cat}
                   </option>

@@ -1,14 +1,14 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
 import useAuthStore from "../store/authStore";
 import socket from "../services/socket";
 import moment from "moment";
-import { TICKET_CATEGORIES } from "../constants/categories";
+import { categoryOptions } from "../constants/categories";
 import { TICKET_DIVISIONS } from "../constants/divisions";
 import { TICKET_STATUSES } from "../constants/statuses";
-import { isAdmin as isAdminRole } from "../constants/roles";
+import { isAdmin as isAdminRole, getTeam } from "../constants/roles";
 
 export default function TicketDetails() {
   const { id } = useParams();
@@ -42,14 +42,9 @@ export default function TicketDetails() {
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [closeReason, setCloseReason] = useState("");
 
-  useEffect(() => {
-    fetchTicket();
-    if (isAdmin) fetchUsers();
-    socket.on("ticketUpdated", fetchTicket);
-    return () => socket.off("ticketUpdated", fetchTicket);
-  }, [user]);
+  const isAdmin = isAdminRole(user);
 
-  const fetchTicket = async () => {
+  const fetchTicket = useCallback(async () => {
     try {
       const res = await api.get(`/tickets/${id}`);
       setTicket(res.data);
@@ -68,16 +63,27 @@ export default function TicketDetails() {
     } catch (err) {
       console.error(err);
     }
-  };
+  }, [id]);
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       const res = await api.get("/users");
       setUsers(res.data);
     } catch (err) {
       console.error(err);
     }
-  };
+  }, []);
+
+  // Router reuses this component across /tickets/:id changes, so the effect has
+  // to key off the param — fetchTicket's identity changes with it — otherwise
+  // the previous ticket's data stays on screen and its socket handler lives on.
+  useEffect(() => {
+    setTicket(null);
+    fetchTicket();
+    if (isAdmin) fetchUsers();
+    socket.on("ticketUpdated", fetchTicket);
+    return () => socket.off("ticketUpdated", fetchTicket);
+  }, [isAdmin, fetchTicket, fetchUsers]);
 
   const formatMinutes = (minutes) => {
     const safeMinutes = Math.max(0, minutes);
@@ -123,8 +129,12 @@ export default function TicketDetails() {
     }
   };
 
-  const isAdmin = isAdminRole(user);
   const canEditTitle = isAdmin || ticket?.assigned_to === user?.id;
+
+  // Categories follow the ticket's team, not the viewer's, so an admin editing
+  // a Service ticket gets the Service list. `team` comes from GET /tickets/:id;
+  // the viewer's own team is the fallback for responses that predate it.
+  const ticketCategories = categoryOptions(ticket?.team || getTeam(user), ticket?.category);
 
   const revertDueDateRequest = async () => {
     if (!window.confirm("Cancel your due date change request?")) return;
@@ -579,7 +589,7 @@ export default function TicketDetails() {
                     className="border rounded-2xl px-4 py-3 w-full"
                   >
                     <option value="">Select Category</option>
-                    {TICKET_CATEGORIES.map((category) => (
+                    {ticketCategories.map((category) => (
                       <option key={category} value={category}>
                         {category}
                       </option>

@@ -2,6 +2,8 @@ const supabase = require('../config/supabase');
 const getISTTime = require('../utils/time');
 const { addInterval, occurrenceTitle } = require('../utils/recurrence');
 const { notifyUser } = require('./notificationService');
+const { emitScoped } = require('../utils/realtime');
+const { ticketAudience } = require('../utils/ticketTeam');
 
 const todayIST = () => new Date(Date.now() + 330 * 60000).toISOString().split('T')[0];
 
@@ -9,6 +11,9 @@ const todayIST = () => new Date(Date.now() + 330 * 60000).toISOString().split('T
 const isMissingRecurrenceSchema = (error) =>
   error && ['42703', 'PGRST204', 'PGRST205', '42P01'].includes(error.code);
 
+// Process-local only — it stops overlapping timer ticks inside one instance.
+// Two instances (or an overlapping deploy) are kept apart by the conditional
+// claim below plus the unique index from recurring-tasks-migration.sql v2.
 let running = false;
 
 // Generate any recurring occurrences whose scheduled date has arrived. Runs on
@@ -75,19 +80,47 @@ async function generateDueRecurrences(io) {
           ],
         };
 
+        // Claim the hand-off BEFORE creating the occurrence. Crashing between
+        // the two then leaves a missing occurrence — visible and recoverable —
+        // instead of a parent that keeps regenerating the same one every hour.
+        // The predicate is what makes concurrent instances safe: only the
+        // instance whose update matches an unclaimed row proceeds. The parent
+        // keeps its recurrence_interval/base_title so it still reads as part of
+        // the series.
+        const { data: claimed, error: claimErr } = await supabase
+          .from('tickets')
+          .update({ is_recurring: false })
+          .eq('id', parentId)
+          .eq('is_recurring', true)
+          .eq('recurrence_next', periodDate)
+          .select('id');
+        if (claimErr) {
+          console.error(
+            `Recurrence hand-off failed for "${baseTitle}" (${periodDate}), ticket ${parentId}:`,
+            claimErr
+          );
+          break;
+        }
+        if (!claimed || !claimed.length) break; // another instance claimed it first
+
         const { data: newTicket, error: insErr } = await supabase
           .from('tickets')
           .insert([occ])
           .select()
           .single();
         if (insErr) {
-          console.error('Recurrence insert error:', insErr);
+          if (insErr.code === '23505') {
+            // The unique index rejected a second copy — already generated.
+            console.warn(`Recurrence: occurrence "${occ.title}" already exists, skipping`);
+          } else {
+            console.error(
+              `Recurrence insert error for "${baseTitle}" (${periodDate}) — series halted, ` +
+                `ticket ${parentId} already handed off and needs the occurrence created by hand:`,
+              insErr
+            );
+          }
           break;
         }
-
-        // Hand the spawner flag to the new occurrence. The parent keeps its
-        // recurrence_interval/base_title so it still reads as part of the series.
-        await supabase.from('tickets').update({ is_recurring: false }).eq('id', parentId);
 
         if (newTicket.assigned_to_name) {
           await notifyUser(
@@ -97,7 +130,11 @@ async function generateDueRecurrences(io) {
             newTicket.id
           );
         }
-        if (io) io.emit('ticketCreated', newTicket);
+        if (io) {
+          const audience = await ticketAudience(newTicket);
+          emitScoped(io, 'ticketCreated', newTicket, audience);
+          emitScoped(io, 'notificationReceived', undefined, audience);
+        }
 
         parentId = newTicket.id;
         next = newNext;
@@ -105,7 +142,6 @@ async function generateDueRecurrences(io) {
       }
     }
 
-    if (created && io) io.emit('notificationReceived');
     if (created) console.log(`Recurrence: generated ${created} occurrence(s)`);
   } catch (err) {
     console.error('generateDueRecurrences error:', err);

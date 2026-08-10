@@ -1,11 +1,13 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const router = express.Router();
 const supabase = require('../config/supabase');
 const requireAuth = require('../middleware/auth');
 const { isAdmin } = require('../utils/roles');
 const { sendMail } = require('../services/mailService');
+const { rateLimit } = require('../utils/rateLimit');
 
 // =====================================================
 // PASSWORD RESET — OTP (in-memory, short-lived)
@@ -15,6 +17,21 @@ const { sendMail } = require('../services/mailService');
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const OTP_MAX_ATTEMPTS = 5;
 const otpStore = new Map(); // email -> { hash, expires, attempts, userId }
+
+// Codes must be unguessable: Math.random() exposes V8's PRNG state, so an
+// attacker who samples codes from their own account can predict someone else's.
+const generateOtp = () => String(crypto.randomInt(100000, 1000000));
+
+// Reset traffic is limited per IP and again per target address, so one attacker
+// can't cycle through accounts and can't flood a single victim's inbox.
+const forgotIpLimit = rateLimit({ name: 'forgot-ip', windowMs: 15 * 60 * 1000, max: 10 });
+const forgotEmailLimit = rateLimit({
+  name: 'forgot-email',
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  keyOn: (req) => String(req.body?.email || '').trim().toLowerCase(),
+});
+const resetLimit = rateLimit({ name: 'reset', windowMs: 15 * 60 * 1000, max: 15 });
 
 setInterval(() => {
   const now = Date.now();
@@ -37,10 +54,13 @@ const sendOtpEmail = async (to, name, otp) =>
   });
 
 // LOGIN
-router.post('/login', async (req, res) => {
+router.post('/login', rateLimit({ name: 'login', windowMs: 15 * 60 * 1000, max: 20 }), async (req, res) => {
   try {
     const { email, password } = req.body;
-    console.log('Login attempt:', email);
+
+    if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) {
+      return res.status(400).json({ message: 'Email and password are required' });
+    }
 
     const { data: users, error } = await supabase
       .from('users')
@@ -61,6 +81,12 @@ router.post('/login', async (req, res) => {
 
     if (!user.active) {
       return res.status(403).json({ message: 'Account disabled' });
+    }
+
+    // A row with a null password (creatable through the admin panel) would
+    // throw on .trim() and surface as an opaque 500, locking the account out.
+    if (!user.password) {
+      return res.status(401).json({ message: 'Invalid credentials' });
     }
 
     const validPassword = await bcrypt.compare(password.trim(), user.password.trim());
@@ -90,35 +116,16 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// TEMPORARY: Create first admin (remove after first use)
-router.post('/setup-admin', async (req, res) => {
-  try {
-    const email = 'ramenaathan@siegerglobal.net';
-    const password = 'admin123';
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const { error } = await supabase.from('users').insert([{
-      name: 'Admin',
-      email,
-      password: hashedPassword,
-      role: 'Super Admin',
-      division: 'CPS',
-      active: true,
-    }]);
-    if (error) return res.status(500).json({ error: error.message });
-    res.json({ message: 'Admin created. Login with admin123' });
-  } catch (err) {
-    console.error('Setup error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
+// NOTE: the bootstrap POST /setup-admin route was removed. It was public and
+// created a Super Admin with a hardcoded password. Seed the first admin with a
+// one-off INSERT in the Supabase SQL editor instead.
 
 // GET team members
-router.get('/team-members', async (req, res) => {
+router.get('/team-members', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('users')
-      .select('id,name,email,role,division')
+      .select('id,name,role,division')
       .like('role', 'Team Member%')
       .eq('active', true);
     if (error) throw error;
@@ -132,7 +139,7 @@ router.get('/team-members', async (req, res) => {
 // =====================================================
 // FORGOT PASSWORD — send an OTP to the account email
 // =====================================================
-router.post('/forgot-password', async (req, res) => {
+router.post('/forgot-password', forgotIpLimit, forgotEmailLimit, async (req, res) => {
   try {
     const email = (req.body.email || '').trim();
     if (!email) return res.status(400).json({ message: 'Email is required' });
@@ -154,7 +161,7 @@ router.post('/forgot-password', async (req, res) => {
     const user = users?.[0];
     if (!user || !user.active) return res.json(generic);
 
-    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    const otp = generateOtp();
     const hash = await bcrypt.hash(otp, 10);
     otpStore.set(email, { hash, expires: Date.now() + OTP_TTL_MS, attempts: 0, userId: user.id });
 
@@ -173,7 +180,7 @@ router.post('/forgot-password', async (req, res) => {
 // =====================================================
 // RESET PASSWORD — verify the OTP and set a new password
 // =====================================================
-router.post('/reset-password', async (req, res) => {
+router.post('/reset-password', resetLimit, async (req, res) => {
   try {
     const email = (req.body.email || '').trim();
     const otp = (req.body.otp || '').trim();
@@ -241,7 +248,7 @@ router.post('/admin-send-reset', requireAuth, async (req, res) => {
     if (!user) return res.status(404).json({ message: 'User not found' });
     if (!user.active) return res.status(400).json({ message: 'User is disabled' });
 
-    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    const otp = generateOtp();
     const hash = await bcrypt.hash(otp, 10);
     otpStore.set(email, { hash, expires: Date.now() + OTP_TTL_MS, attempts: 0, userId: user.id });
 
