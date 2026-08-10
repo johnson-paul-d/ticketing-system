@@ -446,9 +446,15 @@ export default function AdminAnalytics() {
 
   const groupedHierarchy = useMemo(() => {
     const filtered = tickets.filter((t) => {
-      // STEP 2: Non‑admins see only their own tickets
+      // STEP 2: Non‑admins see only their own tickets — the ones assigned to
+      // them and the ones they raised. Authorship matters: the create form
+      // sends no assignee, so a requester's own tickets have assigned_to null
+      // and matching on assignment alone would leave them with a blank page.
       if (!isAdminRole(user)) {
-        const isOwnTicket = t.assigned_to === user.id || t.assigned_to_name === user.name;
+        const isOwnTicket =
+          t.assigned_to === user.id ||
+          t.assigned_to_name === user.name ||
+          t.created_by === user.id;
         if (!isOwnTicket) return false;
       }
 

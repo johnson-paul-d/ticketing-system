@@ -177,7 +177,11 @@ function App() {
           <Route
             path="/admin-analytics"
             element={
-              <ProtectedRoute allowedRoles={["Admin"]}>
+              // Open to every role on purpose: the page scopes its data to the
+              // viewer's own tickets for non-admins, and the server already
+              // limits GET /tickets the same way. The sidebar links it for
+              // everyone, so gating it here would dead-end that link.
+              <ProtectedRoute>
                 <AdminAnalytics />
               </ProtectedRoute>
             }

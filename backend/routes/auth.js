@@ -5,7 +5,7 @@ const jwt = require('jsonwebtoken');
 const router = express.Router();
 const supabase = require('../config/supabase');
 const requireAuth = require('../middleware/auth');
-const { isAdmin } = require('../utils/roles');
+const { isAdmin, isSuperAdmin, teamFromRole, getUserTeam } = require('../utils/roles');
 const { sendMail } = require('../services/mailService');
 const { rateLimit } = require('../utils/rateLimit');
 
@@ -236,7 +236,7 @@ router.post('/admin-send-reset', requireAuth, async (req, res) => {
 
     const { data: users, error } = await supabase
       .from('users')
-      .select('id, name, email, active')
+      .select('id, name, email, active, role')
       .eq('email', email)
       .limit(1);
     if (error) {
@@ -247,6 +247,13 @@ router.post('/admin-send-reset', requireAuth, async (req, res) => {
     const user = users?.[0];
     if (!user) return res.status(404).json({ message: 'User not found' });
     if (!user.active) return res.status(400).json({ message: 'User is disabled' });
+
+    // Triggering a reset writes a live OTP for that account, so it needs the
+    // same scoping as editing the user. Without it any team admin could rotate
+    // a reset code for the Super Admin, or flood their inbox.
+    if (!isSuperAdmin(req.user) && teamFromRole(user.role) !== getUserTeam(req.user)) {
+      return res.status(403).json({ message: 'You can only reset users on your own team' });
+    }
 
     const otp = generateOtp();
     const hash = await bcrypt.hash(otp, 10);

@@ -136,6 +136,13 @@ export default function TicketDetails() {
   // the viewer's own team is the fallback for responses that predate it.
   const ticketCategories = categoryOptions(ticket?.team || getTeam(user), ticket?.category);
 
+  // Mirrors canModifyEntry on the server: the person who logged the time, or an
+  // admin. Showing Edit on someone else's entry only leads to a 403. Both names
+  // must actually be present — two undefined values would otherwise compare
+  // equal and offer the button on an unattributed entry.
+  const canEditEntry = (entry) =>
+    isAdmin || Boolean(user?.name && entry?.user_name && entry.user_name === user.name);
+
   const revertDueDateRequest = async () => {
     if (!window.confirm("Cancel your due date change request?")) return;
     try {
@@ -813,7 +820,9 @@ export default function TicketDetails() {
                     className="border px-5 py-3 rounded-2xl w-full"
                   >
                     <option value="">Select Team Member</option>
-                    {users.map((u) => (
+                    {/* Disabled accounts are rejected by the assign endpoint,
+                        so offering them here would only produce a failure. */}
+                    {users.filter((u) => u.active !== false).map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.name}
                       </option>
@@ -897,7 +906,9 @@ export default function TicketDetails() {
                         </div>
                         <div className="flex flex-col items-start lg:items-end gap-3">
                           <div><div className="text-3xl font-bold">{formatMinutes(entry.duration_minutes)}</div><div className="text-sm text-gray-500 mt-1">Time Spent</div></div>
-                          <button onClick={() => startEditEntry(entry)} className="bg-[#9b2423] text-white px-5 py-2 rounded-xl hover:bg-[#7d1d1c]">Edit</button>
+                          {canEditEntry(entry) && (
+                            <button onClick={() => startEditEntry(entry)} className="bg-[#9b2423] text-white px-5 py-2 rounded-xl hover:bg-[#7d1d1c]">Edit</button>
+                          )}
                         </div>
                       </>
                     ) : (

@@ -216,7 +216,8 @@
       "PowerShell(Stop-Process -Force -ErrorAction SilentlyContinue)",
       "Bash(node -e \"console.log\\(require\\('@google/generative-ai/package.json'\\).version\\)\")",
       "Bash(sed 's/^export //' src/constants/categories.js)",
-      "Bash(node --input-type=module -e ' *)"
+      "Bash(node --input-type=module -e ' *)",
+      "Bash(npx eslint *)"
     ]
   }
 }

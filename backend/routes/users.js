@@ -15,11 +15,24 @@ const EDITABLE_FIELDS = ['name', 'email', 'role', 'division', 'active', 'passwor
 
 const isNonEmptyString = (value) => typeof value === 'string' && value.trim().length > 0;
 
-// A team admin may only act on users whose role resolves to their own team.
-// sameTeam() is deliberately not used here: it treats a null team as "matches
-// everyone", which would let a Marketing admin manage a Super Admin.
+// Visibility and management are deliberately different rules.
+//
+// A team admin may only *write* to users on their own team. sameTeam() is not
+// used here: it treats a null team as "matches everyone", which would let a
+// Marketing admin edit a Super Admin.
 const canManage = (actor, targetRole) =>
   isSuperAdmin(actor) || teamFromRole(targetRole) === getUserTeam(actor);
+
+// ...but they must still *see* Super Admins. This list also populates the
+// assignee dropdown on a ticket, and a Super Admin spans every team, so
+// filtering them out here would make the org's most senior account
+// unassignable and invisible in the admin panel.
+//
+// The Super Admin test is explicit rather than `teamFromRole(role) === null`,
+// which is also true for a blank or unrecognised role — that would quietly
+// expose every malformed account to both teams.
+const canView = (actor, targetRole) =>
+  canManage(actor, targetRole) || isSuperAdmin({ role: targetRole });
 
 // Supabase runs with the service-role key and no RLS, so the target has to be
 // read back before a write to know which team it belongs to.
@@ -41,7 +54,7 @@ router.get('/', auth, admin, async (req, res) => {
       .select(USER_COLUMNS)
       .order('created_at', { ascending: false });
     if (error) throw error;
-    res.json((data || []).filter((u) => canManage(req.user, u.role)));
+    res.json((data || []).filter((u) => canView(req.user, u.role)));
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to fetch users' });
@@ -99,7 +112,9 @@ router.put('/:id', auth, admin, async (req, res) => {
     // admin who could write it could promote themselves to Super Admin. This
     // has to be an error rather than a silent drop — the admin panel would
     // otherwise show the change as saved.
-    if ('role' in req.body && !isSuperAdmin(req.user)) {
+    // Only an actual change is rejected: a client that echoes the whole user
+    // object back would otherwise 403 on an unrelated edit.
+    if ('role' in req.body && req.body.role !== target.role && !isSuperAdmin(req.user)) {
       return res.status(403).json({ message: 'Only a Super Admin can change a user role' });
     }
 

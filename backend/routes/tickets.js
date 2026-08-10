@@ -1130,10 +1130,31 @@ router.put('/:id/assign', auth, async (req, res) => {
       if (!found) return res.status(400).json({ message: 'Assignee not found' });
       if (!found.active) return res.status(400).json({ message: 'Cannot assign to a disabled user' });
 
-      // A team admin must not hand work to the other team, which would move the
-      // ticket out of their own scope and out of their team's reporting.
-      if (!isSuperAdmin(req.user) && teamFromRole(found.role) !== getUserTeam(req.user)) {
-        return res.status(403).json({ message: 'Cannot assign to a user on another team' });
+      // A team admin must not hand work to the other team. Rather than compare
+      // the target's role directly, check where the assignment would leave the
+      // ticket: ticketTeam falls back to the creator when the assignee has no
+      // team of their own, so assigning to a Super Admin can silently re-home a
+      // ticket to its creator's team — moving it out of the acting admin's
+      // scope and broadcasting it into the other team's socket room.
+      if (!isSuperAdmin(req.user)) {
+        let creatorRole = null;
+        if (existing.created_by) {
+          const { data: creator } = await supabase
+            .from('users')
+            .select('role')
+            .eq('id', existing.created_by)
+            .single();
+          creatorRole = creator?.role || null;
+        }
+
+        const resultingTeam =
+          teamFromRole(found.role) || teamFromRole(creatorRole) || TEAM.MARKETING;
+
+        if (resultingTeam !== getUserTeam(req.user)) {
+          return res.status(403).json({
+            message: 'That assignment would move this ticket to another team',
+          });
+        }
       }
 
       assignee = found;

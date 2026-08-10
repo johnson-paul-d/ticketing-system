@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { UserPlus, Users, Search, Loader2, ShieldCheck } from "lucide-react";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
-import { ROLE_OPTIONS, ALL_ROLES } from "../constants/roles";
+import useAuthStore from "../store/authStore";
+import { ROLE_OPTIONS, ALL_ROLES, isSuperAdmin, getTeam } from "../constants/roles";
 
 const roleChipClass = (role = "") => {
   if (role === "Super Admin") return "bg-purple-100 text-purple-700";
@@ -21,12 +22,37 @@ const initials = (name = "") =>
   name.split(" ").filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
 
 export default function AdminPanel() {
+  const me = useAuthStore((state) => state.user);
+
+  // Role changes are Super-Admin-only on the server; team admins get a
+  // read-only chip rather than a control that would always be rejected.
+  const canChangeRole = isSuperAdmin(me);
+
+  // Mirrors canManage on the server. Team admins can now *see* Super Admins
+  // (they need to be assignable), but every write against them is rejected —
+  // so the row's actions are hidden rather than offered and then refused.
+  const canManageUser = (u) =>
+    isSuperAdmin(me) || getTeam({ role: u?.role }) === getTeam(me);
+
+  // The create form must only offer roles the server will accept.
+  const creatableRoleGroups = isSuperAdmin(me)
+    ? ROLE_OPTIONS
+    : ROLE_OPTIONS.map((g) => ({
+        ...g,
+        roles: g.roles.filter((r) => getTeam({ role: r }) === getTeam(me)),
+      })).filter((g) => g.roles.length);
+
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("User - MKTG");
+  // Keep the historical default where it is still creatable; a Service admin
+  // would otherwise have their very first create rejected by the server.
+  const [role, setRole] = useState(() => {
+    const creatable = creatableRoleGroups.flatMap((g) => g.roles);
+    return creatable.includes("User - MKTG") ? "User - MKTG" : creatable[0] || "User - MKTG";
+  });
   const [division, setDivision] = useState("CPS");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -34,6 +60,10 @@ export default function AdminPanel() {
   const [busyId, setBusyId] = useState(null);
   const [resettingId, setResettingId] = useState(null);
   const [notice, setNotice] = useState("");
+  // Separate from `error`, which renders inside the Create User card at the top
+  // of the page — a row action's failure shown there reads as a create failure
+  // and is usually scrolled off screen.
+  const [rowError, setRowError] = useState("");
 
   const fetchUsers = async () => {
     try {
@@ -72,25 +102,32 @@ export default function AdminPanel() {
 
   const toggleUser = async (user) => {
     setBusyId(user.id);
+    setRowError("");
     try {
       await api.put(`/users/${user.id}`, { active: !user.active });
       fetchUsers();
     } catch (err) {
-      console.error(err);
+      setRowError(err.response?.data?.message || "Failed to update user");
     } finally {
       setBusyId(null);
     }
   };
 
-  // Reassign a user's role/team (also how legacy roles get normalised)
+  // Reassign a user's role/team (also how legacy roles get normalised).
+  // Only a Super Admin may do this, so a rejection here has to be shown —
+  // the select is controlled, and a silent failure just snaps it back to the
+  // old value with no explanation.
   const changeRole = async (user, newRole) => {
     if (!newRole || newRole === user.role) return;
     setBusyId(user.id);
+    setRowError("");
     try {
       await api.put(`/users/${user.id}`, { role: newRole });
       fetchUsers();
     } catch (err) {
-      console.error(err);
+      setRowError(err.response?.data?.message || "Failed to change role");
+      // Re-sync from the server so the dropdown reflects what is actually stored.
+      fetchUsers();
     } finally {
       setBusyId(null);
     }
@@ -164,7 +201,7 @@ export default function AdminPanel() {
           <div>
             <label className="block text-xs font-semibold text-gray-500 mb-1.5">Role</label>
             <select value={role} onChange={(e) => setRole(e.target.value)} className={inputCls}>
-              {ROLE_OPTIONS.map((g) => (
+              {creatableRoleGroups.map((g) => (
                 <optgroup key={g.group} label={g.group}>
                   {g.roles.map((r) => (
                     <option key={r} value={r}>{r}</option>
@@ -245,23 +282,32 @@ export default function AdminPanel() {
                     </td>
                     <td className="px-4 py-3 text-gray-600">{user.email}</td>
                     <td className="px-4 py-3">
-                      <select
-                        value={ALL_ROLES.includes(user.role) ? user.role : ""}
-                        onChange={(e) => changeRole(user, e.target.value)}
-                        disabled={busyId === user.id}
-                        className={`text-[11px] font-semibold px-2 py-1 rounded-lg border border-gray-200 outline-none focus:ring-2 focus:ring-[#9b2423]/40 disabled:opacity-50 ${roleChipClass(user.role)}`}
-                      >
-                        {!ALL_ROLES.includes(user.role) && (
-                          <option value="" disabled>{user.role || "—"}</option>
-                        )}
-                        {ROLE_OPTIONS.map((g) => (
-                          <optgroup key={g.group} label={g.group}>
-                            {g.roles.map((r) => (
-                              <option key={r} value={r}>{r}</option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </select>
+                      {canChangeRole ? (
+                        <select
+                          value={ALL_ROLES.includes(user.role) ? user.role : ""}
+                          onChange={(e) => changeRole(user, e.target.value)}
+                          disabled={busyId === user.id}
+                          className={`text-[11px] font-semibold px-2 py-1 rounded-lg border border-gray-200 outline-none focus:ring-2 focus:ring-[#9b2423]/40 disabled:opacity-50 ${roleChipClass(user.role)}`}
+                        >
+                          {!ALL_ROLES.includes(user.role) && (
+                            <option value="" disabled>{user.role || "—"}</option>
+                          )}
+                          {ROLE_OPTIONS.map((g) => (
+                            <optgroup key={g.group} label={g.group}>
+                              {g.roles.map((r) => (
+                                <option key={r} value={r}>{r}</option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                      ) : (
+                        <span
+                          title="Only a Super Admin can change roles"
+                          className={`inline-block text-[11px] font-semibold px-2 py-1 rounded-lg ${roleChipClass(user.role)}`}
+                        >
+                          {user.role || "—"}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-gray-600">{user.division}</td>
                     <td className="px-4 py-3">
@@ -271,25 +317,31 @@ export default function AdminPanel() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="inline-flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => sendReset(user)}
-                          disabled={resettingId === user.id || !user.active}
-                          title="Email this user a password reset code"
-                          className="text-xs font-semibold px-3 py-2 rounded-lg bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                        >
-                          {resettingId === user.id ? "Sending…" : "Reset PW"}
-                        </button>
-                        <button
-                          onClick={() => toggleUser(user)}
-                          disabled={busyId === user.id}
-                          className={`text-xs font-semibold px-4 py-2 rounded-lg transition disabled:opacity-50 ${
-                            user.active
-                              ? "bg-white border border-red-200 text-red-600 hover:bg-red-50"
-                              : "bg-[#9b2423] hover:bg-[#7d1d1c] text-white"
-                          }`}
-                        >
-                          {busyId === user.id ? "…" : user.active ? "Disable" : "Enable"}
-                        </button>
+                        {canManageUser(user) ? (
+                          <>
+                            <button
+                              onClick={() => sendReset(user)}
+                              disabled={resettingId === user.id || !user.active}
+                              title="Email this user a password reset code"
+                              className="text-xs font-semibold px-3 py-2 rounded-lg bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                            >
+                              {resettingId === user.id ? "Sending…" : "Reset PW"}
+                            </button>
+                            <button
+                              onClick={() => toggleUser(user)}
+                              disabled={busyId === user.id}
+                              className={`text-xs font-semibold px-4 py-2 rounded-lg transition disabled:opacity-50 ${
+                                user.active
+                                  ? "bg-white border border-red-200 text-red-600 hover:bg-red-50"
+                                  : "bg-[#9b2423] hover:bg-[#7d1d1c] text-white"
+                              }`}
+                            >
+                              {busyId === user.id ? "…" : user.active ? "Disable" : "Enable"}
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-xs text-gray-400">Not on your team</span>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -316,6 +368,7 @@ export default function AdminPanel() {
                 </div>
                 <div className="flex items-center justify-between mt-3">
                   <div className="flex items-center gap-1.5">
+                    {canChangeRole ? (
                     <select
                       value={ALL_ROLES.includes(user.role) ? user.role : ""}
                       onChange={(e) => changeRole(user, e.target.value)}
@@ -333,27 +386,41 @@ export default function AdminPanel() {
                         </optgroup>
                       ))}
                     </select>
+                    ) : (
+                      <span
+                        title="Only a Super Admin can change roles"
+                        className={`text-[10px] font-semibold px-2 py-1 rounded-lg ${roleChipClass(user.role)}`}
+                      >
+                        {user.role || "—"}
+                      </span>
+                    )}
                     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{user.division}</span>
                   </div>
-                  <button
-                    onClick={() => toggleUser(user)}
-                    disabled={busyId === user.id}
-                    className={`text-xs font-semibold px-4 py-2 rounded-lg transition disabled:opacity-50 ${
-                      user.active
-                        ? "bg-white border border-red-200 text-red-600"
-                        : "bg-[#9b2423] text-white"
-                    }`}
-                  >
-                    {busyId === user.id ? "…" : user.active ? "Disable" : "Enable"}
-                  </button>
+                  {canManageUser(user) ? (
+                    <button
+                      onClick={() => toggleUser(user)}
+                      disabled={busyId === user.id}
+                      className={`text-xs font-semibold px-4 py-2 rounded-lg transition disabled:opacity-50 ${
+                        user.active
+                          ? "bg-white border border-red-200 text-red-600"
+                          : "bg-[#9b2423] text-white"
+                      }`}
+                    >
+                      {busyId === user.id ? "…" : user.active ? "Disable" : "Enable"}
+                    </button>
+                  ) : (
+                    <span className="text-xs text-gray-400">Not on your team</span>
+                  )}
                 </div>
-                <button
-                  onClick={() => sendReset(user)}
-                  disabled={resettingId === user.id || !user.active}
-                  className="mt-2 w-full text-xs font-semibold px-3 py-2 rounded-lg bg-white border border-gray-200 text-gray-700 disabled:opacity-50"
-                >
-                  {resettingId === user.id ? "Sending reset code…" : "Reset Password"}
-                </button>
+                {canManageUser(user) && (
+                  <button
+                    onClick={() => sendReset(user)}
+                    disabled={resettingId === user.id || !user.active}
+                    className="mt-2 w-full text-xs font-semibold px-3 py-2 rounded-lg bg-white border border-gray-200 text-gray-700 disabled:opacity-50"
+                  >
+                    {resettingId === user.id ? "Sending reset code…" : "Reset Password"}
+                  </button>
+                )}
               </div>
             ))}
           </div>
