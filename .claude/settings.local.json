@@ -217,7 +217,21 @@
       "Bash(node -e \"console.log\\(require\\('@google/generative-ai/package.json'\\).version\\)\")",
       "Bash(sed 's/^export //' src/constants/categories.js)",
       "Bash(node --input-type=module -e ' *)",
-      "Bash(npx eslint *)"
+      "Bash(npx eslint *)",
+      "Bash(node -e \"const d=require\\('./frontend/package.json'\\).dependencies; console.log\\(Object.keys\\(d\\).filter\\(k=>/pdf|canvas|jspdf|print/i.test\\(k\\)\\).join\\(', '\\)||'none \\(jspdf/html2canvas were removed as unused\\)'\\)\")",
+      "Bash(gh repo *)",
+      "PowerShell(gh repo view johnson-paul-d/ticketing-system --json visibility,name,diskUsage 2>&1)",
+      "PowerShell(git -C D:\\\\Ticketing-System ls-files backend | Where-Object { $_ -notmatch 'node_modules' })",
+      "PowerShell(Get-Content D:\\\\Ticketing-System\\\\backend\\\\.env | ForEach-Object { \\($_ -split '='\\)[0] })",
+      "Bash(node --check routes/expenses.js)",
+      "Bash(node --check utils/expenseCategories.js)",
+      "PowerShell(npm view googleapis version --silent 2>$null)",
+      "PowerShell($eb = \"D:\\\\Ticketing-System\\\\frontend\\\\node_modules\\\\.bin\\\\esbuild.cmd\"; foreach \\($f in @\\(\"src\\\\pages\\\\ExpenseDetails.jsx\",\"src\\\\pages\\\\Expenses.jsx\",\"src\\\\App.jsx\",\"src\\\\layouts\\\\MainLayout.jsx\",\"src\\\\constants\\\\expenseCategories.js\"\\)\\) { $p = Join-Path \"D:\\\\Ticketing-System\\\\frontend\" $f; & $eb $p \"--loader:.jsx=jsx\" \"--outfile=$env:TEMP\\\\eb-out.js\" ; \"$f -> exit=$LASTEXITCODE\" })",
+      "PowerShell($env:FILE_STORE=$null; node -e \"const fs=require\\('D:/Ticketing-System/backend/services/fileStore.js'\\); console.log\\('loaded, isConfigured =', fs.isConfigured\\(\\)\\); fs.put\\(Buffer.from\\('x'\\),{fileName:'a.pdf'}\\).then\\(\\(\\)=>console.log\\('unexpected success'\\)\\).catch\\(e=>console.log\\('put rejects:', e.message\\)\\); fs.remove\\('abc'\\).catch\\(e=>console.log\\('remove rejects:', e.message\\)\\);\")",
+      "PowerShell($env:FILE_STORE='supabase'; node -e \"const fs=require\\('D:/Ticketing-System/backend/services/fileStore.js'\\); console.log\\('supabase isConfigured =', fs.isConfigured\\(\\)\\); fs.put\\(Buffer.from\\('x'\\),{}\\).catch\\(e=>console.log\\('stub:', e.message\\)\\);\"; $env:FILE_STORE='s3'; node -e \"const fs=require\\('D:/Ticketing-System/backend/services/fileStore.js'\\); console.log\\('unknown isConfigured =', fs.isConfigured\\(\\)\\); fs.get\\('id'\\).catch\\(e=>console.log\\('unknown:', e.message\\)\\);\"; $env:FILE_STORE=$null)",
+      "PowerShell(Set-Location \"D:\\\\Ticketing-System\\\\frontend\"; & \"node_modules\\\\.bin\\\\eslint.cmd\" \"src/pages/Expenses.jsx\" \"src/pages/ExpenseDetails.jsx\" \"src/constants/expenseCategories.js\" \"src/App.jsx\" \"src/layouts/MainLayout.jsx\"; \"exit=$LASTEXITCODE\")",
+      "PowerShell(git -C D:\\\\Ticketing-System status --short)",
+      "PowerShell(cd D:\\\\Ticketing-System\\\\backend; $env:SUPABASE_URL='https://x.supabase.co'; $env:SUPABASE_SERVICE_ROLE_KEY='dummy'; node -e \"const r=require\\('./routes/expenses'\\); const routes=r.stack.filter\\(l=>l.route\\).map\\(l=>Object.keys\\(l.route.methods\\)[0].toUpperCase\\(\\)+' '+l.route.path\\); console.log\\('Mounted at /api/expenses:'\\); routes.forEach\\(x=>console.log\\('  '+x\\)\\);\")"
     ]
   }
 }

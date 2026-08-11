@@ -18,6 +18,8 @@ const AdminPanel         = lazy(() => import("./pages/AdminPanel"));
 const PendingApprovals   = lazy(() => import("./pages/PendingApprovals"));
 const Projects           = lazy(() => import("./pages/Projects"));
 const ProjectDetails     = lazy(() => import("./pages/ProjectDetails"));
+const Expenses           = lazy(() => import("./pages/Expenses"));
+const ExpenseDetails     = lazy(() => import("./pages/ExpenseDetails"));
 const CompletionReport   = lazy(() => import("./pages/CompletionReport"));
 const OpenTicketsReport  = lazy(() => import("./pages/OpenTicketsReport"));
 const Reports            = lazy(() => import("./pages/Reports"));
@@ -116,6 +118,34 @@ function App() {
             element={
               <ProtectedRoute>
                 <ProjectDetails />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* No role gate — every role files its own expenses. */}
+          <Route
+            path="/expenses"
+            element={
+              <ProtectedRoute>
+                <Expenses />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/expenses/new"
+            element={
+              <ProtectedRoute>
+                <ExpenseDetails />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/expenses/:id"
+            element={
+              <ProtectedRoute>
+                <ExpenseDetails />
               </ProtectedRoute>
             }
           />

@@ -2,7 +2,7 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import {
   Menu, X, LayoutDashboard, Cpu, KanbanSquare, Calendar,
   Shield, BarChart3, LogOut, PlusCircle, ChevronRight, ClipboardCheck, FolderKanban,
-  Target, Building2, CalendarCheck, TrendingUp, Gauge, ChevronDown
+  Target, Building2, CalendarCheck, TrendingUp, Gauge, ChevronDown, Receipt
 } from "lucide-react";
 import { useState } from "react";
 import useAuthStore from "../store/authStore";
@@ -78,6 +78,7 @@ export default function MainLayout({ children }) {
     { type: "group", key: "dashboard", label: "Dashboard", icon: LayoutDashboard, children: dashboardChildren },
     { type: "link", label: "Tickets", path: "/tickets", icon: Cpu },
     { type: "link", label: "Projects", path: "/projects", icon: FolderKanban },
+    { type: "link", label: "Expenses", path: "/expenses", icon: Receipt },
     ...(!isTeamMember(user)
       ? [{ type: "link", label: "Create Ticket", path: "/create-ticket", icon: PlusCircle }]
       : []),

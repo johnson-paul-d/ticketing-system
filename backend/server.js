@@ -22,6 +22,7 @@ const userRoutes = require('./routes/users');
 const notificationRoutes = require('./routes/notifications');
 const projectRoutes = require('./routes/projects');
 const abmRoutes = require('./routes/abm');
+const expenseRoutes = require('./routes/expenses');
 
 const app = express();
 const server = http.createServer(app);
@@ -128,6 +129,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/abm', abmRoutes);
+app.use('/api/expenses', expenseRoutes);
 app.use('/api', timeEntryRoutes);
 app.use("/api/leave-requests", leaveRoutes);
 
