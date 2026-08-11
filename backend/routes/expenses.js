@@ -1,4 +1,5 @@
 const express = require('express');
+const multer = require('multer');
 const router = express.Router();
 
 const supabase = require('../config/supabase');
@@ -6,8 +7,28 @@ const auth = require('../middleware/auth');
 const getISTTime = require('../utils/time');
 const { TEAM, isAdmin, isSuperAdmin, getUserTeam, teamFromRole } = require('../utils/roles');
 const { expenseCategoriesForTeam, isValidExpenseCategory } = require('../utils/expenseCategories');
+const { detectFileType, safeFileName } = require('../utils/fileType');
+const fileStore = require('../services/fileStore');
+const { notifyAdmins, notifyUser } = require('../services/notificationService');
+const {
+  canApproveClaim,
+  approvalRefusalReason,
+  approvalHash,
+  verifyCodeFrom,
+} = require('../utils/expenseApproval');
 
 router.use(auth);
+
+// Receipts are photos of bills. The client downsamples before upload, so this
+// cap is a backstop against a caller that skips that, not the expected size.
+const MAX_RECEIPT_BYTES = 5 * 1024 * 1024;
+const MAX_RECEIPTS_PER_LINE = 5;
+const MAX_RECEIPTS_PER_CLAIM = 25;
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_RECEIPT_BYTES, files: 1 },
+});
 
 // =====================================================
 // SCHEMA GUARD
@@ -62,6 +83,17 @@ const fetchLines = async (claimId) => {
     .select('*')
     .eq('claim_id', claimId)
     .order('expense_date', { ascending: true })
+    .order('id', { ascending: true });
+  if (error) throw error;
+  return data || [];
+};
+
+const fetchReceipts = async (claimId) => {
+  const { data, error } = await supabase
+    .from('expense_receipts')
+    .select('*')
+    .eq('claim_id', claimId)
+    .order('created_at', { ascending: true })
     .order('id', { ascending: true });
   if (error) throw error;
   return data || [];
@@ -272,7 +304,14 @@ router.get('/:id', async (req, res) => {
     const claim = await loadClaim(req, res);
     if (!claim) return;
 
-    res.json({ ...claim, lines: await fetchLines(claim.id) });
+    res.json({
+      ...claim,
+      lines: await fetchLines(claim.id),
+      receipts: await fetchReceipts(claim.id),
+      // Lets the client show who may act without duplicating the rules.
+      can_edit: canEditClaim(req.user, claim) && isEditable(claim),
+      can_approve: claim.status === 'Submitted' && canApproveClaim(req.user, claim),
+    });
   } catch (err) {
     console.error('EXPENSE READ ERROR:', err);
     res.status(500).json({ message: 'Failed to fetch expense claim' });
@@ -444,6 +483,428 @@ router.delete('/:id/lines/:lineId', async (req, res) => {
   } catch (err) {
     console.error('EXPENSE LINE DELETE ERROR:', err);
     res.status(500).json({ message: 'Failed to delete line item' });
+  }
+});
+
+// =====================================================
+// RECEIPTS
+// =====================================================
+router.post('/:id/receipts', upload.single('file'), async (req, res) => {
+  try {
+    const claim = await loadEditableClaim(req, res);
+    if (!claim) return;
+
+    if (!req.file?.buffer?.length) {
+      return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    const type = detectFileType(req.file.buffer);
+    if (!type) {
+      return res.status(400).json({
+        message: 'Only JPEG, PNG or PDF receipts are accepted',
+      });
+    }
+
+    // A receipt may hang off a specific line, or off the claim while the
+    // claimant is still deciding. Submit only counts the line-attached ones.
+    let lineId = req.body.line_id || null;
+    if (lineId) {
+      const { data: line } = await supabase
+        .from('expense_lines')
+        .select('id, claim_id')
+        .eq('id', lineId)
+        .single();
+      if (!line || line.claim_id !== claim.id) {
+        return res.status(400).json({ message: 'That line item does not belong to this claim' });
+      }
+    }
+
+    const existing = await fetchReceipts(claim.id);
+    if (existing.length >= MAX_RECEIPTS_PER_CLAIM) {
+      return res.status(400).json({
+        message: `A claim can hold at most ${MAX_RECEIPTS_PER_CLAIM} receipts`,
+      });
+    }
+    if (lineId && existing.filter((r) => r.line_id === lineId).length >= MAX_RECEIPTS_PER_LINE) {
+      return res.status(400).json({
+        message: `A line item can hold at most ${MAX_RECEIPTS_PER_LINE} receipts`,
+      });
+    }
+
+    const stored = await fileStore.put(req.file.buffer, {
+      fileName: safeFileName(req.file.originalname, `receipt.${type.ext}`),
+      mimeType: type.mime,
+      folderPath: `claims/${claim.id}`,
+    });
+
+    // The same bill appearing on two claims is worth surfacing, not blocking:
+    // a shared invoice can legitimately be split across claimants.
+    const { data: dupes } = await supabase
+      .from('expense_receipts')
+      .select('id, claim_id')
+      .eq('file_sha256', stored.sha256)
+      .neq('claim_id', claim.id);
+
+    const { data, error } = await supabase
+      .from('expense_receipts')
+      .insert([
+        {
+          claim_id: claim.id,
+          line_id: lineId,
+          storage_path: stored.id,
+          file_name: safeFileName(req.file.originalname, `receipt.${type.ext}`),
+          mime_type: type.mime,
+          byte_size: stored.byteSize,
+          file_sha256: stored.sha256,
+          uploaded_by: req.user.id,
+          created_at: getISTTime(),
+        },
+      ])
+      .select()
+      .single();
+
+    if (error) {
+      // Don't leave the uploaded blob orphaned in Drive if the row failed.
+      await fileStore.remove(stored.id).catch(() => {});
+      throw error;
+    }
+
+    res.status(201).json({
+      receipt: data,
+      duplicate_of: dupes?.length ? dupes.map((d) => d.claim_id) : null,
+    });
+  } catch (err) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ message: 'Receipt must be 5 MB or smaller' });
+    }
+    console.error('RECEIPT UPLOAD ERROR:', err);
+    res.status(500).json({ message: 'Failed to upload receipt' });
+  }
+});
+
+// Streamed through the API rather than linked directly: Drive has no
+// signed-URL equivalent, and proxying means every view passes canAccessClaim.
+router.get('/:id/receipts/:receiptId', async (req, res) => {
+  try {
+    const claim = await loadClaim(req, res);
+    if (!claim) return;
+
+    const { data: receipt } = await supabase
+      .from('expense_receipts')
+      .select('*')
+      .eq('id', req.params.receiptId)
+      .single();
+
+    if (!receipt || receipt.claim_id !== claim.id) {
+      return res.status(404).json({ message: 'Receipt not found' });
+    }
+
+    const file = await fileStore.get(receipt.storage_path);
+    res.setHeader('Content-Type', receipt.mime_type || file.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${safeFileName(receipt.file_name)}"`);
+    // A receipt is somebody's personal data; keep it out of shared caches.
+    res.setHeader('Cache-Control', 'private, max-age=300');
+
+    file.stream.on('error', (err) => {
+      console.error('RECEIPT STREAM ERROR:', err);
+      if (!res.headersSent) res.status(502).json({ message: 'Failed to read receipt' });
+      else res.destroy();
+    });
+    file.stream.pipe(res);
+  } catch (err) {
+    console.error('RECEIPT READ ERROR:', err);
+    if (!res.headersSent) res.status(500).json({ message: 'Failed to fetch receipt' });
+  }
+});
+
+router.delete('/:id/receipts/:receiptId', async (req, res) => {
+  try {
+    const claim = await loadEditableClaim(req, res);
+    if (!claim) return;
+
+    const { data: receipt } = await supabase
+      .from('expense_receipts')
+      .select('*')
+      .eq('id', req.params.receiptId)
+      .single();
+
+    if (!receipt || receipt.claim_id !== claim.id) {
+      return res.status(404).json({ message: 'Receipt not found' });
+    }
+
+    const { error } = await supabase.from('expense_receipts').delete().eq('id', receipt.id);
+    if (error) throw error;
+
+    // Row first, blob second: an orphaned Drive file is recoverable waste, a
+    // row pointing at a deleted file is a broken claim.
+    await fileStore.remove(receipt.storage_path).catch((e) =>
+      console.error('Receipt blob delete failed (row already removed):', e.message)
+    );
+
+    res.json({ message: 'Receipt deleted' });
+  } catch (err) {
+    console.error('RECEIPT DELETE ERROR:', err);
+    res.status(500).json({ message: 'Failed to delete receipt' });
+  }
+});
+
+// =====================================================
+// SUBMIT
+// =====================================================
+router.post('/:id/submit', async (req, res) => {
+  try {
+    const claim = await loadEditableClaim(req, res);
+    if (!claim) return;
+
+    const lines = await fetchLines(claim.id);
+    if (!lines.length) {
+      return res.status(400).json({ message: 'Add at least one line item before submitting' });
+    }
+
+    // The receipt gate. Enforced here rather than as a table constraint because
+    // it only applies at this transition — a draft is allowed to be incomplete.
+    const receipts = await fetchReceipts(claim.id);
+    const withReceipt = new Set(receipts.map((r) => r.line_id).filter(Boolean));
+    const missing = lines.filter((l) => !withReceipt.has(l.id));
+
+    if (missing.length) {
+      const one = missing.length === 1;
+      return res.status(400).json({
+        message: `${missing.length} line item${one ? '' : 's'} still ${one ? 'needs' : 'need'} a receipt`,
+        missing_line_ids: missing.map((l) => l.id),
+      });
+    }
+
+    const now = getISTTime();
+    const { data, error } = await supabase
+      .from('expense_claims')
+      .update({
+        status: 'Submitted',
+        submitted_at: now,
+        updated_at: now,
+        timeline: appendTimeline(claim, {
+          type: 'submitted',
+          action: `Submitted for approval — ${claim.currency} ${Number(claim.total_amount).toFixed(2)}`,
+          user: req.user.name,
+        }),
+      })
+      .eq('id', claim.id)
+      .eq('status', 'Draft')
+      .select()
+      .single();
+
+    if (error) throw error;
+    if (!data) return res.status(409).json({ message: 'Claim is no longer a draft' });
+
+    await notifyAdmins(
+      'Expense Claim Submitted',
+      `${req.user.name} submitted "${claim.title}" for ${claim.currency} ${Number(claim.total_amount).toFixed(2)}`,
+      null,
+      claim.team
+    );
+
+    res.json({ ...data, lines, receipts });
+  } catch (err) {
+    console.error('EXPENSE SUBMIT ERROR:', err);
+    res.status(500).json({ message: 'Failed to submit claim' });
+  }
+});
+
+// =====================================================
+// APPROVE
+// =====================================================
+const nextClaimNumber = async () => {
+  const year = new Date().getFullYear();
+  const prefix = `EXP-${year}-`;
+
+  const { data } = await supabase
+    .from('expense_claims')
+    .select('claim_number')
+    .like('claim_number', `${prefix}%`)
+    .order('claim_number', { ascending: false })
+    .limit(1);
+
+  const last = data?.[0]?.claim_number;
+  const seq = last ? Number(last.slice(prefix.length)) + 1 : 1;
+  return `${prefix}${String(seq).padStart(4, '0')}`;
+};
+
+router.post('/:id/approve', async (req, res) => {
+  try {
+    const claim = await loadClaim(req, res);
+    if (!claim) return;
+
+    if (!canApproveClaim(req.user, claim)) {
+      return res.status(403).json({ message: approvalRefusalReason(req.user, claim) });
+    }
+    if (claim.status !== 'Submitted') {
+      return res.status(400).json({ message: `A ${claim.status.toLowerCase()} claim cannot be approved` });
+    }
+
+    // The signature is the point of the exercise — refuse rather than produce a
+    // PDF with an empty stamp where one is supposed to be.
+    const { data: approver } = await supabase
+      .from('users')
+      .select('id, name, role, signature_path')
+      .eq('id', req.user.id)
+      .single();
+
+    if (!approver?.signature_path) {
+      return res.status(400).json({
+        message: 'Upload your signature before approving claims',
+        code: 'SIGNATURE_REQUIRED',
+      });
+    }
+
+    const lines = await fetchLines(claim.id);
+    const receipts = await fetchReceipts(claim.id);
+    const now = getISTTime();
+
+    const hash = approvalHash(claim, lines, receipts, approver, now);
+
+    // The code is derived from the hash, so a collision means two claims hash
+    // alike — vanishingly unlikely, but a unique index guards it either way.
+    let verifyCode = verifyCodeFrom(hash);
+    let claimNumber = claim.claim_number || (await nextClaimNumber());
+
+    let data;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const result = await supabase
+        .from('expense_claims')
+        .update({
+          status: 'Approved',
+          claim_number: claimNumber,
+          approved_by: approver.id,
+          approved_by_name: approver.name,
+          approved_by_role: approver.role,
+          approved_at: now,
+          approval_hash: hash,
+          verify_code: verifyCode,
+          rejection_reason: null,
+          updated_at: now,
+          timeline: appendTimeline(claim, {
+            type: 'approved',
+            action: `Approved by ${approver.name} (${approver.role})`,
+            user: approver.name,
+          }),
+        })
+        .eq('id', claim.id)
+        .eq('status', 'Submitted')
+        .select()
+        .single();
+
+      if (!result.error) {
+        data = result.data;
+        break;
+      }
+      // 23505 = unique violation on claim_number or verify_code.
+      if (result.error.code !== '23505') throw result.error;
+      claimNumber = await nextClaimNumber();
+      verifyCode = verifyCodeFrom(hash + attempt);
+    }
+
+    if (!data) {
+      return res.status(409).json({ message: 'Could not approve — the claim may have changed' });
+    }
+
+    await notifyUser(
+      claim.claimant_name,
+      'Expense Claim Approved',
+      `${approver.name} approved "${claim.title}" — ${claim.currency} ${Number(claim.total_amount).toFixed(2)}`,
+      null
+    );
+
+    res.json({ ...data, lines, receipts });
+  } catch (err) {
+    console.error('EXPENSE APPROVE ERROR:', err);
+    res.status(500).json({ message: 'Failed to approve claim' });
+  }
+});
+
+// =====================================================
+// REJECT
+// =====================================================
+router.post('/:id/reject', async (req, res) => {
+  try {
+    const claim = await loadClaim(req, res);
+    if (!claim) return;
+
+    if (!canApproveClaim(req.user, claim)) {
+      return res.status(403).json({ message: approvalRefusalReason(req.user, claim) });
+    }
+    if (claim.status !== 'Submitted') {
+      return res.status(400).json({ message: `A ${claim.status.toLowerCase()} claim cannot be rejected` });
+    }
+
+    const reason = (req.body.reason || '').trim();
+    if (!reason) {
+      return res.status(400).json({ message: 'A reason is required so the claimant knows what to fix' });
+    }
+
+    const now = getISTTime();
+    const { data, error } = await supabase
+      .from('expense_claims')
+      .update({
+        status: 'Draft',
+        rejection_reason: reason,
+        // A new revision, and any prior approval record cleared — otherwise an
+        // already-printed PDF would keep verifying against an edited claim.
+        revision: (claim.revision || 1) + 1,
+        approved_by: null,
+        approved_by_name: null,
+        approved_by_role: null,
+        approved_at: null,
+        approval_hash: null,
+        verify_code: null,
+        submitted_at: null,
+        updated_at: now,
+        timeline: appendTimeline(claim, {
+          type: 'rejected',
+          action: `Rejected by ${req.user.name}: ${reason}`,
+          user: req.user.name,
+        }),
+      })
+      .eq('id', claim.id)
+      .eq('status', 'Submitted')
+      .select()
+      .single();
+
+    if (error) throw error;
+    if (!data) return res.status(409).json({ message: 'Claim is no longer awaiting approval' });
+
+    await notifyUser(
+      claim.claimant_name,
+      'Expense Claim Rejected',
+      `${req.user.name} sent "${claim.title}" back: ${reason}`,
+      null
+    );
+
+    res.json({ ...data, lines: await fetchLines(claim.id), receipts: await fetchReceipts(claim.id) });
+  } catch (err) {
+    console.error('EXPENSE REJECT ERROR:', err);
+    res.status(500).json({ message: 'Failed to reject claim' });
+  }
+});
+
+// =====================================================
+// PDF
+// =====================================================
+router.get('/:id/pdf', async (req, res) => {
+  try {
+    const claim = await loadClaim(req, res);
+    if (!claim) return;
+
+    const { buildClaimPdf } = require('../services/expensePdf');
+    const pdf = await buildClaimPdf(claim.id);
+
+    const name = claim.claim_number || `expense-${claim.id.slice(0, 8)}`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${name}.pdf"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(pdf);
+  } catch (err) {
+    console.error('EXPENSE PDF ERROR:', err);
+    res.status(500).json({ message: 'Failed to generate PDF' });
   }
 });
 

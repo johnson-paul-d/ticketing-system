@@ -232,7 +232,12 @@
       "PowerShell(Set-Location \"D:\\\\Ticketing-System\\\\frontend\"; & \"node_modules\\\\.bin\\\\eslint.cmd\" \"src/pages/Expenses.jsx\" \"src/pages/ExpenseDetails.jsx\" \"src/constants/expenseCategories.js\" \"src/App.jsx\" \"src/layouts/MainLayout.jsx\"; \"exit=$LASTEXITCODE\")",
       "PowerShell(git -C D:\\\\Ticketing-System status --short)",
       "PowerShell(cd D:\\\\Ticketing-System\\\\backend; $env:SUPABASE_URL='https://x.supabase.co'; $env:SUPABASE_SERVICE_ROLE_KEY='dummy'; node -e \"const r=require\\('./routes/expenses'\\); const routes=r.stack.filter\\(l=>l.route\\).map\\(l=>Object.keys\\(l.route.methods\\)[0].toUpperCase\\(\\)+' '+l.route.path\\); console.log\\('Mounted at /api/expenses:'\\); routes.forEach\\(x=>console.log\\('  '+x\\)\\);\")",
-      "Bash(git check-ignore *)"
+      "Bash(git check-ignore *)",
+      "Bash(node -e \"console.log\\(require\\('./package.json'\\).dependencies\\)\")",
+      "Bash(node --check services/expensePdf.js)",
+      "Bash(node --check routes/verify.js)",
+      "Bash(node smoke.js)",
+      "Bash(node smoke-small.js)"
     ]
   }
 }

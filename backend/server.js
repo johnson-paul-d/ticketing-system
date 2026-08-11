@@ -23,6 +23,7 @@ const notificationRoutes = require('./routes/notifications');
 const projectRoutes = require('./routes/projects');
 const abmRoutes = require('./routes/abm');
 const expenseRoutes = require('./routes/expenses');
+const verifyRoutes = require('./routes/verify');
 
 const app = express();
 const server = http.createServer(app);
@@ -130,6 +131,9 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/abm', abmRoutes);
 app.use('/api/expenses', expenseRoutes);
+// Public by design — reached from a printed claim by someone who may have no
+// account. It confirms a document is genuine and returns nothing else.
+app.use('/api/verify', verifyRoutes);
 app.use('/api', timeEntryRoutes);
 app.use("/api/leave-requests", leaveRoutes);
 

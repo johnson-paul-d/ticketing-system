@@ -2,7 +2,7 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import {
   Menu, X, LayoutDashboard, Cpu, KanbanSquare, Calendar,
   Shield, BarChart3, LogOut, PlusCircle, ChevronRight, ClipboardCheck, FolderKanban,
-  Target, Building2, CalendarCheck, TrendingUp, Gauge, ChevronDown, Receipt
+  Target, Building2, CalendarCheck, TrendingUp, Gauge, ChevronDown, Receipt, Signature
 } from "lucide-react";
 import { useState } from "react";
 import useAuthStore from "../store/authStore";
@@ -71,6 +71,9 @@ export default function MainLayout({ children }) {
     ? [
         { label: "Admin Panel", path: "/admin", icon: Shield },
         { label: "Pending Requests", path: "/pending-approvals", icon: ClipboardCheck },
+        // Admins only: a signature is only ever used on something you approve, so
+        // the link would be noise for everyone else. The route itself stays open.
+        { label: "My Signature", path: "/settings/signature", icon: Signature },
       ]
     : [];
 

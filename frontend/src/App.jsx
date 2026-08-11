@@ -32,6 +32,7 @@ const AbmDashboard       = lazy(() => import("./pages/AbmDashboard"));
 const AbmAccounts        = lazy(() => import("./pages/AbmAccounts"));
 const AbmAccountDetails  = lazy(() => import("./pages/AbmAccountDetails"));
 const AbmToday           = lazy(() => import("./pages/AbmToday"));
+const SignatureSettings  = lazy(() => import("./pages/SignatureSettings"));
 
 function PageFallback() {
   return (
@@ -146,6 +147,16 @@ function App() {
             element={
               <ProtectedRoute>
                 <ExpenseDetails />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* No role gate — a signature is personal, and anyone may set their own. */}
+          <Route
+            path="/settings/signature"
+            element={
+              <ProtectedRoute>
+                <SignatureSettings />
               </ProtectedRoute>
             }
           />
