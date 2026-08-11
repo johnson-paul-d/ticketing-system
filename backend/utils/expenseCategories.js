@@ -8,18 +8,29 @@
 
 const { TEAM } = require('./roles');
 
+// Programme spend first, then out-of-pocket costs, with the catch-all last so
+// it doesn't sit mid-dropdown.
 const MARKETING_EXPENSE_CATEGORIES = [
+  'Ad - Digital',
+  'Ad - Magazine',
+  'Customer Engagement',
+  'Content Creation',
+  'Exhibition',
+  'Print Collaterals',
+  'Software Subscriptions',
+  'Merchandise',
+
   'Travel - Air / Rail',
   'Local Conveyance',
   'Accommodation',
   'Meals',
-  'Client Entertainment',
-  'Exhibition / Event',
-  'Printing & Collateral',
-  'Software / Subscription',
+  'Photography / Videography',
+  'Agency / Freelancer',
+  'Training / Conference',
+  'Courier / Postage',
   'Telephone & Internet',
-  'Courier',
-  'Other',
+
+  'Contingency',
 ];
 
 const SERVICE_EXPENSE_CATEGORIES = [

@@ -5,18 +5,29 @@
 // client sends. A claim's category list follows the CLAIM's team, not the
 // viewer's — an admin reviewing a Service claim sees the Service list.
 
+// Programme spend first, then out-of-pocket costs, with the catch-all last so
+// it doesn't sit mid-dropdown.
 export const MARKETING_EXPENSE_CATEGORIES = [
+  "Ad - Digital",
+  "Ad - Magazine",
+  "Customer Engagement",
+  "Content Creation",
+  "Exhibition",
+  "Print Collaterals",
+  "Software Subscriptions",
+  "Merchandise",
+
   "Travel - Air / Rail",
   "Local Conveyance",
   "Accommodation",
   "Meals",
-  "Client Entertainment",
-  "Exhibition / Event",
-  "Printing & Collateral",
-  "Software / Subscription",
+  "Photography / Videography",
+  "Agency / Freelancer",
+  "Training / Conference",
+  "Courier / Postage",
   "Telephone & Internet",
-  "Courier",
-  "Other",
+
+  "Contingency",
 ];
 
 export const SERVICE_EXPENSE_CATEGORIES = [
