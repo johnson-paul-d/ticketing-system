@@ -8,6 +8,7 @@ const getISTTime = require('../utils/time');
 const { TEAM, isAdmin, isSuperAdmin, getUserTeam, teamFromRole } = require('../utils/roles');
 const { expenseCategoriesForTeam, isValidExpenseCategory } = require('../utils/expenseCategories');
 const { detectFileType, safeFileName, validateFileStructure } = require('../utils/fileType');
+const { probePdf } = require('../utils/pdfProbe');
 const fileStore = require('../services/fileStore');
 const { notifyAdmins, notifyUser } = require('../services/notificationService');
 const {
@@ -514,6 +515,20 @@ router.post('/:id/receipts', upload.single('file'), async (req, res) => {
       return res.status(400).json({
         message: `That file looks incomplete — ${defect}. Try uploading it again.`,
       });
+    }
+
+    // A PDF bill is copied page-for-page into the printed claim, so it has to be
+    // readable now. Caught later it becomes a blank page in an approved
+    // document, long after the claimant still has the bill.
+    if (type.ext === 'pdf') {
+      const pdfDefect = await probePdf(req.file.buffer);
+      if (pdfDefect) {
+        return res.status(400).json({
+          message:
+            `That PDF cannot be attached because ${pdfDefect}. ` +
+            'Print it to a new PDF without protection, or photograph the bill instead.',
+        });
+      }
     }
 
     // A receipt may hang off a specific line, or off the claim while the

@@ -700,7 +700,13 @@ const drawImageReceipt = async (pdf, fonts, context, bytes, kind) => {
 // caption, so it goes on a divider page ahead of the copied pages and the pages
 // themselves are left untouched.
 const appendPdfReceipt = async (pdf, fonts, context, bytes, verbatim) => {
-  const source = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  // Encryption has to be rejected, not ignored. Loading with
+  // ignoreEncryption:true succeeds but leaves every stream encrypted, so the
+  // copied pages carry undecodable bytes and render BLANK — a bill that looks
+  // attached and shows nothing. Print shops and invoice generators apply
+  // owner-password protection routinely, so this is the common case, not an
+  // edge one.
+  const source = await PDFDocument.load(bytes, { ignoreEncryption: false });
   const indices = source.getPageIndices();
   if (!indices.length) throw new Error('the PDF contains no pages');
 
