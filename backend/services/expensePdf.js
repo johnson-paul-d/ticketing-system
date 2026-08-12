@@ -2,7 +2,7 @@ const { PDFDocument, StandardFonts, rgb, degrees } = require('pdf-lib');
 
 const supabase = require('../config/supabase');
 const fileStore = require('./fileStore');
-const { detectFileType, safeFileName } = require('../utils/fileType');
+const { detectFileType, safeFileName, validateFileStructure } = require('../utils/fileType');
 
 // =====================================================
 // Expense claim PDF
@@ -238,9 +238,37 @@ const streamToBuffer = (stream) => {
   });
 };
 
+// A remote read that stalls without erroring would otherwise hang the whole
+// render, and an HTTP request that never answers is worse than one that fails:
+// the placeholder path below can report a timeout, but only if it gets one.
+const FILE_FETCH_TIMEOUT_MS = 20000;
+
+const withTimeout = (promise, ms, label) =>
+  new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)),
+      ms
+    );
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (err) => { clearTimeout(timer); reject(err); }
+    );
+  });
+
 const fetchFile = async (storagePath) => {
-  const file = await fileStore.get(storagePath);
-  return { bytes: await streamToBuffer(file.stream), mimeType: file.mimeType };
+  const file = await withTimeout(
+    fileStore.get(storagePath),
+    FILE_FETCH_TIMEOUT_MS,
+    'reading the stored file'
+  );
+  const bytes = await withTimeout(
+    streamToBuffer(file.stream),
+    FILE_FETCH_TIMEOUT_MS,
+    'downloading the stored file'
+  );
+  // Nothing else consumes this stream; leaving it open would hold the socket.
+  if (typeof file.stream?.destroy === 'function') file.stream.destroy();
+  return { bytes, mimeType: file.mimeType };
 };
 
 // Drive reports whatever mime type was set at upload and hands back
@@ -249,6 +277,22 @@ const fetchFile = async (storagePath) => {
 // recognised here, and anything else lands on a placeholder rather than being
 // guessed at.
 const sniff = (bytes) => detectFileType(bytes)?.ext || null;
+
+// The magic-byte check at upload only inspects the first few bytes, so a photo
+// truncated by a dropped mobile connection passes it and lands here intact at
+// the front and corrupt at the back. pdf-lib does not reject such an image — it
+// stalls inside the decoder and never settles, which would hang the HTTP
+// request rather than fail it. Time-box the decode so a bad file becomes a
+// placeholder page like any other unreadable receipt.
+// Uploads are validated before storage, but files predating that check — or
+// anything altered in Drive since — must not be trusted either. A timeout is no
+// use here: the stall never yields to the event loop, so the structure is
+// verified up front and a bad file throws, landing on the placeholder page.
+const embedImage = async (pdf, bytes, kind) => {
+  const defect = validateFileStructure(bytes, kind);
+  if (defect) throw new Error(defect);
+  return kind === 'png' ? pdf.embedPng(bytes) : pdf.embedJpg(bytes);
+};
 
 // The signature graphic is the only thing read from the users table: the printed
 // name and role come from the claim row, which froze them at approval, so a
@@ -265,8 +309,7 @@ const loadSignatureImage = async (pdf, userId) => {
 
     const { bytes } = await fetchFile(data.signature_path);
     const kind = sniff(bytes);
-    if (kind === 'png') return pdf.embedPng(bytes);
-    if (kind === 'jpg') return pdf.embedJpg(bytes);
+    if (kind === 'png' || kind === 'jpg') return await embedImage(pdf, bytes, kind);
     return null;
   } catch (err) {
     console.error('EXPENSE PDF: signature unavailable:', err.message);
@@ -487,14 +530,17 @@ const drawSummary = (pdf, fonts, { claim, lines, signature, receiptCount }) => {
     page.drawRectangle({ x: MARGIN, y: y - 34, width: CONTENT_W, height: 38, color: ALERT });
     text(page, label, { x: MARGIN + 14, y: y - 22, font: fonts.bold, size: 15, color: PAPER });
     y -= 48;
-    text(page, `This claim is in "${claim.status}" status. No approver has signed it and this document is not evidence of approval.`, {
-      x: MARGIN,
-      y,
-      font: fonts.regular,
-      size: 9.5,
-      color: ALERT,
+    const explanation = wrapText(
+      `This claim is in "${claim.status}" status. No approver has signed it and this document is not evidence of approval.`,
+      fonts.regular,
+      9.5,
+      CONTENT_W,
+      2
+    );
+    explanation.forEach((part, i) => {
+      text(page, part, { x: MARGIN, y: y - i * 13, font: fonts.regular, size: 9.5, color: ALERT });
     });
-    y -= 26;
+    y -= explanation.length * 13 + 14;
   }
 
   // Verification
@@ -503,7 +549,10 @@ const drawSummary = (pdf, fonts, { claim, lines, signature, receiptCount }) => {
   y -= 15;
   text(page, claim.verify_code || 'not issued', { x: MARGIN, y, font: fonts.bold, size: 13 });
   y -= 14;
-  text(page, url ? `Verify at ${url}` : 'Verify this claim in the expense system using the code above.', {
+  const verifyLine = url
+    ? `Verify at ${url}`
+    : 'Verify this claim in the expense system using the code above.';
+  text(page, fitText(safe(verifyLine), fonts.regular, 9, CONTENT_W), {
     x: MARGIN,
     y,
     font: fonts.regular,
@@ -537,27 +586,47 @@ const drawReceiptHeader = (page, fonts, { claim, receipt, line, index, count, no
         Number(line.amount || 0) + Number(line.tax_amount || 0)
       )}`
     : 'Not linked to a line item';
-  text(page, lineSummary, { x: MARGIN, y, font: fonts.regular, size: 10, color: INK });
+  text(page, fitText(safe(lineSummary), fonts.regular, 10, CONTENT_W), {
+    x: MARGIN,
+    y,
+    font: fonts.regular,
+    size: 10,
+    color: INK,
+  });
   y -= 14;
 
-  text(
-    page,
-    approved
-      ? `Approved by ${claim.approved_by_name || 'unknown'}, ${claim.approved_by_role || '-'} - ${fmtStamp(claim.approved_at)}`
-      : `NOT APPROVED - claim status "${claim.status}"`,
-    { x: MARGIN, y, font: fonts.regular, size: 9, color: approved ? MUTED : ALERT }
-  );
+  const stamp = approved
+    ? `Approved by ${claim.approved_by_name || 'unknown'}, ${claim.approved_by_role || '-'} - ${fmtStamp(claim.approved_at)}`
+    : `NOT APPROVED - claim status "${claim.status}"`;
+  text(page, fitText(safe(stamp), fonts.regular, 9, CONTENT_W), {
+    x: MARGIN,
+    y,
+    font: fonts.regular,
+    size: 9,
+    color: approved ? MUTED : ALERT,
+  });
   y -= 12;
 
-  text(
-    page,
-    `Claim ${claim.claim_number || '-'} | File hash ${shortHash(receipt.file_sha256)} | Verify ${claim.verify_code || '-'}`,
-    { x: MARGIN, y, font: fonts.regular, size: 8, color: MUTED }
-  );
+  const provenance = `Claim ${claim.claim_number || '-'} | File hash ${shortHash(
+    receipt.file_sha256
+  )} | Verify ${claim.verify_code || '-'}`;
+  text(page, fitText(safe(provenance), fonts.regular, 8, CONTENT_W), {
+    x: MARGIN,
+    y,
+    font: fonts.regular,
+    size: 8,
+    color: MUTED,
+  });
   y -= 10;
 
   if (note) {
-    text(page, note, { x: MARGIN, y, font: fonts.regular, size: 8.5, color: MUTED });
+    text(page, fitText(safe(note), fonts.regular, 8.5, CONTENT_W), {
+      x: MARGIN,
+      y,
+      font: fonts.regular,
+      size: 8.5,
+      color: MUTED,
+    });
     y -= 12;
   }
 
@@ -611,7 +680,7 @@ const drawPlaceholder = (pdf, fonts, context, reason) => {
 };
 
 const drawImageReceipt = async (pdf, fonts, context, bytes, kind) => {
-  const image = kind === 'png' ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes);
+  const image = await embedImage(pdf, bytes, kind);
   const page = pdf.addPage([PAGE.width, PAGE.height]);
   const top = drawReceiptHeader(page, fonts, context);
 

@@ -7,7 +7,7 @@ const auth = require('../middleware/auth');
 const getISTTime = require('../utils/time');
 const { TEAM, isAdmin, isSuperAdmin, getUserTeam, teamFromRole } = require('../utils/roles');
 const { expenseCategoriesForTeam, isValidExpenseCategory } = require('../utils/expenseCategories');
-const { detectFileType, safeFileName } = require('../utils/fileType');
+const { detectFileType, safeFileName, validateFileStructure } = require('../utils/fileType');
 const fileStore = require('../services/fileStore');
 const { notifyAdmins, notifyUser } = require('../services/notificationService');
 const {
@@ -502,6 +502,17 @@ router.post('/:id/receipts', upload.single('file'), async (req, res) => {
     if (!type) {
       return res.status(400).json({
         message: 'Only JPEG, PNG or PDF receipts are accepted',
+      });
+    }
+
+    // Reject a structurally broken image here, where the claimant can simply
+    // retake the photo. Storing one would defer the failure to PDF generation,
+    // and a truncated image stalls the decoder synchronously — taking the whole
+    // process with it.
+    const defect = validateFileStructure(req.file.buffer, type.ext);
+    if (defect) {
+      return res.status(400).json({
+        message: `That file looks incomplete — ${defect}. Try uploading it again.`,
       });
     }
 

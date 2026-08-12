@@ -44,6 +44,14 @@ const fmtPeriod = (from, to) => {
   return `${fmtDate(from)} → ${fmtDate(to)}`;
 };
 
+// A claim is only numbered when it is approved, so most rows have none yet.
+const claimRef = (claim) => claim.claim_number || "Not yet numbered";
+
+// A rejection sends the claim back to Draft, so the status alone cannot tell a
+// fresh draft from one that needs fixing — the reason field is the giveaway.
+const wasSentBack = (claim) =>
+  Boolean(claim.rejection_reason) && (claim.status === "Draft" || claim.status === "Rejected");
+
 export default function Expenses() {
   const navigate = useNavigate();
 
@@ -187,20 +195,27 @@ export default function Expenses() {
                   >
                     <td className="px-5 py-3">
                       <div className="font-semibold text-gray-800">{claim.title}</div>
-                      <div className="text-[11px] text-gray-400">{claim.claim_number}</div>
+                      <div className="text-[11px] text-gray-400">{claimRef(claim)}</div>
                     </td>
                     <td className="px-3 py-3 text-gray-600 whitespace-nowrap">
                       {fmtPeriod(claim.period_from, claim.period_to)}
                     </td>
                     <td className="px-3 py-3 text-gray-600">{claim.claimant_name || "—"}</td>
                     <td className="px-3 py-3">
-                      <span
-                        className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
-                          statusChip[claim.status] || statusChip.Draft
-                        }`}
-                      >
-                        {claim.status}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span
+                          className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+                            statusChip[claim.status] || statusChip.Draft
+                          }`}
+                        >
+                          {claim.status}
+                        </span>
+                        {wasSentBack(claim) && (
+                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full border bg-red-50 text-red-700 border-red-200">
+                            Sent back
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-3 py-3 text-gray-400 text-xs whitespace-nowrap">
                       {fmtDate(claim.created_at)}
@@ -226,15 +241,22 @@ export default function Expenses() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <h2 className="font-bold text-base line-clamp-1">{claim.title}</h2>
-                    <p className="text-[11px] text-gray-400 mt-0.5">{claim.claim_number}</p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">{claimRef(claim)}</p>
                   </div>
-                  <span
-                    className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border flex-shrink-0 ${
-                      statusChip[claim.status] || statusChip.Draft
-                    }`}
-                  >
-                    {claim.status}
-                  </span>
+                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                    <span
+                      className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+                        statusChip[claim.status] || statusChip.Draft
+                      }`}
+                    >
+                      {claim.status}
+                    </span>
+                    {wasSentBack(claim) && (
+                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full border bg-red-50 text-red-700 border-red-200">
+                        Sent back
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between gap-2">

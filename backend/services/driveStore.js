@@ -34,8 +34,13 @@ const isConfigured = () => missingEnv().length === 0;
 
 let client = null;
 
-// The googleapis require lives here rather than at module load so that an
-// unconfigured deployment still boots, and so a missing dependency surfaces on
+// @googleapis/drive, not the umbrella `googleapis` package. The latter bundles
+// every Google API: 202 MB on disk and ~57s to require on a cold process, which
+// on a host that sleeps when idle turns the first receipt upload after a
+// wake-up into a minute-long hang. This one carries Drive alone.
+//
+// The require stays inside the function rather than at module load so an
+// unconfigured deployment still boots, and a missing dependency surfaces on
 // first use instead of taking the whole server down at startup.
 const getDrive = () => {
   const missing = missingEnv();
@@ -46,19 +51,19 @@ const getDrive = () => {
   }
   if (client) return client;
 
-  const { google } = require('googleapis');
-  const auth = new google.auth.OAuth2(
+  const { drive, auth: googleAuth } = require('@googleapis/drive');
+  const oauth = new googleAuth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET
   );
-  // Only the refresh token is stored; googleapis exchanges it for an access
-  // token on demand and caches it in memory.
-  auth.setCredentials({
+  // Only the refresh token is stored; the client exchanges it for an access
+  // token on demand and caches that in memory.
+  oauth.setCredentials({
     refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
     scope: SCOPES.join(' '),
   });
 
-  client = google.drive({ version: 'v3', auth });
+  client = drive({ version: 'v3', auth: oauth });
   return client;
 };
 

@@ -33,6 +33,7 @@ const AbmAccounts        = lazy(() => import("./pages/AbmAccounts"));
 const AbmAccountDetails  = lazy(() => import("./pages/AbmAccountDetails"));
 const AbmToday           = lazy(() => import("./pages/AbmToday"));
 const SignatureSettings  = lazy(() => import("./pages/SignatureSettings"));
+const Verify             = lazy(() => import("./pages/Verify"));
 
 function PageFallback() {
   return (
@@ -50,6 +51,10 @@ function App() {
       <Suspense fallback={<PageFallback />}>
         <Routes>
           <Route path="/" element={<Login />} />
+
+          {/* Public on purpose — this is reached from a printed claim by people
+              who have no account here, so it must not sit behind ProtectedRoute. */}
+          <Route path="/verify/:code" element={<Verify />} />
 
           <Route
             path="/dashboard"

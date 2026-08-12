@@ -237,7 +237,8 @@
       "Bash(node --check services/expensePdf.js)",
       "Bash(node --check routes/verify.js)",
       "Bash(node smoke.js)",
-      "Bash(node smoke-small.js)"
+      "Bash(node smoke-small.js)",
+      "Bash(node smoke-canary.js)"
     ]
   }
 }
