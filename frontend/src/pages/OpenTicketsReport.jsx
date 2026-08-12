@@ -31,13 +31,30 @@ const dstr = (d) => (d ? String(d).split("T")[0] : null);
 const DATE_RX = /from (.*?) to (\d{4}-\d{2}-\d{2})/i;
 const today = () => new Date().toISOString().split("T")[0];
 
+// Hours and minutes only — allotted time is entered that way, so rolling the
+// display into days would not match what anyone typed.
 const fmtMins = (mins) => {
   const m = Math.max(0, Number(mins) || 0);
   if (!m) return "—";
-  const d = Math.floor(m / 1440);
-  const h = Math.floor((m % 1440) / 60);
+  const h = Math.floor(m / 60);
   const mm = m % 60;
-  return [d ? `${d}d` : "", h ? `${h}h` : "", mm ? `${mm}m` : ""].filter(Boolean).join(" ") || "0m";
+  return [h ? `${h}h` : "", mm ? `${mm}m` : ""].filter(Boolean).join(" ") || "0m";
+};
+
+// YYYY-MM, so months sort chronologically rather than alphabetically.
+const monthKey = (value) => {
+  const s = dstr(value);
+  return s ? s.slice(0, 7) : null;
+};
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+const monthLabel = (key) => {
+  const [y, m] = String(key).split("-");
+  return `${MONTH_NAMES[Number(m) - 1] || key} ${y}`;
 };
 
 const dayDiff = (a, b) =>
@@ -136,6 +153,10 @@ export default function OpenTicketsReport() {
   const [fDivision, setFDivision] = useState("");
   const [fProject, setFProject] = useState("");
   const [fRisk, setFRisk] = useState("All");
+  const [fMonth, setFMonth] = useState("");
+  // Which date the month applies to. One month picker plus a field switch reads
+  // better here than two separate month dropdowns.
+  const [fMonthField, setFMonthField] = useState("due_date");
 
   useEffect(() => {
     Promise.all([api.get("/tickets"), api.get("/projects").catch(() => ({ data: [] }))])
@@ -154,22 +175,41 @@ export default function OpenTicketsReport() {
     [tickets]
   );
 
+  // Months present in the data, for whichever date field is selected. Sorted
+  // newest first and keyed as YYYY-MM so ordering is chronological, not
+  // alphabetical.
+  const monthOptions = useMemo(() => {
+    const keys = new Set();
+    for (const t of open) {
+      const key = monthKey(t[fMonthField]);
+      if (key) keys.add(key);
+    }
+    return [...keys].sort().reverse();
+  }, [open, fMonthField]);
+
+  // A month that no longer exists for the newly selected field would silently
+  // filter everything out.
+  useEffect(() => {
+    if (fMonth && !monthOptions.includes(fMonth)) setFMonth("");
+  }, [monthOptions, fMonth]);
+
   const filtered = useMemo(
     () =>
       open.filter((t) => {
         if (fPerson && (t.assigned_to_name || "Unassigned") !== fPerson) return false;
         if (fDivision && t.division !== fDivision) return false;
         if (fProject && t.project_id !== fProject) return false;
+        if (fMonth && monthKey(t[fMonthField]) !== fMonth) return false;
         if (fRisk === "Overdue" && !t.overdue) return false;
         if (fRisk === "DueSoon" && !t.dueSoon) return false;
         if (fRisk === "OverAllotted" && t.overAllotted !== true) return false;
         if (fRisk === "Moved" && t.moves === 0) return false;
         return true;
       }),
-    [open, fPerson, fDivision, fProject, fRisk]
+    [open, fPerson, fDivision, fProject, fRisk, fMonth, fMonthField]
   );
 
-  const filtersActive = !!(fPerson || fDivision || fProject || fRisk !== "All");
+  const filtersActive = !!(fPerson || fDivision || fProject || fRisk !== "All" || fMonth);
 
   const kpis = useMemo(() => {
     const total = filtered.length;
@@ -277,6 +317,18 @@ export default function OpenTicketsReport() {
                 {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             )}
+            <select value={fMonthField} onChange={(e) => setFMonthField(e.target.value)}
+              className="bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs outline-none text-gray-600">
+              <option value="due_date">By due date</option>
+              <option value="created_at">By created date</option>
+            </select>
+            <select value={fMonth} onChange={(e) => setFMonth(e.target.value)}
+              className="bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs outline-none text-gray-600">
+              <option value="">All months</option>
+              {monthOptions.map((m) => (
+                <option key={m} value={m}>{monthLabel(m)}</option>
+              ))}
+            </select>
             <select value={fRisk} onChange={(e) => setFRisk(e.target.value)}
               className="bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs outline-none text-gray-600">
               <option value="All">All open</option>
@@ -287,7 +339,7 @@ export default function OpenTicketsReport() {
             </select>
             {filtersActive && (
               <button
-                onClick={() => { setFPerson(""); setFDivision(""); setFProject(""); setFRisk("All"); }}
+                onClick={() => { setFPerson(""); setFDivision(""); setFProject(""); setFRisk("All"); setFMonth(""); }}
                 className="inline-flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-[#9b2423] px-2 py-2">
                 <FilterX size={14} /> Clear
               </button>

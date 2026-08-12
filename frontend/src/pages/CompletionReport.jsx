@@ -31,10 +31,9 @@ const DATE_RX = /from (.*?) to (\d{4}-\d{2}-\d{2})/i;
 const fmtMins = (mins) => {
   const m = Math.max(0, Number(mins) || 0);
   if (!m) return "—";
-  const d = Math.floor(m / 1440);
-  const h = Math.floor((m % 1440) / 60);
+  const h = Math.floor(m / 60);
   const mm = m % 60;
-  return [d ? `${d}d` : "", h ? `${h}h` : "", mm ? `${mm}m` : ""].filter(Boolean).join(" ") || "0m";
+  return [h ? `${h}h` : "", mm ? `${mm}m` : ""].filter(Boolean).join(" ") || "0m";
 };
 
 const daysBetween = (a, b) =>

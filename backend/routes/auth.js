@@ -120,7 +120,9 @@ router.post('/login', rateLimit({ name: 'login', windowMs: 15 * 60 * 1000, max: 
 // created a Super Admin with a hardcoded password. Seed the first admin with a
 // one-off INSERT in the Supabase SQL editor instead.
 
-// GET team members
+// GET team members — the assignable people, used by the create-ticket form.
+// Scoped to the caller's team so a Marketing user is not offered Service staff,
+// which POST /tickets would reject anyway. Super Admins span both teams.
 router.get('/team-members', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -129,7 +131,13 @@ router.get('/team-members', requireAuth, async (req, res) => {
       .like('role', 'Team Member%')
       .eq('active', true);
     if (error) throw error;
-    res.json(data);
+
+    const myTeam = getUserTeam(req.user);
+    const visible = isSuperAdmin(req.user)
+      ? data
+      : (data || []).filter((u) => teamFromRole(u.role) === myTeam);
+
+    res.json(visible);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to fetch team members' });

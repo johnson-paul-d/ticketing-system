@@ -238,7 +238,8 @@
       "Bash(node --check routes/verify.js)",
       "Bash(node smoke.js)",
       "Bash(node smoke-small.js)",
-      "Bash(node smoke-canary.js)"
+      "Bash(node smoke-canary.js)",
+      "PowerShell(cd D:\\\\Ticketing-System\\\\backend; \\(Get-Content _uitest.js -Raw\\) -replace \"'Contingency'\", \"'Branding'\" | Set-Content _uitest.js -Encoding utf8; node _uitest.js 2>&1 | Select-String -NotMatch \"injected env\")"
     ]
   }
 }

@@ -415,6 +415,16 @@ router.post('/', auth, async (req, res) => {
     const newTicketTeam =
       teamFromRole(assignedUser?.role) || getUserTeam(req.user) || TEAM.MARKETING;
 
+    // The same guard PUT /:id/assign applies, so creating a ticket is not a way
+    // around it. A Super Admin assignee is exempt: they span every team, and
+    // teamFromRole returns null for them.
+    if (assignedUser && !isSuperAdmin(req.user)) {
+      const targetIsSuperAdmin = isSuperAdmin({ role: assignedUser.role });
+      if (!targetIsSuperAdmin && teamFromRole(assignedUser.role) !== getUserTeam(req.user)) {
+        return res.status(403).json({ message: 'Cannot assign to a user on another team' });
+      }
+    }
+
     if (!isValidCategory(newTicketTeam, category)) {
       return res.status(400).json({
         message: `"${category}" is not a valid category for the ${newTicketTeam} team`,

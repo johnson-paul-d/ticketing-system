@@ -28,7 +28,6 @@ export default function TicketDetails() {
   const [endTime, setEndTime] = useState("");
   const [notes, setNotes] = useState("");
   const [allottedMinutes, setAllottedMinutes] = useState(0);
-  const [allottedDays, setAllottedDays] = useState(0);
   const [allottedHours, setAllottedHours] = useState(0);
   const [allottedMins, setAllottedMins] = useState(0);
   const [editingEntryId, setEditingEntryId] = useState(null);
@@ -54,8 +53,10 @@ export default function TicketDetails() {
       setTimeEntries(res.data.time_entries || []);
       const mins = Math.max(0, res.data.allotted_minutes || 0);
       setAllottedMinutes(mins);
-      setAllottedDays(Math.floor(mins / (60 * 24)));
-      setAllottedHours(Math.floor((mins % (60 * 24)) / 60));
+      // Hours run past 24 rather than rolling into days, so a long allotment
+      // reads as "50h 30m" instead of losing the days part that no longer has
+      // an input.
+      setAllottedHours(Math.floor(mins / 60));
       setAllottedMins(mins % 60);
       setTitleInput(res.data.title || "");
       // Reset request due date field
@@ -95,7 +96,7 @@ export default function TicketDetails() {
 
   const updateAllottedTime = async () => {
     try {
-      const total = Math.max(0, allottedDays) * 24 * 60 + Math.max(0, allottedHours) * 60 + Math.max(0, allottedMins);
+      const total = Math.max(0, allottedHours) * 60 + Math.max(0, allottedMins);
       await api.put(`/tickets/${ticket.id}`, { allotted_minutes: total });
       alert("Allotted time updated");
       fetchTicket();
@@ -858,8 +859,9 @@ export default function TicketDetails() {
           </div>
           {isAdmin && (
             <div className="mt-8 flex flex-wrap items-end gap-4">
-              <div><label className="block text-sm mb-2">Days</label><input type="number" min="0" value={allottedDays} onChange={(e) => setAllottedDays(Math.max(0, Number(e.target.value)))} className="border rounded-2xl px-5 py-3 text-black w-28" /></div>
-              <div><label className="block text-sm mb-2">Hours</label><input type="number" min="0" max="23" value={allottedHours} onChange={(e) => setAllottedHours(Math.min(23, Math.max(0, Number(e.target.value))))} className="border rounded-2xl px-5 py-3 text-black w-28" /></div>
+              {/* No day field, so hours are uncapped — a two-day allotment is
+                  entered as 48h rather than being unsettable. */}
+              <div><label className="block text-sm mb-2">Hours</label><input type="number" min="0" value={allottedHours} onChange={(e) => setAllottedHours(Math.max(0, Number(e.target.value)))} className="border rounded-2xl px-5 py-3 text-black w-28" /></div>
               <div><label className="block text-sm mb-2">Minutes</label><input type="number" min="0" max="59" value={allottedMins} onChange={(e) => setAllottedMins(Math.min(59, Math.max(0, Number(e.target.value))))} className="border rounded-2xl px-5 py-3 text-black w-28" /></div>
               <button onClick={updateAllottedTime} className="bg-white text-black px-6 py-3 rounded-2xl font-semibold hover:bg-gray-200">Update Allotted Time</button>
             </div>

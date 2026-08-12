@@ -34,13 +34,13 @@ import useAuthStore from "../store/authStore";
 import { avatarColor, daysLeft, TargetChip, ProgressBar, MemberAvatars } from "./Projects";
 import { TICKET_DIVISIONS } from "../constants/divisions";
 
+// Hours and minutes only, matching how allotted time is entered.
 const fmtMinutes = (mins) => {
   const m = Math.max(0, Number(mins) || 0);
   if (!m) return null;
-  const d = Math.floor(m / 1440);
-  const h = Math.floor((m % 1440) / 60);
+  const h = Math.floor(m / 60);
   const mm = m % 60;
-  return [d ? `${d}d` : "", h ? `${h}h` : "", mm ? `${mm}m` : ""].filter(Boolean).join(" ");
+  return [h ? `${h}h` : "", mm ? `${mm}m` : ""].filter(Boolean).join(" ");
 };
 
 const COLUMNS = [

@@ -25,13 +25,19 @@ export default function CreateTicket() {
   const [givenBy, setGivenBy] = useState("");
   const [projectId, setProjectId] = useState("");
   const [projects, setProjects] = useState([]);
-  const [allottedDays, setAllottedDays] = useState(0);
   const [allottedHours, setAllottedHours] = useState(0);
   const [allottedMins, setAllottedMins] = useState(0);
+  const [assignedTo, setAssignedTo] = useState("");
+  const [teamMembers, setTeamMembers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrenceInterval, setRecurrenceInterval] = useState("weekly");
+
+  // Assignable people, already scoped to the caller's team by the server.
+  useEffect(() => {
+    api.get("/auth/team-members").then((r) => setTeamMembers(r.data || [])).catch(() => {});
+  }, []);
 
   useEffect(() => {
     api.get("/projects").then((r) => setProjects(r.data || [])).catch(() => {});
@@ -85,10 +91,8 @@ export default function CreateTicket() {
         project_id: projectId || null,
         is_recurring: isRecurring,
         recurrence_interval: isRecurring ? recurrenceInterval : null,
-        allotted_minutes:
-          Math.max(0, allottedDays) * 1440 +
-          Math.max(0, allottedHours) * 60 +
-          Math.max(0, allottedMins),
+        assigned_to: assignedTo || null,
+        allotted_minutes: Math.max(0, allottedHours) * 60 + Math.max(0, allottedMins),
       });
       navigate("/tickets");
     } catch (err) {
@@ -186,6 +190,27 @@ export default function CreateTicket() {
                 <option>Critical</option>
               </select>
             </div>
+          </div>
+
+          {/* Assign To */}
+          <div className="mb-6">
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+              Assign To
+            </label>
+            <select
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm sm:text-base focus:ring-2 focus:ring-[#9b2423]/40 bg-gray-50 outline-none cursor-pointer"
+              value={assignedTo}
+              onChange={(e) => setAssignedTo(e.target.value)}
+              disabled={loading}
+            >
+              <option value="">Unassigned — assign later</option>
+              {teamMembers.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                  {m.division ? ` · ${m.division}` : ""}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Row 2: Division + Due Date */}
@@ -305,9 +330,8 @@ export default function CreateTicket() {
             <label className="block text-sm font-semibold text-gray-700 mb-1.5">
               Allotted Time
             </label>
-            <div className="grid grid-cols-3 gap-4 max-w-md">
+            <div className="grid grid-cols-2 gap-4 max-w-xs">
               {[
-                { label: "Days", value: allottedDays, set: setAllottedDays },
                 { label: "Hours", value: allottedHours, set: setAllottedHours },
                 { label: "Minutes", value: allottedMins, set: setAllottedMins },
               ].map((f) => (

@@ -507,7 +507,6 @@ export default function Tickets() {
               </th>
               <th className="p-5">Logged Time</th>
               <th className="p-5">Allotted Time</th>
-              <th className="p-5">Action</th>
             </tr>
           </thead>
           <tbody>
@@ -533,7 +532,20 @@ export default function Tickets() {
               return (
                 <tr
                   key={ticket.id}
-                  className={`border-t hover:bg-gray-50 ${isOverdue ? "bg-red-50" : ""}`}
+                  onClick={() => navigate(`/tickets/${ticket.id}`)}
+                  // Keyboard users need the same route in, since the row is now
+                  // the only way to open a ticket.
+                  tabIndex={0}
+                  role="link"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      navigate(`/tickets/${ticket.id}`);
+                    }
+                  }}
+                  className={`border-t cursor-pointer hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#9b2423]/40 ${
+                    isOverdue ? "bg-red-50" : ""
+                  }`}
                 >
                   <td className="p-5">
                     <div>
@@ -579,14 +591,6 @@ export default function Tickets() {
                   <td className="p-5">{ticket.given_by || "—"}</td>
                   <td className="p-5">{formatHours(totalMinutes)}</td>
                   <td className="p-5">{formatHours(ticket.allotted_minutes || 0)}</td>
-                  <td className="p-5">
-                    <button
-                      onClick={() => navigate(`/tickets/${ticket.id}`)}
-                      className="bg-[#9b2423] text-white px-4 py-2 rounded-lg hover:bg-[#7d1d1c]"
-                    >
-                      View
-                    </button>
-                  </td>
                 </tr>
               );
             })}
