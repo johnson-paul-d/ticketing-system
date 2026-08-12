@@ -15,8 +15,7 @@ const { notifyAdmins, notifyUser, insertNotifications } = require('../services/n
 
 const { emitScoped } = require('../utils/realtime');
 
-// Today's date in IST (date-only, for tickets.completed_date)
-const todayIST = () => new Date(Date.now() + 330 * 60000).toISOString().split('T')[0];
+const { todayIST } = require('../utils/time');
 
 // =====================================================
 // QUERY HELPERS

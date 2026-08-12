@@ -3,6 +3,7 @@ const { PDFDocument, StandardFonts, rgb, degrees } = require('pdf-lib');
 const supabase = require('../config/supabase');
 const fileStore = require('./fileStore');
 const { detectFileType, safeFileName, validateFileStructure } = require('../utils/fileType');
+const { formatIST } = require('../utils/time');
 
 // =====================================================
 // Expense claim PDF
@@ -140,25 +141,14 @@ const money = (value) => {
   return `${n < 0 ? '-' : ''}${grouped}.${cents}`;
 };
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const pad2 = (n) => String(n).padStart(2, '0');
+// Rendered in IST. Instants are stored in UTC, which is correct, but this is a
+// document read by people in India — a UTC stamp on an approval reads as the
+// wrong time of day, and on a late-evening approval as the wrong date entirely.
+// A date-only column is already the intended calendar date and is never
+// shifted, so an expense cannot slide onto the previous day.
+const fmtDate = (value) => formatIST(value) || '-';
 
-// Read in UTC because that is what utils/time.js writes. A `date` column arrives
-// as YYYY-MM-DD and parses to UTC midnight, so the day never slips backwards on
-// a server west of Greenwich.
-const fmtDate = (value) => {
-  if (!value) return '-';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return String(value);
-  return `${pad2(d.getUTCDate())} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
-};
-
-const fmtStamp = (value) => {
-  if (!value) return '-';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return String(value);
-  return `${fmtDate(value)}, ${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())} UTC`;
-};
+const fmtStamp = (value) => formatIST(value, { withTime: true }) || '-';
 
 const fmtPeriod = (claim) => {
   if (!claim.period_from && !claim.period_to) return '-';

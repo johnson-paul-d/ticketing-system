@@ -5,7 +5,7 @@ const { notifyUser } = require('./notificationService');
 const { emitScoped } = require('../utils/realtime');
 const { ticketAudience } = require('../utils/ticketTeam');
 
-const todayIST = () => new Date(Date.now() + 330 * 60000).toISOString().split('T')[0];
+const { todayIST } = require('../utils/time');
 
 // Migration not run yet (or table missing) → skip quietly.
 const isMissingRecurrenceSchema = (error) =>
