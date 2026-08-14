@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   BadgeCheck,
   Download,
+  Clock,
 } from "lucide-react";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
@@ -30,9 +31,66 @@ const CURRENCY_SYMBOL = { INR: "₹", USD: "$", EUR: "€", GBP: "£" };
 const statusChip = {
   Draft: "bg-gray-100 text-gray-600 border-gray-200",
   Submitted: "bg-amber-50 text-amber-700 border-amber-200",
+  "Partially Approved": "bg-sky-50 text-sky-700 border-sky-200",
   Approved: "bg-blue-50 text-blue-700 border-blue-200",
   Rejected: "bg-red-50 text-red-700 border-red-200",
   Paid: "bg-emerald-50 text-emerald-700 border-emerald-200",
+};
+
+// Approval happens per line, so the claim status is only a rollup of the lines
+// beneath it — the row's own chip is the authoritative state.
+const lineChip = {
+  Approved: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  Rejected: "bg-red-50 text-red-700 border-red-200",
+  Pending: "bg-gray-100 text-gray-600 border-gray-200",
+};
+
+const rollupTone = {
+  Draft: { wrap: "bg-white border-gray-200 shadow-sm", title: "text-gray-800", body: "text-gray-500" },
+  Submitted: { wrap: "bg-amber-50 border-amber-200", title: "text-amber-800", body: "text-amber-700" },
+  "Partially Approved": {
+    wrap: "bg-sky-50 border-sky-200",
+    title: "text-sky-900",
+    body: "text-sky-700",
+  },
+  Approved: {
+    wrap: "bg-emerald-50 border-emerald-200",
+    title: "text-emerald-800",
+    body: "text-emerald-700",
+  },
+  Rejected: { wrap: "bg-red-50 border-red-200", title: "text-red-800", body: "text-red-700" },
+  Paid: {
+    wrap: "bg-emerald-50 border-emerald-200",
+    title: "text-emerald-800",
+    body: "text-emerald-700",
+  },
+};
+
+const rollupCopy = {
+  Draft: {
+    title: "Draft — not submitted yet",
+    body: "Every line item needs a receipt before this claim can be submitted.",
+  },
+  Submitted: {
+    title: "Awaiting approval",
+    body: "The approver signs off each line on its own, so lines can be decided separately.",
+  },
+  "Partially Approved": {
+    title: "Partly decided",
+    body: "Some lines have been decided; the rest are still with the approver.",
+  },
+  Approved: {
+    title: "Every line approved",
+    body: "Each approved line carries its own approval record and printable document.",
+  },
+  Rejected: {
+    title: "Every line rejected",
+    body: "No line on this claim was approved — the reasons are on the rows below.",
+  },
+  Paid: {
+    title: "Paid",
+    body: "Reimbursement has been recorded against this claim.",
+  },
 };
 
 // Receipts may hang off a line or off the claim itself; the latter are keyed
@@ -443,8 +501,6 @@ export default function ExpenseDetails() {
 
   const [form, setForm] = useState({
     title: "",
-    period_from: "",
-    period_to: "",
     currency: "INR",
   });
   const [headerErrors, setHeaderErrors] = useState({});
@@ -469,10 +525,13 @@ export default function ExpenseDetails() {
   // Workflow state.
   const [missingLineIds, setMissingLineIds] = useState([]);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
-  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectLineId, setRejectLineId] = useState("");
   const [rejectReason, setRejectReason] = useState("");
   const [rejectError, setRejectError] = useState("");
   const [busyAction, setBusyAction] = useState("");
+  // Per-line work in flight, held as "verb:lineId" — a single key is enough
+  // because every row's controls are disabled while any one of them is running.
+  const [lineBusy, setLineBusy] = useState("");
 
   // syncForm is off for the refetches that follow a line change: those only need
   // the recalculated total, and rewriting the header fields would throw away
@@ -487,8 +546,6 @@ export default function ExpenseDetails() {
       if (syncForm) {
         setForm({
           title: data.title || "",
-          period_from: dateInputValue(data.period_from),
-          period_to: dateInputValue(data.period_to),
           currency: data.currency || "INR",
         });
       }
@@ -565,15 +622,12 @@ export default function ExpenseDetails() {
   // claim is a Draft) and answers with can_edit — mirroring that rule here would
   // only be a second place for it to drift.
   const editable = isNew || claim?.can_edit === true;
+  // can_approve answers "may this viewer decide lines on this claim" — the
+  // per-line gate is the line's own approval_status.
   const canApprove = claim?.can_approve === true;
-  const isApproved = claim?.status === "Approved";
   const sentBack =
     Boolean(claim?.rejection_reason) &&
     (claim?.status === "Draft" || claim?.status === "Rejected");
-
-  const verifyUrl = claim?.verify_code
-    ? `${window.location.origin}/verify/${claim.verify_code}`
-    : "";
 
   const receiptsByLine = useMemo(() => {
     const map = {};
@@ -604,13 +658,28 @@ export default function ExpenseDetails() {
     [lines]
   );
 
+  const rollup = useMemo(() => {
+    const counts = { Approved: 0, Rejected: 0, Pending: 0 };
+    let approvedTotal = 0;
+    lines.forEach((line) => {
+      const state = line.approval_status || "Pending";
+      counts[state] = (counts[state] || 0) + 1;
+      if (state === "Approved")
+        approvedTotal += (Number(line.amount) || 0) + (Number(line.tax_amount) || 0);
+    });
+    return { ...counts, approvedTotal };
+  }, [lines]);
+
+  const rejectingLine = useMemo(
+    () => lines.find((line) => line.id === rejectLineId) || null,
+    [lines, rejectLineId]
+  );
+
   // ---------------------------------------------------------------- header
 
   const validateHeader = () => {
     const errs = {};
     if (!form.title.trim()) errs.title = "A title is required";
-    if (form.period_from && form.period_to && form.period_from > form.period_to)
-      errs.period_to = "The period end cannot be before the period start";
     return errs;
   };
 
@@ -624,8 +693,6 @@ export default function ExpenseDetails() {
     setNotice("");
     const body = {
       title: form.title.trim(),
-      period_from: form.period_from || null,
-      period_to: form.period_to || null,
       currency: form.currency,
     };
     try {
@@ -881,44 +948,88 @@ export default function ExpenseDetails() {
     }
   };
 
-  const approveClaim = async () => {
-    setBusyAction("approve");
+  // Deciding one line moves the claim's rollup status and can change what the
+  // server will allow on the others, so the whole claim is refetched rather than
+  // patching the one line back into state.
+  const approveLine = async (lineId) => {
+    setLineBusy(`approve:${lineId}`);
     setError("");
     setNotice("");
     setSignatureRequired(false);
     try {
-      await api.post(`/expenses/${id}/approve`);
-      await fetchClaim();
-      setNotice("Claim approved");
+      await api.post(`/expenses/${id}/lines/${lineId}/approve`);
+      await fetchClaim({ syncForm: false });
+      setNotice("Line approved");
     } catch (err) {
       const data = err.response?.data;
       if (data?.code === "SIGNATURE_REQUIRED") setSignatureRequired(true);
-      setError(data?.message || "Failed to approve the claim");
+      setError(data?.message || "Failed to approve that line");
     } finally {
-      setBusyAction("");
+      setLineBusy("");
     }
   };
 
-  const rejectClaim = async () => {
+  const openRejectLine = (line) => {
+    setRejectLineId(line.id);
+    setRejectReason("");
+    setRejectError("");
+    setSignatureRequired(false);
+  };
+
+  const closeRejectLine = () => {
+    setRejectLineId("");
+    setRejectReason("");
+    setRejectError("");
+  };
+
+  const rejectLine = async () => {
     const reason = rejectReason.trim();
     if (!reason) {
       setRejectError("A reason is required so the claimant knows what to fix");
       return;
     }
-    setBusyAction("reject");
+    const lineId = rejectLineId;
+    setLineBusy(`reject:${lineId}`);
     setRejectError("");
     setError("");
     setNotice("");
+    setSignatureRequired(false);
     try {
-      await api.post(`/expenses/${id}/reject`, { reason });
-      setShowRejectModal(false);
-      setRejectReason("");
-      await fetchClaim();
-      setNotice("Claim sent back to the claimant");
+      await api.post(`/expenses/${id}/lines/${lineId}/reject`, { reason });
+      closeRejectLine();
+      await fetchClaim({ syncForm: false });
+      setNotice("Line rejected");
     } catch (err) {
-      setRejectError(err.response?.data?.message || "Failed to reject the claim");
+      const data = err.response?.data;
+      if (data?.code === "SIGNATURE_REQUIRED") setSignatureRequired(true);
+      setRejectError(data?.message || "Failed to reject that line");
     } finally {
-      setBusyAction("");
+      setLineBusy("");
+    }
+  };
+
+  const downloadLinePdf = async (line, fallbackNo) => {
+    setLineBusy(`pdf:${line.id}`);
+    setError("");
+    try {
+      const res = await api.get(`/expenses/${id}/lines/${line.id}/pdf`, {
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(res.data);
+      const link = document.createElement("a");
+      link.href = url;
+      const lineNo = String(line.line_no ?? fallbackNo).padStart(2, "0");
+      link.download = `${claim.claim_number || "expense-claim"}-${lineNo}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      // An error body arrives as a Blob under responseType: "blob", so there is
+      // no message to read out of it.
+      setError("Failed to download the document for that line");
+    } finally {
+      setLineBusy("");
     }
   };
 
@@ -974,6 +1085,8 @@ export default function ExpenseDetails() {
   }
 
   const claimReceipts = receiptsByLine[CLAIM_KEY] || [];
+  const tone = rollupTone[claim?.status] || rollupTone.Draft;
+  const copy = rollupCopy[claim?.status] || rollupCopy.Draft;
 
   return (
     <>
@@ -1002,7 +1115,7 @@ export default function ExpenseDetails() {
             </h1>
             <p className="text-sm text-gray-500 mt-1">
               {isNew ? (
-                "Record the claim period first — expense lines are added once it is created"
+                "Name the claim first — expense lines are added once it is created"
               ) : (
                 <>
                   {claim.claim_number || "Not yet numbered"} · {claim.claimant_name || "—"} · raised{" "}
@@ -1031,7 +1144,7 @@ export default function ExpenseDetails() {
                 <Link to="/settings/signature" className="font-semibold underline">
                   Upload your signature
                 </Link>{" "}
-                and then approve again.
+                and then decide the line again.
               </>
             )}
           </div>
@@ -1060,174 +1173,87 @@ export default function ExpenseDetails() {
           </div>
         )}
 
-        {/* Workflow status */}
+        {/* Approval rollup — the claim has no single decision of its own, so this
+            only totals up what the individual lines say */}
         {!isNew && (
-          <div
-            className={`rounded-2xl border p-5 mb-6 ${
-              isApproved
-                ? "bg-emerald-50 border-emerald-200"
-                : claim.status === "Submitted"
-                ? "bg-amber-50 border-amber-200"
-                : claim.status === "Paid"
-                ? "bg-emerald-50 border-emerald-200"
-                : "bg-white border-gray-200 shadow-sm"
-            }`}
-          >
+          <div className={`rounded-2xl border p-5 mb-6 ${tone.wrap}`}>
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="flex items-start gap-3">
-                {isApproved || claim.status === "Paid" ? (
+                {claim.status === "Approved" || claim.status === "Paid" ? (
                   <BadgeCheck size={20} className="text-emerald-600 flex-shrink-0 mt-0.5" />
-                ) : claim.status === "Submitted" ? (
-                  <Send size={19} className="text-amber-600 flex-shrink-0 mt-0.5" />
-                ) : (
+                ) : claim.status === "Rejected" ? (
+                  <XCircle size={19} className="text-red-600 flex-shrink-0 mt-0.5" />
+                ) : claim.status === "Draft" ? (
                   <Pencil size={18} className="text-gray-400 flex-shrink-0 mt-0.5" />
+                ) : (
+                  <Send size={19} className="text-amber-600 flex-shrink-0 mt-0.5" />
                 )}
 
                 <div>
-                  <p
-                    className={`font-bold ${
-                      isApproved || claim.status === "Paid"
-                        ? "text-emerald-800"
-                        : claim.status === "Submitted"
-                        ? "text-amber-800"
-                        : "text-gray-800"
-                    }`}
-                  >
-                    {isApproved
-                      ? "Approved"
-                      : claim.status === "Paid"
-                      ? "Paid"
-                      : claim.status === "Submitted"
-                      ? "Awaiting approval"
-                      : "Draft — not submitted yet"}
-                  </p>
-                  <p
-                    className={`text-sm mt-0.5 ${
-                      isApproved || claim.status === "Paid"
-                        ? "text-emerald-700"
-                        : claim.status === "Submitted"
-                        ? "text-amber-700"
-                        : "text-gray-500"
-                    }`}
-                  >
-                    {isApproved
-                      ? "This claim is locked and carries a verifiable approval record."
-                      : claim.status === "Paid"
-                      ? "Reimbursement has been recorded against this claim."
-                      : claim.status === "Submitted"
-                      ? `Submitted ${fmtDateTime(claim.submitted_at)} — locked until the approver acts.`
-                      : "Every line item needs a receipt before this claim can be submitted."}
-                  </p>
+                  <p className={`font-bold ${tone.title}`}>{copy.title}</p>
+                  <p className={`text-sm mt-0.5 ${tone.body}`}>{copy.body}</p>
+                  {claim.status !== "Draft" && claim.submitted_at && (
+                    <p className={`text-xs mt-1 opacity-80 ${tone.body}`}>
+                      Submitted {fmtDateTime(claim.submitted_at)}
+                    </p>
+                  )}
 
-                  {isApproved && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-10 gap-y-3 mt-4">
-                      <div>
-                        <p className="text-[11px] uppercase tracking-wide text-emerald-700/70">
-                          Claim number
-                        </p>
-                        <p className="text-sm font-semibold text-emerald-900">
-                          {claim.claim_number || "—"}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-[11px] uppercase tracking-wide text-emerald-700/70">
-                          Approved by
-                        </p>
-                        <p className="text-sm font-semibold text-emerald-900">
-                          {claim.approved_by_name || "—"}
-                          {claim.approved_by_role ? (
-                            <span className="font-normal text-emerald-700">
-                              {" "}
-                              · {claim.approved_by_role}
-                            </span>
-                          ) : null}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-[11px] uppercase tracking-wide text-emerald-700/70">
-                          Approved on
-                        </p>
-                        <p className="text-sm font-semibold text-emerald-900">
-                          {fmtDateTime(claim.approved_at)}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-[11px] uppercase tracking-wide text-emerald-700/70">
-                          Verification code
-                        </p>
-                        <p className="text-sm font-semibold text-emerald-900 font-mono break-all">
-                          {claim.verify_code || "—"}
-                        </p>
-                        {verifyUrl && (
-                          <a
-                            href={verifyUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-xs text-emerald-700 underline break-all"
-                          >
-                            {verifyUrl}
-                          </a>
-                        )}
-                      </div>
+                  {lines.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2 mt-4">
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
+                        <CheckCircle2 size={12} /> {rollup.Approved} approved
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border bg-red-50 text-red-700 border-red-200">
+                        <XCircle size={12} /> {rollup.Rejected} rejected
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border bg-white text-gray-600 border-gray-200">
+                        <Clock size={12} /> {rollup.Pending} pending
+                      </span>
+                      <span className={`text-[11px] ${tone.body} opacity-80`}>
+                        of {lines.length} {lines.length === 1 ? "line" : "lines"}
+                      </span>
                     </div>
                   )}
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                {claim.status === "Draft" && editable && (
-                  <button
-                    onClick={() => setShowSubmitConfirm(true)}
-                    disabled={Boolean(busyAction) || lines.length === 0}
-                    className={btnPrimaryCls}
-                    title={lines.length === 0 ? "Add at least one expense line first" : undefined}
-                  >
-                    <Send size={16} /> Submit for Approval
-                  </button>
-                )}
+              <div className="flex flex-col items-stretch sm:items-end gap-3">
+                <div className="text-left sm:text-right">
+                  <p className="text-[11px] uppercase tracking-wide text-gray-400">
+                    Approved total
+                  </p>
+                  <p className="text-xl font-bold text-emerald-700">
+                    {formatMoney(rollup.approvedTotal, currency)}
+                  </p>
+                </div>
 
-                {canApprove && (
-                  <>
+                <div className="flex flex-wrap gap-2">
+                  {claim.status === "Draft" && editable && (
                     <button
-                      onClick={approveClaim}
-                      disabled={Boolean(busyAction)}
-                      className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-semibold text-sm px-5 py-3 rounded-xl transition"
+                      onClick={() => setShowSubmitConfirm(true)}
+                      disabled={Boolean(busyAction) || lines.length === 0}
+                      className={btnPrimaryCls}
+                      title={lines.length === 0 ? "Add at least one expense line first" : undefined}
                     >
-                      {busyAction === "approve" ? (
+                      <Send size={16} /> Submit for Approval
+                    </button>
+                  )}
+
+                  {rollup.Approved > 0 && (
+                    <button
+                      onClick={downloadPdf}
+                      disabled={Boolean(busyAction)}
+                      className={btnGhostCls}
+                    >
+                      {busyAction === "pdf" ? (
                         <Loader2 size={16} className="animate-spin" />
                       ) : (
-                        <CheckCircle2 size={16} />
+                        <Download size={16} />
                       )}
-                      Approve
+                      Whole claim PDF
                     </button>
-                    <button
-                      onClick={() => {
-                        setRejectReason("");
-                        setRejectError("");
-                        setShowRejectModal(true);
-                      }}
-                      disabled={Boolean(busyAction)}
-                      className="inline-flex items-center gap-2 px-5 py-3 rounded-xl border border-red-200 bg-white text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60"
-                    >
-                      <XCircle size={16} /> Reject
-                    </button>
-                  </>
-                )}
-
-                {isApproved && (
-                  <button
-                    onClick={downloadPdf}
-                    disabled={Boolean(busyAction)}
-                    className={btnGhostCls}
-                  >
-                    {busyAction === "pdf" ? (
-                      <Loader2 size={16} className="animate-spin" />
-                    ) : (
-                      <Download size={16} />
-                    )}
-                    Download PDF
-                  </button>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -1252,27 +1278,6 @@ export default function ExpenseDetails() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Period from</label>
-              <input
-                type="date"
-                value={form.period_from}
-                onChange={(e) => setForm((f) => ({ ...f, period_from: e.target.value }))}
-                disabled={!editable || saving}
-                className={inputCls}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Period to</label>
-              <input
-                type="date"
-                value={form.period_to}
-                onChange={(e) => setForm((f) => ({ ...f, period_to: e.target.value }))}
-                disabled={!editable || saving}
-                className={`${inputCls} ${headerErrors.period_to ? errorCls : ""}`}
-              />
-              <FieldError>{headerErrors.period_to}</FieldError>
-            </div>
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1.5">Currency</label>
               <select
@@ -1362,8 +1367,11 @@ export default function ExpenseDetails() {
                 </div>
               )}
 
-              {lines.map((line) =>
-                editingLineId === line.id ? (
+              {lines.map((line, index) => {
+                const lineState = line.approval_status || "Pending";
+                const missingReceipt = missingLineIds.includes(line.id);
+
+                return editingLineId === line.id ? (
                   <LineForm
                     key={line.id}
                     value={editLine}
@@ -1380,10 +1388,14 @@ export default function ExpenseDetails() {
                 ) : (
                   <div
                     key={line.id}
-                    className={`border-t transition ${
-                      missingLineIds.includes(line.id)
-                        ? "bg-red-50/70 border-l-4 border-l-red-400"
-                        : "hover:bg-gray-50/60"
+                    className={`border-t border-l-4 transition ${
+                      missingReceipt
+                        ? "bg-red-50/70 border-l-red-400"
+                        : lineState === "Approved"
+                        ? "border-l-emerald-400"
+                        : lineState === "Rejected"
+                        ? "bg-red-50/30 border-l-red-300"
+                        : "border-l-transparent hover:bg-gray-50/60"
                     }`}
                   >
                     <div className="grid grid-cols-2 lg:grid-cols-12 gap-2 lg:gap-3 items-center px-4 py-3">
@@ -1451,6 +1463,93 @@ export default function ExpenseDetails() {
                       </div>
                     </div>
 
+                    {/* The line's own decision — this is the headline fact on the row */}
+                    <div className="px-4 pb-3">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                        <span
+                          className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border ${
+                            lineChip[lineState] || lineChip.Pending
+                          }`}
+                        >
+                          {lineState === "Approved" ? (
+                            <CheckCircle2 size={12} />
+                          ) : lineState === "Rejected" ? (
+                            <XCircle size={12} />
+                          ) : (
+                            <Clock size={12} />
+                          )}
+                          {lineState === "Pending" ? "Pending approval" : lineState}
+                        </span>
+
+                        {lineState === "Approved" && (
+                          <span className="text-xs text-gray-500">
+                            {line.approved_by_name || "—"}
+                            {line.approved_by_role ? ` · ${line.approved_by_role}` : ""} ·{" "}
+                            {fmtDateTime(line.approved_at)}
+                          </span>
+                        )}
+
+                        {lineState === "Approved" && line.verify_code && (
+                          <span
+                            title="Verification code for this line"
+                            className="text-[11px] font-mono text-gray-500 bg-gray-50 border border-gray-200 rounded px-2 py-0.5 break-all"
+                          >
+                            {line.verify_code}
+                          </span>
+                        )}
+
+                        <div className="flex flex-wrap gap-2 sm:ml-auto">
+                          {canApprove && lineState === "Pending" && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => approveLine(line.id)}
+                                disabled={Boolean(lineBusy)}
+                                className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-semibold text-xs px-3 py-2 rounded-xl transition"
+                              >
+                                {lineBusy === `approve:${line.id}` ? (
+                                  <Loader2 size={13} className="animate-spin" />
+                                ) : (
+                                  <CheckCircle2 size={13} />
+                                )}
+                                Approve
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openRejectLine(line)}
+                                disabled={Boolean(lineBusy)}
+                                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-red-200 bg-white text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60"
+                              >
+                                <XCircle size={13} /> Reject
+                              </button>
+                            </>
+                          )}
+
+                          {lineState === "Approved" && (
+                            <button
+                              type="button"
+                              onClick={() => downloadLinePdf(line, index + 1)}
+                              disabled={Boolean(lineBusy)}
+                              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 bg-white text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-60"
+                            >
+                              {lineBusy === `pdf:${line.id}` ? (
+                                <Loader2 size={13} className="animate-spin" />
+                              ) : (
+                                <Download size={13} />
+                              )}
+                              Download
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {lineState === "Rejected" && line.rejection_reason && (
+                        <p className="mt-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5 whitespace-pre-wrap">
+                          {line.rejection_reason}
+                        </p>
+                      )}
+                    </div>
+
                     <div className="px-4 pb-3">
                       <ReceiptStrip
                         label="Receipts"
@@ -1460,15 +1559,15 @@ export default function ExpenseDetails() {
                         uploading={uploadingKey === line.id}
                         busyId={receiptBusyId}
                         feedback={receiptFeedback[line.id]}
-                        missing={missingLineIds.includes(line.id)}
+                        missing={missingReceipt}
                         onPick={(file) => uploadReceipt(line.id, file)}
                         onOpen={openPreview}
                         onDelete={deleteReceipt}
                       />
                     </div>
                   </div>
-                )
-              )}
+                );
+              })}
 
               {editable && editingLineId === null && (
                 <LineForm
@@ -1623,14 +1722,23 @@ export default function ExpenseDetails() {
         </div>
       )}
 
-      {/* REJECT */}
-      {showRejectModal && (
+      {/* REJECT A LINE */}
+      {rejectingLine && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="bg-white rounded-2xl shadow-2xl p-6 sm:p-8 w-full max-w-lg">
-            <h2 className="text-xl font-bold text-[#9b2423]">Send this claim back</h2>
+            <h2 className="text-xl font-bold text-[#9b2423]">Reject this line</h2>
             <p className="text-sm text-gray-500 mt-2">
-              The claim returns to the claimant as a draft. Say what needs fixing — they only see
-              this reason.
+              <span className="font-semibold text-gray-800">{rejectingLine.category}</span>
+              {rejectingLine.description ? ` · ${rejectingLine.description}` : ""} ·{" "}
+              {formatMoney(
+                (Number(rejectingLine.amount) || 0) + (Number(rejectingLine.tax_amount) || 0),
+                currency
+              )}{" "}
+              on {fmtDate(rejectingLine.expense_date)}.
+            </p>
+            <p className="text-sm text-gray-500 mt-3">
+              Only this line is rejected — the other lines on the claim are unaffected. Say what
+              is wrong with it; the claimant only sees this reason.
             </p>
 
             <textarea
@@ -1639,34 +1747,43 @@ export default function ExpenseDetails() {
                 setRejectReason(e.target.value);
                 if (rejectError) setRejectError("");
               }}
-              placeholder="e.g., The 12 Aug taxi receipt is illegible — please re-upload a clearer photo."
+              placeholder="e.g., This taxi receipt is illegible — please re-upload a clearer photo."
               autoFocus
               className={`mt-4 w-full h-32 border rounded-xl px-4 py-3 text-sm bg-gray-50 outline-none focus:ring-2 focus:ring-[#9b2423]/40 ${
                 rejectError ? "border-red-300 bg-red-50/60" : "border-gray-200"
               }`}
             />
-            <FieldError>{rejectError}</FieldError>
+            {rejectError && (
+              <p className="text-xs text-red-600 mt-1.5">
+                {rejectError}
+                {signatureRequired && (
+                  <>
+                    {" "}
+                    <Link to="/settings/signature" className="font-semibold underline">
+                      Upload your signature
+                    </Link>{" "}
+                    and then try again.
+                  </>
+                )}
+              </p>
+            )}
 
             <div className="flex flex-col sm:flex-row gap-3 mt-5">
               <button
-                onClick={rejectClaim}
-                disabled={busyAction === "reject"}
+                onClick={rejectLine}
+                disabled={Boolean(lineBusy)}
                 className={`${btnPrimaryCls} justify-center flex-1`}
               >
-                {busyAction === "reject" ? (
+                {lineBusy === `reject:${rejectingLine.id}` ? (
                   <Loader2 size={16} className="animate-spin" />
                 ) : (
                   <XCircle size={16} />
                 )}
-                Send Back
+                Reject Line
               </button>
               <button
-                onClick={() => {
-                  setShowRejectModal(false);
-                  setRejectReason("");
-                  setRejectError("");
-                }}
-                disabled={busyAction === "reject"}
+                onClick={closeRejectLine}
+                disabled={Boolean(lineBusy)}
                 className={`${btnGhostCls} justify-center flex-1`}
               >
                 Cancel

@@ -20,6 +20,7 @@ const Projects           = lazy(() => import("./pages/Projects"));
 const ProjectDetails     = lazy(() => import("./pages/ProjectDetails"));
 const Expenses           = lazy(() => import("./pages/Expenses"));
 const ExpenseDetails     = lazy(() => import("./pages/ExpenseDetails"));
+const ExpenseReport      = lazy(() => import("./pages/ExpenseReport"));
 const CompletionReport   = lazy(() => import("./pages/CompletionReport"));
 const OpenTicketsReport  = lazy(() => import("./pages/OpenTicketsReport"));
 const Reports            = lazy(() => import("./pages/Reports"));
@@ -143,6 +144,17 @@ function App() {
             element={
               <ProtectedRoute>
                 <ExpenseDetails />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Must stay above /expenses/:id — otherwise "report" is read as an id.
+              No role gate: the server scopes the report to what the viewer owns. */}
+          <Route
+            path="/expenses/report"
+            element={
+              <ProtectedRoute>
+                <ExpenseReport />
               </ProtectedRoute>
             }
           />

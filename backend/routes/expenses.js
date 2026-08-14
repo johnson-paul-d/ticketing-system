@@ -14,7 +14,8 @@ const { notifyAdmins, notifyUser } = require('../services/notificationService');
 const {
   canApproveClaim,
   approvalRefusalReason,
-  approvalHash,
+  lineApprovalHash,
+  rollupStatus,
   verifyCodeFrom,
 } = require('../utils/expenseApproval');
 
@@ -87,6 +88,61 @@ const fetchLines = async (claimId) => {
     .order('id', { ascending: true });
   if (error) throw error;
   return data || [];
+};
+
+// Supabase REST caps a response at 1000 rows and reports no error when it
+// truncates, so a report built on an unpaged select would quietly under-count.
+const PAGE_SIZE = 1000;
+
+const fetchAllPages = async (query, orderColumn) => {
+  const rows = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await query
+      .order(orderColumn, { ascending: true })
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < PAGE_SIZE) return rows;
+  }
+};
+
+// PostgREST puts .in() lists in the URL, so claim ids are chunked.
+const fetchLinesForClaims = async (claimIds, { from, to } = {}) => {
+  const out = [];
+  for (let i = 0; i < claimIds.length; i += 200) {
+    let q = supabase
+      .from('expense_lines')
+      .select('*')
+      .in('claim_id', claimIds.slice(i, i + 200));
+    if (from) q = q.gte('expense_date', from);
+    if (to) q = q.lte('expense_date', to);
+
+    const { data, error } = await q.order('expense_date', { ascending: false });
+    if (error) throw error;
+    out.push(...(data || []));
+  }
+  return out;
+};
+
+const emptyTotals = () => ({
+  approved: { count: 0, amount: 0 },
+  pending: { count: 0, amount: 0 },
+  rejected: { count: 0, amount: 0 },
+  all: { count: 0, amount: 0 },
+});
+
+const totalsFor = (rows) => {
+  const t = emptyTotals();
+  for (const r of rows) {
+    const bucket = r.approval_status === 'Approved' ? 'approved'
+      : r.approval_status === 'Rejected' ? 'rejected' : 'pending';
+    t[bucket].count += 1;
+    t[bucket].amount += r.total;
+    t.all.count += 1;
+    t.all.amount += r.total;
+  }
+  for (const k of Object.keys(t)) t[k].amount = Math.round(t[k].amount * 100) / 100;
+  return t;
 };
 
 const fetchReceipts = async (claimId) => {
@@ -193,6 +249,65 @@ router.get('/meta/categories', (req, res) => {
 });
 
 // =====================================================
+// REPORT
+// =====================================================
+// Line-level, because that is where the decisions now live: a claim can be part
+// approved, so counting claims would misstate what was actually authorised.
+// Scoped exactly like the list — a member sees only their own.
+router.get('/report', async (req, res) => {
+  try {
+    const from = (req.query.from || '').trim() || null;
+    const to = (req.query.to || '').trim() || null;
+
+    let claimQuery = supabase.from('expense_claims').select('*');
+    if (!isSuperAdmin(req.user)) {
+      if (isAdmin(req.user)) claimQuery = claimQuery.eq('team', getUserTeam(req.user));
+      else claimQuery = claimQuery.eq('claimant_id', req.user.id);
+    }
+
+    const claims = await fetchAllPages(claimQuery, 'id');
+
+    if (!claims.length) {
+      return res.json({ claims: [], lines: [], totals: emptyTotals() });
+    }
+
+    const byId = new Map(claims.map((c) => [c.id, c]));
+    const lines = await fetchLinesForClaims([...byId.keys()], { from, to });
+
+    // Flattened into what a report actually reads: the line, plus who claimed it.
+    const rows = lines.map((l) => {
+      const claim = byId.get(l.claim_id) || {};
+      return {
+        line_id: l.id,
+        claim_id: l.claim_id,
+        claim_number: claim.claim_number || null,
+        line_no: l.line_no,
+        title: claim.title || null,
+        claimant_name: claim.claimant_name || null,
+        team: claim.team || null,
+        currency: claim.currency || 'INR',
+        expense_date: l.expense_date,
+        category: l.category,
+        description: l.description,
+        amount: Number(l.amount || 0),
+        tax_amount: Number(l.tax_amount || 0),
+        total: Number(l.amount || 0) + Number(l.tax_amount || 0),
+        approval_status: l.approval_status || 'Pending',
+        approved_by_name: l.approved_by_name,
+        approved_at: l.approved_at,
+        rejection_reason: l.rejection_reason,
+      };
+    });
+
+    res.json({ lines: rows, totals: totalsFor(rows) });
+  } catch (err) {
+    if (isMissingSchema(err)) return migrationResponse(res);
+    console.error('EXPENSE REPORT ERROR:', err);
+    res.status(500).json({ message: 'Failed to build expense report' });
+  }
+});
+
+// =====================================================
 // LIST
 // =====================================================
 router.get('/', async (req, res) => {
@@ -247,10 +362,7 @@ router.post('/', async (req, res) => {
     const title = (req.body.title || '').trim();
     if (!title) return res.status(400).json({ message: 'Title is required' });
 
-    const { period_from, period_to, currency } = req.body;
-    if (period_from && period_to && period_from > period_to) {
-      return res.status(400).json({ message: 'Period start cannot be after period end' });
-    }
+    const { currency } = req.body;
 
     const now = getISTTime();
 
@@ -262,8 +374,6 @@ router.post('/', async (req, res) => {
       claimant_name: req.user.name,
       team: claimTeamFor(req.user),
       title,
-      period_from: period_from || null,
-      period_to: period_to || null,
       currency: (currency || 'INR').toUpperCase().slice(0, 3),
       total_amount: 0,
       status: 'Draft',
@@ -311,7 +421,9 @@ router.get('/:id', async (req, res) => {
       receipts: await fetchReceipts(claim.id),
       // Lets the client show who may act without duplicating the rules.
       can_edit: canEditClaim(req.user, claim) && isEditable(claim),
-      can_approve: claim.status === 'Submitted' && canApproveClaim(req.user, claim),
+      // Whether this viewer may decide lines at all. Which lines are still
+      // open is answered per line by its own approval_status.
+      can_approve: claim.status !== 'Draft' && canApproveClaim(req.user, claim),
     });
   } catch (err) {
     console.error('EXPENSE READ ERROR:', err);
@@ -334,16 +446,8 @@ router.put('/:id', async (req, res) => {
       if (!title) return res.status(400).json({ message: 'Title is required' });
       updateData.title = title;
     }
-    if (req.body.period_from !== undefined) updateData.period_from = req.body.period_from || null;
-    if (req.body.period_to !== undefined) updateData.period_to = req.body.period_to || null;
     if (req.body.currency !== undefined) {
       updateData.currency = String(req.body.currency || 'INR').toUpperCase().slice(0, 3);
-    }
-
-    const periodFrom = updateData.period_from ?? claim.period_from;
-    const periodTo = updateData.period_to ?? claim.period_to;
-    if (periodFrom && periodTo && periodFrom > periodTo) {
-      return res.status(400).json({ message: 'Period start cannot be after period end' });
     }
 
     const { data, error } = await supabase
@@ -702,6 +806,18 @@ router.post('/:id/submit', async (req, res) => {
     }
 
     const now = getISTTime();
+
+    // Number the lines now. They freeze at submit, so a position taken here is
+    // stable, and it is what each line's printed reference (EXP-2026-0042-02)
+    // is built from.
+    for (let i = 0; i < lines.length; i += 1) {
+      const { error: numberError } = await supabase
+        .from('expense_lines')
+        .update({ line_no: i + 1 })
+        .eq('id', lines[i].id);
+      if (numberError) throw numberError;
+    }
+
     const { data, error } = await supabase
       .from('expense_claims')
       .update({
@@ -737,8 +853,13 @@ router.post('/:id/submit', async (req, res) => {
 });
 
 // =====================================================
-// APPROVE
+// LINE APPROVAL
 // =====================================================
+// Approval belongs to the individual line, not the claim. An approver signs off
+// each expense separately, and each approved line yields its own document
+// carrying that line and its own bill. The claim's status is a rollup of what
+// its lines decided, never a decision in its own right.
+
 const nextClaimNumber = async () => {
   const year = new Date().getFullYear();
   const prefix = `EXP-${year}-`;
@@ -755,20 +876,70 @@ const nextClaimNumber = async () => {
   return `${prefix}${String(seq).padStart(4, '0')}`;
 };
 
-router.post('/:id/approve', async (req, res) => {
-  try {
-    const claim = await loadClaim(req, res);
-    if (!claim) return;
+// Recomputes the claim's status from its lines and writes it back.
+const syncClaimStatus = async (claim, lines, actorName, note) => {
+  const status = rollupStatus(lines);
+  const update = { status, updated_at: getISTTime() };
 
-    if (!canApproveClaim(req.user, claim)) {
-      return res.status(403).json({ message: approvalRefusalReason(req.user, claim) });
-    }
-    if (claim.status !== 'Submitted') {
-      return res.status(400).json({ message: `A ${claim.status.toLowerCase()} claim cannot be approved` });
-    }
+  if (note) {
+    update.timeline = appendTimeline(claim, { type: 'decision', action: note, user: actorName });
+  }
+
+  const { data, error } = await supabase
+    .from('expense_claims')
+    .update(update)
+    .eq('id', claim.id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+};
+
+// Shared preamble for a decision on one line.
+const loadDecidableLine = async (req, res) => {
+  const claim = await loadClaim(req, res);
+  if (!claim) return null;
+
+  if (!canApproveClaim(req.user, claim)) {
+    res.status(403).json({ message: approvalRefusalReason(req.user, claim) });
+    return null;
+  }
+
+  const { data: line } = await supabase
+    .from('expense_lines')
+    .select('*')
+    .eq('id', req.params.lineId)
+    .single();
+
+  // Check the parent as well — a line id from another claim must not be
+  // decidable through this claim's URL.
+  if (!line || line.claim_id !== claim.id) {
+    res.status(404).json({ message: 'Line item not found' });
+    return null;
+  }
+
+  if (claim.status === 'Draft') {
+    res.status(400).json({ message: 'This claim has not been submitted yet' });
+    return null;
+  }
+  if (line.approval_status !== 'Pending') {
+    res.status(400).json({
+      message: `That line was already ${line.approval_status.toLowerCase()}`,
+    });
+    return null;
+  }
+
+  return { claim, line };
+};
+
+router.post('/:id/lines/:lineId/approve', async (req, res) => {
+  try {
+    const loaded = await loadDecidableLine(req, res);
+    if (!loaded) return;
+    const { claim, line } = loaded;
 
     // The signature is the point of the exercise — refuse rather than produce a
-    // PDF with an empty stamp where one is supposed to be.
+    // document with an empty stamp where one is supposed to be.
     const { data: approver } = await supabase
       .from('users')
       .select('id, name, role, signature_path')
@@ -777,29 +948,29 @@ router.post('/:id/approve', async (req, res) => {
 
     if (!approver?.signature_path) {
       return res.status(400).json({
-        message: 'Upload your signature before approving claims',
+        message: 'Upload your signature before approving expenses',
         code: 'SIGNATURE_REQUIRED',
       });
     }
 
-    const lines = await fetchLines(claim.id);
-    const receipts = await fetchReceipts(claim.id);
+    // Only this line's receipts are covered: the document it produces contains
+    // only those, so another line's bill changing has no bearing on what this
+    // approver signed.
+    const allReceipts = await fetchReceipts(claim.id);
+    const lineReceipts = allReceipts.filter((r) => r.line_id === line.id);
     const now = getISTTime();
 
-    const hash = approvalHash(claim, lines, receipts, approver, now);
+    const hash = lineApprovalHash(claim, line, lineReceipts, approver, now);
 
-    // The code is derived from the hash, so a collision means two claims hash
-    // alike — vanishingly unlikely, but a unique index guards it either way.
-    let verifyCode = verifyCodeFrom(hash);
     let claimNumber = claim.claim_number || (await nextClaimNumber());
+    let verifyCode = verifyCodeFrom(hash);
+    let updatedLine;
 
-    let data;
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const result = await supabase
-        .from('expense_claims')
+        .from('expense_lines')
         .update({
-          status: 'Approved',
-          claim_number: claimNumber,
+          approval_status: 'Approved',
           approved_by: approver.id,
           approved_by_name: approver.name,
           approved_by_role: approver.role,
@@ -807,114 +978,150 @@ router.post('/:id/approve', async (req, res) => {
           approval_hash: hash,
           verify_code: verifyCode,
           rejection_reason: null,
-          updated_at: now,
-          timeline: appendTimeline(claim, {
-            type: 'approved',
-            action: `Approved by ${approver.name} (${approver.role})`,
-            user: approver.name,
-          }),
         })
-        .eq('id', claim.id)
-        .eq('status', 'Submitted')
+        .eq('id', line.id)
+        .eq('approval_status', 'Pending')
         .select()
         .single();
 
       if (!result.error) {
-        data = result.data;
+        updatedLine = result.data;
         break;
       }
-      // 23505 = unique violation on claim_number or verify_code.
+      // 23505 = unique violation on verify_code.
       if (result.error.code !== '23505') throw result.error;
-      claimNumber = await nextClaimNumber();
       verifyCode = verifyCodeFrom(hash + attempt);
     }
 
-    if (!data) {
-      return res.status(409).json({ message: 'Could not approve — the claim may have changed' });
+    if (!updatedLine) {
+      return res.status(409).json({ message: 'That line was decided by someone else' });
     }
+
+    // The claim number is only minted once a claim has its first decision, so
+    // an abandoned draft never consumes one.
+    if (!claim.claim_number) {
+      await supabase
+        .from('expense_claims')
+        .update({ claim_number: claimNumber })
+        .eq('id', claim.id)
+        .is('claim_number', null);
+    }
+
+    const lines = await fetchLines(claim.id);
+    const updatedClaim = await syncClaimStatus(
+      claim,
+      lines,
+      approver.name,
+      `Approved line ${line.line_no ?? ''} — ${line.category} ${claim.currency} ${Number(line.amount).toFixed(2)}`.replace(/\s+/g, ' ')
+    );
 
     await notifyUser(
       claim.claimant_name,
-      'Expense Claim Approved',
-      `${approver.name} approved "${claim.title}" — ${claim.currency} ${Number(claim.total_amount).toFixed(2)}`,
+      'Expense Line Approved',
+      `${approver.name} approved ${line.category} (${claim.currency} ${Number(line.amount).toFixed(2)}) on "${claim.title}"`,
       null
     );
 
-    res.json({ ...data, lines, receipts });
+    res.json({ line: updatedLine, claim: updatedClaim });
   } catch (err) {
-    console.error('EXPENSE APPROVE ERROR:', err);
-    res.status(500).json({ message: 'Failed to approve claim' });
+    console.error('EXPENSE LINE APPROVE ERROR:', err);
+    res.status(500).json({ message: 'Failed to approve line item' });
   }
 });
 
-// =====================================================
-// REJECT
-// =====================================================
-router.post('/:id/reject', async (req, res) => {
+router.post('/:id/lines/:lineId/reject', async (req, res) => {
   try {
-    const claim = await loadClaim(req, res);
-    if (!claim) return;
-
-    if (!canApproveClaim(req.user, claim)) {
-      return res.status(403).json({ message: approvalRefusalReason(req.user, claim) });
-    }
-    if (claim.status !== 'Submitted') {
-      return res.status(400).json({ message: `A ${claim.status.toLowerCase()} claim cannot be rejected` });
-    }
+    const loaded = await loadDecidableLine(req, res);
+    if (!loaded) return;
+    const { claim, line } = loaded;
 
     const reason = (req.body.reason || '').trim();
     if (!reason) {
-      return res.status(400).json({ message: 'A reason is required so the claimant knows what to fix' });
+      return res.status(400).json({ message: 'A reason is required so the claimant knows why' });
     }
 
-    const now = getISTTime();
-    const { data, error } = await supabase
-      .from('expense_claims')
+    const { data: updatedLine, error } = await supabase
+      .from('expense_lines')
       .update({
-        status: 'Draft',
+        approval_status: 'Rejected',
         rejection_reason: reason,
-        // A new revision, and any prior approval record cleared — otherwise an
-        // already-printed PDF would keep verifying against an edited claim.
-        revision: (claim.revision || 1) + 1,
-        approved_by: null,
-        approved_by_name: null,
-        approved_by_role: null,
-        approved_at: null,
+        approved_by: req.user.id,
+        approved_by_name: req.user.name,
+        approved_by_role: req.user.role,
+        approved_at: getISTTime(),
+        // A rejected line has nothing to verify, so it carries no code.
         approval_hash: null,
         verify_code: null,
-        submitted_at: null,
-        updated_at: now,
-        timeline: appendTimeline(claim, {
-          type: 'rejected',
-          action: `Rejected by ${req.user.name}: ${reason}`,
-          user: req.user.name,
-        }),
       })
-      .eq('id', claim.id)
-      .eq('status', 'Submitted')
+      .eq('id', line.id)
+      .eq('approval_status', 'Pending')
       .select()
       .single();
 
     if (error) throw error;
-    if (!data) return res.status(409).json({ message: 'Claim is no longer awaiting approval' });
+    if (!updatedLine) {
+      return res.status(409).json({ message: 'That line was decided by someone else' });
+    }
+
+    const lines = await fetchLines(claim.id);
+    const updatedClaim = await syncClaimStatus(
+      claim,
+      lines,
+      req.user.name,
+      `Rejected line ${line.line_no ?? ''} — ${reason}`.replace(/\s+/g, ' ')
+    );
 
     await notifyUser(
       claim.claimant_name,
-      'Expense Claim Rejected',
-      `${req.user.name} sent "${claim.title}" back: ${reason}`,
+      'Expense Line Rejected',
+      `${req.user.name} rejected ${line.category} on "${claim.title}": ${reason}`,
       null
     );
 
-    res.json({ ...data, lines: await fetchLines(claim.id), receipts: await fetchReceipts(claim.id) });
+    res.json({ line: updatedLine, claim: updatedClaim });
   } catch (err) {
-    console.error('EXPENSE REJECT ERROR:', err);
-    res.status(500).json({ message: 'Failed to reject claim' });
+    console.error('EXPENSE LINE REJECT ERROR:', err);
+    res.status(500).json({ message: 'Failed to reject line item' });
   }
 });
 
 // =====================================================
-// PDF
+// LINE PDF
 // =====================================================
+router.get('/:id/lines/:lineId/pdf', async (req, res) => {
+  try {
+    const claim = await loadClaim(req, res);
+    if (!claim) return;
+
+    const { buildLinePdf } = require('../services/expensePdf');
+    const pdf = await buildLinePdf(claim.id, req.params.lineId);
+
+    const { data: line } = await supabase
+      .from('expense_lines')
+      .select('line_no')
+      .eq('id', req.params.lineId)
+      .single();
+
+    const base = claim.claim_number || `expense-${claim.id.slice(0, 8)}`;
+    const name = line?.line_no ? `${base}-${String(line.line_no).padStart(2, '0')}` : base;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${name}.pdf"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(pdf);
+  } catch (err) {
+    if (err.code === 'LINE_NOT_FOUND') {
+      return res.status(404).json({ message: 'Line item not found' });
+    }
+    if (err.code === 'LINE_NOT_APPROVED') {
+      return res.status(400).json({ message: 'That line has not been approved yet' });
+    }
+    console.error('EXPENSE LINE PDF ERROR:', err);
+    res.status(500).json({ message: 'Failed to generate PDF' });
+  }
+});
+
+
 router.get('/:id/pdf', async (req, res) => {
   try {
     const claim = await loadClaim(req, res);

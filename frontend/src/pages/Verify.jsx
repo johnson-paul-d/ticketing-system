@@ -41,6 +41,17 @@ const fmtDateTime = (value) => {
   });
 };
 
+// An expense date is a plain YYYY-MM-DD calendar date, not an instant. Parsing
+// it through Date would read it as UTC midnight and could show the previous day,
+// so the parts are formatted directly.
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const fmtDate = (value) => {
+  if (!value) return "—";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value));
+  if (!m) return String(value);
+  return `${m[3]} ${MONTHS[Number(m[2]) - 1]} ${m[1]}`;
+};
+
 function Row({ label, children }) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-4 py-3 border-b last:border-0 border-gray-100">
@@ -108,21 +119,33 @@ export default function Verify() {
                 <div>
                   <h1 className="text-xl font-bold text-gray-900">Verified</h1>
                   <p className="text-sm text-gray-500 mt-1">
-                    This expense claim was approved in the Sieger ticketing system and has not
-                    been altered since.
+                    This expense was approved in the Sieger ticketing system and has not been
+                    altered since.
                   </p>
                 </div>
               </div>
 
               <div className="mt-6">
-                <Row label="Claim number">
-                  <span className="font-semibold">{claim.claim_number || "—"}</span>
+                {/* `reference` is the line's own identifier (EXP-2026-0042-02).
+                    Codes printed before approval moved to the line fall back to
+                    the claim number, which the API returns in the same field. */}
+                <Row label="Reference">
+                  <span className="font-semibold">
+                    {claim.reference || claim.claim_number || "—"}
+                  </span>
                 </Row>
                 <Row label="Claimant">{claim.claimant_name || "—"}</Row>
                 <Row label="Team">{claim.team || "—"}</Row>
+                {claim.category ? <Row label="Category">{claim.category}</Row> : null}
+                {claim.expense_date ? (
+                  <Row label="Expense date">{fmtDate(claim.expense_date)}</Row>
+                ) : null}
                 <Row label="Amount">
                   <span className="font-semibold">
-                    {formatMoney(claim.total_amount, claim.currency)}
+                    {formatMoney(
+                      claim.amount != null ? claim.amount : claim.total_amount,
+                      claim.currency
+                    )}
                   </span>
                 </Row>
                 <Row label="Approved by">

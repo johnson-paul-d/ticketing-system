@@ -35,36 +35,35 @@ const approvalRefusalReason = (user, claim) => {
 };
 
 /**
- * The bytes an approval attests to.
+ * The bytes a line's approval attests to.
  *
- * Receipt hashes are included deliberately. Covering only the amounts would let
+ * Receipt hashes are included deliberately. Covering only the amount would let
  * someone swap the underlying bill after approval while the printed
  * verification code still validated — the printout would read "verified" over a
  * different receipt. Sorting makes the digest independent of row order.
+ *
+ * Only the receipts belonging to this line are covered, because the document a
+ * line produces contains only those. Another line's bill changing has no
+ * bearing on what this approver signed.
  */
-const canonicalPayload = (claim, lines, receipts, approver, approvedAt) =>
+const canonicalLinePayload = (claim, line, receipts, approver, approvedAt) =>
   JSON.stringify({
     claim_id: claim.id,
+    line_id: line.id,
     claimant_id: claim.claimant_id,
     team: claim.team,
     currency: claim.currency,
-    revision: claim.revision,
-    total_amount: Number(claim.total_amount).toFixed(2),
-    lines: [...lines]
-      .sort((a, b) => String(a.id).localeCompare(String(b.id)))
-      .map((l) => ({
-        expense_date: l.expense_date,
-        category: l.category,
-        amount: Number(l.amount).toFixed(2),
-        tax_amount: Number(l.tax_amount || 0).toFixed(2),
-      })),
+    expense_date: line.expense_date,
+    category: line.category,
+    amount: Number(line.amount).toFixed(2),
+    tax_amount: Number(line.tax_amount || 0).toFixed(2),
     receipts: [...receipts].map((r) => r.file_sha256).sort(),
     approver_id: approver.id,
     approved_at: approvedAt,
   });
 
-const approvalHash = (...args) =>
-  crypto.createHash('sha256').update(canonicalPayload(...args)).digest('hex');
+const lineApprovalHash = (...args) =>
+  crypto.createHash('sha256').update(canonicalLinePayload(...args)).digest('hex');
 
 // Printed on the PDF, so it has to be transcribable by hand: uppercase, and no
 // characters that blur together in a scanned document.
@@ -72,10 +71,25 @@ const AMBIGUOUS = /[01IOU]/g;
 const verifyCodeFrom = (hash) =>
   hash.toUpperCase().replace(AMBIGUOUS, '').slice(0, 10);
 
+// A claim's status is whatever its lines add up to. Derived rather than stored
+// as a separate decision, so the envelope can never disagree with its contents.
+const rollupStatus = (lines) => {
+  if (!lines.length) return 'Submitted';
+  const approved = lines.filter((l) => l.approval_status === 'Approved').length;
+  const rejected = lines.filter((l) => l.approval_status === 'Rejected').length;
+
+  if (approved === lines.length) return 'Approved';
+  if (rejected === lines.length) return 'Rejected';
+  if (approved + rejected === lines.length) return 'Partially Approved';
+  // Something is still undecided.
+  return approved || rejected ? 'Partially Approved' : 'Submitted';
+};
+
 module.exports = {
   canApproveClaim,
   approvalRefusalReason,
-  canonicalPayload,
-  approvalHash,
+  canonicalLinePayload,
+  lineApprovalHash,
   verifyCodeFrom,
+  rollupStatus,
 };

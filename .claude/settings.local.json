@@ -239,7 +239,11 @@
       "Bash(node smoke.js)",
       "Bash(node smoke-small.js)",
       "Bash(node smoke-canary.js)",
-      "PowerShell(cd D:\\\\Ticketing-System\\\\backend; \\(Get-Content _uitest.js -Raw\\) -replace \"'Contingency'\", \"'Branding'\" | Set-Content _uitest.js -Encoding utf8; node _uitest.js 2>&1 | Select-String -NotMatch \"injected env\")"
+      "PowerShell(cd D:\\\\Ticketing-System\\\\backend; \\(Get-Content _uitest.js -Raw\\) -replace \"'Contingency'\", \"'Branding'\" | Set-Content _uitest.js -Encoding utf8; node _uitest.js 2>&1 | Select-String -NotMatch \"injected env\")",
+      "Bash(awk 'NR>=770 && /^router\\\\.\\(post|get|delete|put\\)\\\\\\(/ {print NR\": \"$0}' routes/expenses.js)",
+      "Bash(SUPABASE_URL=x SUPABASE_SERVICE_ROLE_KEY=y JWT_SECRET=z node -e ' *)",
+      "Bash(node --check utils/expenseApproval.js)",
+      "PowerShell(cd D:\\\\Ticketing-System\\\\frontend; npm run build 2>&1 | Select-Object -Last 5; Write-Output \"=== route order check ===\"; Select-String -Path src/App.jsx -Pattern 'path=\"/expenses' | ForEach-Object { $_.LineNumber.ToString\\(\\).PadLeft\\(5\\) + \"  \" + $_.Line.Trim\\(\\) })"
     ]
   }
 }

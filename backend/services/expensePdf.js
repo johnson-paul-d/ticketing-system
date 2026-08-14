@@ -6,15 +6,23 @@ const { detectFileType, safeFileName, validateFileStructure } = require('../util
 const { formatIST } = require('../utils/time');
 
 // =====================================================
-// Expense claim PDF
+// Expense PDFs
 // =====================================================
 // A rendering of the stored claim, never a source of truth: nothing here writes
 // back, so the same claim always produces the same document and a lost PDF is
 // simply regenerated.
 //
+// Two documents come out of this file. Approval belongs to the individual line,
+// so the signed document is the LINE document (buildLinePdf) — one approver, one
+// expense, one bill. The claim document (buildClaimPdf) is only the envelope: it
+// lists the lines and how each was decided, and deliberately carries no
+// signature and no verification code, because there is no such thing as an
+// approval of the claim as a whole.
+//
 // Two rules the layout exists to enforce:
-//   1. An unapproved claim must never look approved — no signature, and a
-//      watermark on every page this file draws.
+//   1. An unapproved line must never look approved — no signature is fetched or
+//      drawn for one, and the claim sheet gets a watermark unless every line on
+//      it was approved.
 //   2. Nothing is ever stamped on top of a receipt. The bill is evidence; a
 //      caption belongs above it, not across it.
 
@@ -32,12 +40,13 @@ const ALERT = rgb(0.61, 0.14, 0.14);
 const PAPER = rgb(1, 1, 1);
 
 const COLUMNS = [
-  { key: 'date', label: 'Date', width: 62 },
-  { key: 'category', label: 'Category', width: 92 },
-  { key: 'description', label: 'Description', width: 173 },
+  { key: 'date', label: 'Date', width: 58 },
+  { key: 'category', label: 'Category', width: 82 },
+  { key: 'description', label: 'Description', width: 137 },
   { key: 'amount', label: 'Amount', width: 58, right: true },
-  { key: 'tax', label: 'Tax', width: 50, right: true },
-  { key: 'total', label: 'Line total', width: 64, right: true },
+  { key: 'tax', label: 'Tax', width: 46, right: true },
+  { key: 'total', label: 'Line total', width: 62, right: true },
+  { key: 'status', label: 'Status', width: 56 },
 ];
 
 // Left edge of each column, and (for right-aligned money) its right edge.
@@ -49,6 +58,8 @@ const COLUMN_X = (() => {
     return box;
   });
 })();
+
+const COL = Object.fromEntries(COLUMN_X.map((col) => [col.key, col]));
 
 // =====================================================
 // TEXT
@@ -150,9 +161,42 @@ const fmtDate = (value) => formatIST(value) || '-';
 
 const fmtStamp = (value) => formatIST(value, { withTime: true }) || '-';
 
-const fmtPeriod = (claim) => {
-  if (!claim.period_from && !claim.period_to) return '-';
-  return `${fmtDate(claim.period_from)}  to  ${fmtDate(claim.period_to)}`;
+const lineStatus = (line) => line.approval_status || 'Pending';
+
+const lineTotal = (line) => Number(line.amount || 0) + Number(line.tax_amount || 0);
+
+/**
+ * The printed reference for one line, e.g. EXP-2026-0042-02.
+ *
+ * routes/verify.js builds the same string when it resolves a line's code; the
+ * two must agree, or the paper and the page it points at name different things.
+ * A line numbered before line_no existed has no position to print, so it falls
+ * back to the claim's own number rather than inventing one.
+ */
+const lineReference = (claim, line) => {
+  const base = claim.claim_number || 'UNNUMBERED';
+  return line.line_no == null ? base : `${base}-${String(line.line_no).padStart(2, '0')}`;
+};
+
+// Named for what it is rather than lumped under "not approved": a claim whose
+// lines were partly signed off is not a draft, and saying so on the banner is
+// the difference between a document that under-states itself and one that lies.
+const bannerLabel = (status) => {
+  if (status === 'Submitted') return 'PENDING APPROVAL';
+  if (status === 'Partially Approved') return 'PARTIALLY APPROVED';
+  if (status === 'Rejected') return 'REJECTED';
+  if (status === 'Paid') return 'PAID - APPROVAL IS PER LINE';
+  return 'DRAFT - NOT APPROVED';
+};
+
+// The same idea at 50pt across the diagonal, where anything much longer than
+// "PENDING APPROVAL" runs off the sheet — hence the shorter wording.
+const watermarkLabel = (status) => {
+  if (status === 'Approved') return null;
+  if (status === 'Submitted') return 'PENDING APPROVAL';
+  if (status === 'Partially Approved') return 'PARTLY APPROVED';
+  if (status === 'Paid') return 'PAID';
+  return 'NOT APPROVED';
 };
 
 const verifyUrl = (code) => {
@@ -204,11 +248,39 @@ const loadLines = async (claimId) => {
   return data || [];
 };
 
-const loadReceipts = async (claimId) => {
+// Scoped by claim as well as by id: a line id from another claim must read as
+// "no such line", not as a document belonging to whoever asked for it.
+const loadLine = async (claimId, lineId) => {
   const { data, error } = await supabase
-    .from('expense_receipts')
+    .from('expense_lines')
     .select('*')
+    .eq('id', lineId)
     .eq('claim_id', claimId)
+    .maybeSingle();
+
+  // 22P02 is Postgres rejecting the id as malformed uuid. From the caller's side
+  // that is the same answer as no such row, and it must not become a 500.
+  if (error && error.code !== '22P02') {
+    if (isMissingSchema(error)) {
+      const err = new Error('Expenses schema is missing — run backend/database/expenses-migration.sql');
+      err.code = 'EXPENSES_MIGRATION_REQUIRED';
+      throw err;
+    }
+    throw error;
+  }
+  if (!data) {
+    const err = new Error(`Expense line ${lineId} not found on claim ${claimId}`);
+    err.code = 'LINE_NOT_FOUND';
+    throw err;
+  }
+  return data;
+};
+
+const loadReceipts = async (claimId, lineId = null) => {
+  let query = supabase.from('expense_receipts').select('*');
+  query = lineId ? query.eq('line_id', lineId) : query.eq('claim_id', claimId);
+
+  const { data, error } = await query
     .order('created_at', { ascending: true })
     .order('id', { ascending: true });
   if (error) {
@@ -285,8 +357,8 @@ const embedImage = async (pdf, bytes, kind) => {
 };
 
 // The signature graphic is the only thing read from the users table: the printed
-// name and role come from the claim row, which froze them at approval, so a
-// later promotion cannot rewrite what an old claim says was signed.
+// name and role come from the line row, which froze them at approval, so a
+// later promotion cannot rewrite what an old approval says was signed.
 const loadSignatureImage = async (pdf, userId) => {
   if (!userId) return null;
   try {
@@ -310,7 +382,18 @@ const loadSignatureImage = async (pdf, userId) => {
 // =====================================================
 // SUMMARY PAGE
 // =====================================================
-const drawSummary = (pdf, fonts, { claim, lines, signature, receiptCount }) => {
+// Label / value pair in a two-column grid, drawn from `top` downwards.
+const metaCell = (page, fonts, label, value, x, top, width) => {
+  text(page, label.toUpperCase(), { x, y: top, font: fonts.bold, size: 7.5, color: MUTED });
+  text(page, fitText(safe(value), fonts.regular, 10.5, width), {
+    x,
+    y: top - 13,
+    font: fonts.regular,
+    size: 10.5,
+  });
+};
+
+const drawSummary = (pdf, fonts, { claim, lines, receiptCount }) => {
   const approved = claim.status === 'Approved';
   const currency = claim.currency || 'INR';
 
@@ -348,20 +431,11 @@ const drawSummary = (pdf, fonts, { claim, lines, signature, receiptCount }) => {
   const colR = MARGIN + CONTENT_W / 2;
   const cellW = CONTENT_W / 2 - 12;
 
-  const cell = (label, value, x, top) => {
-    text(page, label.toUpperCase(), { x, y: top, font: fonts.bold, size: 7.5, color: MUTED });
-    text(page, fitText(safe(value), fonts.regular, 10.5, cellW), {
-      x,
-      y: top - 13,
-      font: fonts.regular,
-      size: 10.5,
-    });
-  };
+  const cell = (label, value, x, top) => metaCell(page, fonts, label, value, x, top, cellW);
 
   const metaRows = [
     ['Claimant', claim.claimant_name || '-', 'Team', claim.team || '-'],
-    ['Period', fmtPeriod(claim), 'Currency', currency],
-    ['Submitted', fmtStamp(claim.submitted_at), 'Approved', approved ? fmtStamp(claim.approved_at) : '-'],
+    ['Submitted', fmtStamp(claim.submitted_at), 'Currency', currency],
     ['Status', claim.status || '-', 'Revision', String(claim.revision ?? 1)],
   ];
   for (const [l1, v1, l2, v2] of metaRows) {
@@ -407,7 +481,7 @@ const drawSummary = (pdf, fonts, { claim, lines, signature, receiptCount }) => {
   }
 
   for (const line of lines) {
-    const descCol = COLUMN_X[2];
+    const descCol = COL.description;
     const desc = wrapText(line.description || '-', fonts.regular, ROW_SIZE, descCol.width - 8, 2);
     const rowH = Math.max(1, desc.length) * LINE_H + 6;
 
@@ -419,19 +493,25 @@ const drawSummary = (pdf, fonts, { claim, lines, signature, receiptCount }) => {
     }
 
     const top = y - 10;
+    const status = lineStatus(line);
     const cells = [
-      { col: COLUMN_X[0], value: fmtDate(line.expense_date) },
-      { col: COLUMN_X[1], value: fitText(safe(line.category || '-'), fonts.regular, ROW_SIZE, COLUMN_X[1].width - 8) },
-      { col: COLUMN_X[3], value: money(line.amount) },
-      { col: COLUMN_X[4], value: money(line.tax_amount) },
-      { col: COLUMN_X[5], value: money(Number(line.amount || 0) + Number(line.tax_amount || 0)) },
+      { col: COL.date, value: fmtDate(line.expense_date) },
+      { col: COL.category, value: fitText(safe(line.category || '-'), fonts.regular, ROW_SIZE, COL.category.width - 8) },
+      { col: COL.amount, value: money(line.amount) },
+      { col: COL.tax, value: money(line.tax_amount) },
+      { col: COL.total, value: money(lineTotal(line)) },
+      {
+        col: COL.status,
+        value: fitText(safe(status), fonts.regular, ROW_SIZE, COL.status.width - 8),
+        color: status === 'Rejected' ? ALERT : status === 'Approved' ? INK : MUTED,
+      },
     ];
 
-    for (const { col, value } of cells) {
+    for (const { col, value, color = INK } of cells) {
       if (col.right) {
-        textRight(page, value, { end: col.end - 4, y: top, font: fonts.regular, size: ROW_SIZE });
+        textRight(page, value, { end: col.end - 4, y: top, font: fonts.regular, size: ROW_SIZE, color });
       } else {
-        text(page, value, { x: col.x + 4, y: top, font: fonts.regular, size: ROW_SIZE });
+        text(page, value, { x: col.x + 4, y: top, font: fonts.regular, size: ROW_SIZE, color });
       }
     }
     desc.forEach((part, i) => {
@@ -453,7 +533,9 @@ const drawSummary = (pdf, fonts, { claim, lines, signature, receiptCount }) => {
   y -= 10;
   hairline(page, y, { from: PAGE.width - MARGIN - 240, thickness: 1, color: INK });
   y -= 22;
-  text(page, `TOTAL (${currency})`, { x: PAGE.width - MARGIN - 240, y, font: fonts.bold, size: 11 });
+  // "Claimed", not "total": rejected lines are still counted here, and the
+  // figure that was actually approved is the one in the rollup below.
+  text(page, `CLAIMED TOTAL (${currency})`, { x: PAGE.width - MARGIN - 240, y, font: fonts.bold, size: 11 });
   textRight(page, money(claim.total_amount), {
     end: PAGE.width - MARGIN,
     y: y - 4,
@@ -470,58 +552,23 @@ const drawSummary = (pdf, fonts, { claim, lines, signature, receiptCount }) => {
   });
   y -= 30;
 
-  // Approval block, or a banner saying plainly that there isn't one. The
-  // reserve covers the verification lines too — the code must never be orphaned
-  // onto a page away from the signature it belongs to.
-  const BLOCK_H = approved ? 200 : 130;
-  if (y - BLOCK_H < BODY_BOTTOM) newPage();
+  // No signature and no verification code on this sheet: nobody signs a claim.
+  // What the claim can honestly report is the tally of its lines, so a reader
+  // holding only this page can see that some of it may have been refused.
+  if (y - (approved ? 110 : 190) < BODY_BOTTOM) newPage();
 
-  if (approved) {
-    text(page, 'APPROVED BY', { x: MARGIN, y, font: fonts.bold, size: 7.5, color: MUTED });
-    y -= 12;
-
-    if (signature) {
-      const box = signature.scaleToFit(190, 58);
-      page.drawImage(signature, { x: MARGIN, y: y - box.height, width: box.width, height: box.height });
-      y -= box.height + 6;
-    } else {
-      y -= 12;
-      text(page, '(signature image unavailable)', {
-        x: MARGIN,
-        y,
-        font: fonts.regular,
-        size: 8.5,
-        color: MUTED,
-      });
-      y -= 18;
-    }
-
-    hairline(page, y, { to: MARGIN + 210, thickness: 0.8, color: INK });
-    y -= 14;
-    text(page, claim.approved_by_name || 'Unknown approver', {
-      x: MARGIN,
-      y,
-      font: fonts.bold,
-      size: 11,
-    });
-    y -= 13;
-    text(page, claim.approved_by_role || '-', { x: MARGIN, y, font: fonts.regular, size: 9.5, color: MUTED });
-    y -= 13;
-    text(page, `Approved ${fmtStamp(claim.approved_at)}`, {
-      x: MARGIN,
-      y,
-      font: fonts.regular,
-      size: 9.5,
-      color: MUTED,
-    });
-    y -= 24;
-  } else {
-    const label = claim.status === 'Submitted' ? 'PENDING APPROVAL' : 'DRAFT - NOT APPROVED';
+  if (!approved) {
     page.drawRectangle({ x: MARGIN, y: y - 34, width: CONTENT_W, height: 38, color: ALERT });
-    text(page, label, { x: MARGIN + 14, y: y - 22, font: fonts.bold, size: 15, color: PAPER });
+    text(page, bannerLabel(claim.status), {
+      x: MARGIN + 14,
+      y: y - 22,
+      font: fonts.bold,
+      size: 15,
+      color: PAPER,
+    });
     y -= 48;
     const explanation = wrapText(
-      `This claim is in "${claim.status}" status. No approver has signed it and this document is not evidence of approval.`,
+      `This claim is in "${claim.status}" status. Only the lines marked Approved above were signed off, each on its own document; this summary is not evidence of approval.`,
       fonts.regular,
       9.5,
       CONTENT_W,
@@ -530,18 +577,157 @@ const drawSummary = (pdf, fonts, { claim, lines, signature, receiptCount }) => {
     explanation.forEach((part, i) => {
       text(page, part, { x: MARGIN, y: y - i * 13, font: fonts.regular, size: 9.5, color: ALERT });
     });
-    y -= explanation.length * 13 + 14;
+    y -= explanation.length * 13 + 16;
   }
 
-  // Verification
-  const url = verifyUrl(claim.verify_code);
+  const tally = { Approved: 0, Rejected: 0, Pending: 0 };
+  let approvedTotal = 0;
+  for (const line of lines) {
+    const status = lineStatus(line);
+    tally[status] = (tally[status] || 0) + 1;
+    if (status === 'Approved') approvedTotal += lineTotal(line);
+  }
+
+  text(page, 'APPROVAL', { x: MARGIN, y, font: fonts.bold, size: 7.5, color: MUTED });
+  y -= 16;
+  text(
+    page,
+    `${tally.Approved} approved  |  ${tally.Rejected} rejected  |  ${tally.Pending} pending`,
+    { x: MARGIN, y, font: fonts.bold, size: 12 }
+  );
+  y -= 17;
+  text(page, `Approved total (${currency}) ${money(approvedTotal)}`, {
+    x: MARGIN,
+    y,
+    font: fonts.regular,
+    size: 10.5,
+  });
+  y -= 16;
+  wrapText(
+    'Each line is approved on its own. An approved line has a separate signed document carrying the approver and a verification code; this summary carries neither.',
+    fonts.regular,
+    8.5,
+    CONTENT_W,
+    2
+  ).forEach((part, i) => {
+    text(page, part, { x: MARGIN, y: y - i * 11, font: fonts.regular, size: 8.5, color: MUTED });
+  });
+};
+
+// =====================================================
+// LINE DOCUMENT
+// =====================================================
+// One approved expense on one sheet, followed by its own bills. This is the
+// document that carries an approval, so everything on it — signature, name,
+// role, timestamp, code — describes the line and nothing wider.
+const drawLineDocument = (pdf, fonts, { claim, line, reference, signature, receiptCount }) => {
+  const currency = claim.currency || 'INR';
+
+  let page = pdf.addPage([PAGE.width, PAGE.height]);
+  let y = PAGE.height - MARGIN;
+
+  const newPage = () => {
+    page = pdf.addPage([PAGE.width, PAGE.height]);
+    y = PAGE.height - MARGIN;
+    return page;
+  };
+
+  text(page, 'APPROVED EXPENSE', { x: MARGIN, y: y - 20, font: fonts.bold, size: 22 });
+  textRight(page, reference, { end: PAGE.width - MARGIN, y: y - 16, font: fonts.bold, size: 13 });
+  y -= 30;
+  text(page, claim.title || '', { x: MARGIN, y: y - 12, font: fonts.regular, size: 12, color: MUTED });
+  y -= 26;
+  hairline(page, y, { thickness: 1, color: INK });
+  y -= 24;
+
+  const colL = MARGIN;
+  const colR = MARGIN + CONTENT_W / 2;
+  const cellW = CONTENT_W / 2 - 12;
+
+  const metaRows = [
+    ['Claimant', claim.claimant_name || '-', 'Team', claim.team || '-'],
+    ['Expense date', fmtDate(line.expense_date), 'Category', line.category || '-'],
+    [`Amount (${currency})`, money(line.amount), `Tax (${currency})`, money(line.tax_amount)],
+  ];
+  for (const [l1, v1, l2, v2] of metaRows) {
+    metaCell(page, fonts, l1, v1, colL, y, cellW);
+    metaCell(page, fonts, l2, v2, colR, y, cellW);
+    y -= 34;
+  }
+
+  text(page, 'DESCRIPTION', { x: MARGIN, y, font: fonts.bold, size: 7.5, color: MUTED });
+  y -= 14;
+  const description = wrapText(line.description || '-', fonts.regular, 10.5, CONTENT_W, 6);
+  (description.length ? description : ['-']).forEach((part, i) => {
+    text(page, part, { x: MARGIN, y: y - i * 14, font: fonts.regular, size: 10.5 });
+  });
+  y -= Math.max(1, description.length) * 14 + 16;
+
+  hairline(page, y, { from: PAGE.width - MARGIN - 240, thickness: 1, color: INK });
+  y -= 22;
+  text(page, `LINE TOTAL (${currency})`, { x: PAGE.width - MARGIN - 240, y, font: fonts.bold, size: 11 });
+  textRight(page, money(lineTotal(line)), {
+    end: PAGE.width - MARGIN,
+    y: y - 4,
+    font: fonts.bold,
+    size: 18,
+  });
+  y -= 20;
+  text(page, `${receiptCount} receipt${receiptCount === 1 ? '' : 's'} attached`, {
+    x: PAGE.width - MARGIN - 240,
+    y,
+    font: fonts.regular,
+    size: 8.5,
+    color: MUTED,
+  });
+  y -= 34;
+
+  // The reserve covers the verification lines too — the code must never be
+  // orphaned onto a page away from the signature it belongs to.
+  if (y - 200 < BODY_BOTTOM) newPage();
+
+  text(page, 'APPROVED BY', { x: MARGIN, y, font: fonts.bold, size: 7.5, color: MUTED });
+  y -= 12;
+
+  if (signature) {
+    const box = signature.scaleToFit(190, 58);
+    page.drawImage(signature, { x: MARGIN, y: y - box.height, width: box.width, height: box.height });
+    y -= box.height + 6;
+  } else {
+    y -= 12;
+    text(page, '(signature image unavailable)', {
+      x: MARGIN,
+      y,
+      font: fonts.regular,
+      size: 8.5,
+      color: MUTED,
+    });
+    y -= 18;
+  }
+
+  hairline(page, y, { to: MARGIN + 210, thickness: 0.8, color: INK });
+  y -= 14;
+  text(page, line.approved_by_name || 'Unknown approver', { x: MARGIN, y, font: fonts.bold, size: 11 });
+  y -= 13;
+  text(page, line.approved_by_role || '-', { x: MARGIN, y, font: fonts.regular, size: 9.5, color: MUTED });
+  y -= 13;
+  text(page, `Approved ${fmtStamp(line.approved_at)}`, {
+    x: MARGIN,
+    y,
+    font: fonts.regular,
+    size: 9.5,
+    color: MUTED,
+  });
+  y -= 26;
+
+  const url = verifyUrl(line.verify_code);
   text(page, 'VERIFICATION CODE', { x: MARGIN, y, font: fonts.bold, size: 7.5, color: MUTED });
   y -= 15;
-  text(page, claim.verify_code || 'not issued', { x: MARGIN, y, font: fonts.bold, size: 13 });
+  text(page, line.verify_code || 'not issued', { x: MARGIN, y, font: fonts.bold, size: 13 });
   y -= 14;
   const verifyLine = url
     ? `Verify at ${url}`
-    : 'Verify this claim in the expense system using the code above.';
+    : 'Verify this approval in the expense system using the code above.';
   text(page, fitText(safe(verifyLine), fonts.regular, 9, CONTENT_W), {
     x: MARGIN,
     y,
@@ -554,11 +740,33 @@ const drawSummary = (pdf, fonts, { claim, lines, signature, receiptCount }) => {
 // =====================================================
 // RECEIPT PAGES
 // =====================================================
+// What the caption may say about the bill below it. The line owns the approval,
+// so the line is asked first; only a receipt attached to no line at all falls
+// back to the claim's legacy approval fields.
+const approvalStamp = (claim, line) => {
+  if (line) {
+    if (lineStatus(line) === 'Approved') {
+      return {
+        approved: true,
+        label: `Approved by ${line.approved_by_name || 'unknown'}, ${line.approved_by_role || '-'} - ${fmtStamp(line.approved_at)}`,
+      };
+    }
+    return { approved: false, label: `NOT APPROVED - line status "${lineStatus(line)}"` };
+  }
+  if (claim.status === 'Approved') {
+    return {
+      approved: true,
+      label: `Approved by ${claim.approved_by_name || 'unknown'}, ${claim.approved_by_role || '-'} - ${fmtStamp(claim.approved_at)}`,
+    };
+  }
+  return { approved: false, label: `NOT APPROVED - claim status "${claim.status}"` };
+};
+
 // Caption band across the top of a page we own. Returns the y below which the
 // receipt itself may be drawn — nothing above that line belongs to the bill,
 // and nothing below it belongs to us.
-const drawReceiptHeader = (page, fonts, { claim, receipt, line, index, count, note }) => {
-  const approved = claim.status === 'Approved';
+const drawReceiptHeader = (page, fonts, { claim, receipt, line, index, count, note, reference, verifyCode }) => {
+  const stamp = approvalStamp(claim, line);
   let y = PAGE.height - MARGIN;
 
   text(page, `RECEIPT ${index} OF ${count}`, { x: MARGIN, y: y - 10, font: fonts.bold, size: 11 });
@@ -573,7 +781,7 @@ const drawReceiptHeader = (page, fonts, { claim, receipt, line, index, count, no
 
   const lineSummary = line
     ? `${fmtDate(line.expense_date)} | ${line.category || '-'} | ${claim.currency || 'INR'} ${money(
-        Number(line.amount || 0) + Number(line.tax_amount || 0)
+        lineTotal(line)
       )}`
     : 'Not linked to a line item';
   text(page, fitText(safe(lineSummary), fonts.regular, 10, CONTENT_W), {
@@ -585,21 +793,24 @@ const drawReceiptHeader = (page, fonts, { claim, receipt, line, index, count, no
   });
   y -= 14;
 
-  const stamp = approved
-    ? `Approved by ${claim.approved_by_name || 'unknown'}, ${claim.approved_by_role || '-'} - ${fmtStamp(claim.approved_at)}`
-    : `NOT APPROVED - claim status "${claim.status}"`;
-  text(page, fitText(safe(stamp), fonts.regular, 9, CONTENT_W), {
+  text(page, fitText(safe(stamp.label), fonts.regular, 9, CONTENT_W), {
     x: MARGIN,
     y,
     font: fonts.regular,
     size: 9,
-    color: approved ? MUTED : ALERT,
+    color: stamp.approved ? MUTED : ALERT,
   });
   y -= 12;
 
-  const provenance = `Claim ${claim.claim_number || '-'} | File hash ${shortHash(
-    receipt.file_sha256
-  )} | Verify ${claim.verify_code || '-'}`;
+  // A verification code appears only where it belongs to what is being printed:
+  // the claim document has none to show.
+  const provenance = [
+    `Ref ${reference || claim.claim_number || '-'}`,
+    `File hash ${shortHash(receipt.file_sha256)}`,
+    verifyCode ? `Verify ${verifyCode}` : null,
+  ]
+    .filter(Boolean)
+    .join(' | ');
   text(page, fitText(safe(provenance), fonts.regular, 8, CONTENT_W), {
     x: MARGIN,
     y,
@@ -751,16 +962,14 @@ const appendReceipt = async (pdf, fonts, context, verbatim) => {
 // =====================================================
 // Runs last, when the page count is finally known. Copied receipt pages are
 // skipped: a footer over someone's invoice is still ink on the evidence.
-const finishPages = (pdf, fonts, claim, verbatim) => {
-  const approved = claim.status === 'Approved';
+const finishPages = (pdf, fonts, verbatim, { footer, watermark }) => {
   const all = pdf.getPages();
 
   all.forEach((page, i) => {
     if (verbatim.has(page)) return;
 
-    if (!approved) {
-      const mark = claim.status === 'Submitted' ? 'PENDING APPROVAL' : 'NOT APPROVED';
-      page.drawText(mark, {
+    if (watermark) {
+      page.drawText(watermark, {
         x: 72,
         y: 215,
         size: 50,
@@ -772,7 +981,7 @@ const finishPages = (pdf, fonts, claim, verbatim) => {
     }
 
     hairline(page, FOOTER_Y + 14, { color: rgb(0.88, 0.88, 0.88), thickness: 0.4 });
-    text(page, `${claim.claim_number || 'Expense claim'} | Verify ${claim.verify_code || '-'}`, {
+    text(page, footer, {
       x: MARGIN,
       y: FOOTER_Y,
       font: fonts.regular,
@@ -806,11 +1015,9 @@ const buildClaimPdf = async (claimId) => {
   pdf.setSubject(`Expense claim for ${claim.claimant_name || 'unknown claimant'}`);
   pdf.setProducer('Ticketing System');
 
-  // Only fetched for an approved claim: an unapproved PDF must not carry the
-  // signature anywhere, not even embedded and unused.
-  const signature = claim.status === 'Approved' ? await loadSignatureImage(pdf, claim.approved_by) : null;
-
-  drawSummary(pdf, fonts, { claim, lines, signature, receiptCount: receipts.length });
+  // No signature is fetched at all: the claim document has nowhere honest to put
+  // one, since the approvals it summarises belong to individual lines.
+  drawSummary(pdf, fonts, { claim, lines, receiptCount: receipts.length });
 
   const linesById = new Map(lines.map((line) => [line.id, line]));
   const verbatim = new Set();
@@ -826,14 +1033,87 @@ const buildClaimPdf = async (claimId) => {
         line: receipt.line_id ? linesById.get(receipt.line_id) || null : null,
         index: i + 1,
         count: receipts.length,
+        reference: claim.claim_number || '-',
+        verifyCode: null,
       },
       verbatim
     );
   }
 
-  finishPages(pdf, fonts, claim, verbatim);
+  finishPages(pdf, fonts, verbatim, {
+    footer: claim.claim_number || 'Expense claim',
+    watermark: watermarkLabel(claim.status),
+  });
 
   return Buffer.from(await pdf.save());
 };
 
-module.exports = { buildClaimPdf };
+/**
+ * The document for ONE approved line: its details, the approver's signature,
+ * its verification code, and only its own receipts.
+ *
+ * Throws with `.code` set to LINE_NOT_FOUND or LINE_NOT_APPROVED so the route
+ * can answer 404 / 400. A pending or rejected line produces nothing at all —
+ * this layout draws a signature, and a signature on an undecided expense is a
+ * forgery whatever the covering text says.
+ */
+const buildLinePdf = async (claimId, lineId) => {
+  const claim = await loadClaim(claimId);
+  const line = await loadLine(claim.id, lineId);
+
+  if (lineStatus(line) !== 'Approved') {
+    const err = new Error(`Expense line ${lineId} is not approved`);
+    err.code = 'LINE_NOT_APPROVED';
+    throw err;
+  }
+
+  const receipts = await loadReceipts(claim.id, line.id);
+  const reference = lineReference(claim, line);
+
+  const pdf = await PDFDocument.create();
+  const fonts = {
+    regular: await pdf.embedFont(StandardFonts.Helvetica),
+    bold: await pdf.embedFont(StandardFonts.HelveticaBold),
+  };
+
+  pdf.setTitle(`${reference} - ${line.category || 'Expense'}`.trim());
+  pdf.setSubject(`Approved expense for ${claim.claimant_name || 'unknown claimant'}`);
+  pdf.setProducer('Ticketing System');
+
+  const signature = await loadSignatureImage(pdf, line.approved_by);
+
+  drawLineDocument(pdf, fonts, {
+    claim,
+    line,
+    reference,
+    signature,
+    receiptCount: receipts.length,
+  });
+
+  const verbatim = new Set();
+  for (let i = 0; i < receipts.length; i += 1) {
+    await appendReceipt(
+      pdf,
+      fonts,
+      {
+        claim,
+        receipt: receipts[i],
+        line,
+        index: i + 1,
+        count: receipts.length,
+        reference,
+        verifyCode: line.verify_code,
+      },
+      verbatim
+    );
+  }
+
+  finishPages(pdf, fonts, verbatim, {
+    footer: `${reference} | Verify ${line.verify_code || '-'}`,
+    watermark: null,
+  });
+
+  return Buffer.from(await pdf.save());
+};
+
+module.exports = { buildClaimPdf, buildLinePdf };

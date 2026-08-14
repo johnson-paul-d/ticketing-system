@@ -2,7 +2,8 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import {
   Menu, X, LayoutDashboard, Cpu, KanbanSquare, Calendar,
   Shield, BarChart3, LogOut, PlusCircle, ChevronRight, ClipboardCheck, FolderKanban,
-  Target, Building2, CalendarCheck, TrendingUp, Gauge, ChevronDown, Receipt, Signature
+  Target, Building2, CalendarCheck, TrendingUp, Gauge, ChevronDown, Receipt, Signature,
+  Wallet
 } from "lucide-react";
 import { useState } from "react";
 import useAuthStore from "../store/authStore";
@@ -51,6 +52,8 @@ export default function MainLayout({ children }) {
   // All reporting pages live under one "Reports" group
   const reportChildren = [
     { label: "Analytics", path: "/admin-analytics", icon: BarChart3 },
+    // Every role: the server narrows the report to the viewer's own lines.
+    { label: "Expense Report", path: "/expenses/report", icon: Wallet },
     ...(admin
       ? [
           { label: "Completion Report", path: "/completion-report", icon: TrendingUp },
