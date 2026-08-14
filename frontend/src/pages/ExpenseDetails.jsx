@@ -293,6 +293,7 @@ function ReceiptStrip({
   onOpen,
   onDelete,
   missing,
+  needsReceipt,
 }) {
   const inputRef = useRef(null);
 
@@ -349,11 +350,16 @@ function ReceiptStrip({
         )}
       </div>
 
-      {missing && (
+      {missing ? (
         <p className="text-xs text-red-600 mt-1.5 font-medium">
           This line needs a receipt before the claim can be submitted
         </p>
-      )}
+      ) : needsReceipt ? (
+        <p className="inline-flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mt-1.5">
+          <AlertTriangle size={13} className="flex-shrink-0 mt-px" />
+          Needs a receipt — an approver cannot approve this line without one
+        </p>
+      ) : null}
       {feedback?.error && <p className="text-xs text-red-600 mt-1.5">{feedback.error}</p>}
       {feedback?.notice && <p className="text-xs text-gray-500 mt-1.5">{feedback.notice}</p>}
       {feedback?.duplicate && (
@@ -377,11 +383,13 @@ function LineForm({
   submitting,
   submitLabel,
   submitIcon: SubmitIcon = Plus,
+  note,
 }) {
   const set = (key) => (e) => onChange({ ...value, [key]: e.target.value });
 
   return (
     <div className="bg-gray-50/70 border-t px-4 py-4">
+      {note && <p className="text-xs text-gray-500 mb-3">{note}</p>}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
         <div className="lg:col-span-2">
           <label className="block text-[11px] uppercase tracking-wide text-gray-400 mb-1.5">
@@ -618,10 +626,15 @@ export default function ExpenseDetails() {
 
   const currency = claim?.currency || form.currency || "INR";
 
-  // The server decides who may edit what (claimant or admin, and only while the
-  // claim is a Draft) and answers with can_edit — mirroring that rule here would
-  // only be a second place for it to drift.
+  // The server decides who may do what and answers with these flags; mirroring
+  // the rules here would only be a second place for them to drift. A claim is
+  // never closed — can_add_lines stays true for the claimant whatever the
+  // status, and what freezes is an individual line once it has been decided
+  // (line.can_edit). can_edit here is claim ownership and governs the header.
   const editable = isNew || claim?.can_edit === true;
+  const canAddLines = !isNew && claim?.can_add_lines === true;
+  const canDeleteClaim = !isNew && claim?.can_delete === true;
+  const isDraft = !isNew && claim?.status === "Draft";
   // can_approve answers "may this viewer decide lines on this claim" — the
   // per-line gate is the line's own approval_status.
   const canApprove = claim?.can_approve === true;
@@ -691,6 +704,7 @@ export default function ExpenseDetails() {
     setSaving(true);
     setError("");
     setNotice("");
+    const currencyChanged = !isNew && Boolean(claim?.currency) && form.currency !== claim.currency;
     const body = {
       title: form.title.trim(),
       currency: form.currency,
@@ -705,7 +719,14 @@ export default function ExpenseDetails() {
         setNotice("Claim saved");
       }
     } catch (err) {
-      setError(err.response?.data?.message || "Failed to save the expense claim");
+      const message = err.response?.data?.message;
+      // The currency is refused once any line has been decided. That reason
+      // belongs against the field that caused it, not in the page banner.
+      if (message && err.response?.status === 400 && (currencyChanged || /currenc/i.test(message))) {
+        setHeaderErrors({ currency: message });
+      } else {
+        setError(message || "Failed to save the expense claim");
+      }
     } finally {
       setSaving(false);
     }
@@ -759,12 +780,15 @@ export default function ExpenseDetails() {
     setError("");
     setNotice("");
     try {
-      await api.post(`/expenses/${id}/lines`, linePayload(newLine));
+      const res = await api.post(`/expenses/${id}/lines`, linePayload(newLine));
       setNewLine(EMPTY_LINE);
       setNewLineErrors({});
       // Refetch rather than patch state locally: total_amount is recalculated
-      // server-side and that figure is the authoritative one.
+      // server-side and that figure is the authoritative one. A line added to an
+      // already-submitted claim comes back with `claim` attached because the
+      // rollup status may have moved back to Partially Approved.
       await fetchClaim({ syncForm: false });
+      if (res.data?.claim) setNotice("Line added — it goes to the approvers on its own");
     } catch (err) {
       setError(err.response?.data?.message || "Failed to add the expense line");
     } finally {
@@ -1228,7 +1252,10 @@ export default function ExpenseDetails() {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  {claim.status === "Draft" && editable && (
+                  {/* Submit is only the first hand-off — the server refuses it on
+                      anything but a Draft, and later lines reach the approvers
+                      the moment they are added. */}
+                  {isDraft && editable && (
                     <button
                       onClick={() => setShowSubmitConfirm(true)}
                       disabled={Boolean(busyAction) || lines.length === 0}
@@ -1282,9 +1309,13 @@ export default function ExpenseDetails() {
               <label className="block text-sm font-semibold text-gray-700 mb-1.5">Currency</label>
               <select
                 value={form.currency}
-                onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value }))}
+                onChange={(e) => {
+                  setForm((f) => ({ ...f, currency: e.target.value }));
+                  if (headerErrors.currency)
+                    setHeaderErrors((prev) => ({ ...prev, currency: "" }));
+                }}
                 disabled={!editable || saving}
-                className={inputCls}
+                className={`${inputCls} ${headerErrors.currency ? errorCls : ""}`}
               >
                 {CURRENCIES.map((c) => (
                   <option key={c} value={c}>
@@ -1292,19 +1323,28 @@ export default function ExpenseDetails() {
                   </option>
                 ))}
               </select>
+              <FieldError>{headerErrors.currency}</FieldError>
             </div>
           </div>
 
-          {editable && (
+          {(editable || canDeleteClaim) && (
             <div className="flex flex-wrap gap-3 mt-6">
-              <button onClick={saveHeader} disabled={saving} className={btnPrimaryCls}>
-                {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                {isNew ? "Create Claim" : "Save Changes"}
-              </button>
-              <button onClick={() => navigate("/expenses")} disabled={saving} className={btnGhostCls}>
-                Cancel
-              </button>
-              {!isNew && (
+              {editable && (
+                <>
+                  <button onClick={saveHeader} disabled={saving} className={btnPrimaryCls}>
+                    {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                    {isNew ? "Create Claim" : "Save Changes"}
+                  </button>
+                  <button
+                    onClick={() => navigate("/expenses")}
+                    disabled={saving}
+                    className={btnGhostCls}
+                  >
+                    Cancel
+                  </button>
+                </>
+              )}
+              {canDeleteClaim && (
                 <button
                   onClick={deleteClaim}
                   disabled={saving}
@@ -1359,7 +1399,7 @@ export default function ExpenseDetails() {
                 <div className="px-5 py-12 text-center">
                   <Receipt size={36} className="mx-auto text-gray-300 mb-3" />
                   <p className="text-gray-500 font-medium">No expense lines yet</p>
-                  {editable && (
+                  {canAddLines && (
                     <p className="text-sm text-gray-400 mt-1">
                       Add the first line below to build up this claim
                     </p>
@@ -1369,7 +1409,15 @@ export default function ExpenseDetails() {
 
               {lines.map((line, index) => {
                 const lineState = line.approval_status || "Pending";
+                // Editing, deleting and receipt changes are the LINE's own
+                // right, not the claim's: a decided line is frozen even while
+                // the claim itself keeps taking new ones.
+                const lineEditable = line.can_edit === true;
                 const missingReceipt = missingLineIds.includes(line.id);
+                const hasReceipt = line.has_receipt ?? (receiptsByLine[line.id] || []).length > 0;
+                // Approving a line with no receipt is refused server-side
+                // (RECEIPT_REQUIRED), so say so before it reaches an approver.
+                const needsReceipt = lineState === "Pending" && !hasReceipt;
 
                 return editingLineId === line.id ? (
                   <LineForm
@@ -1395,6 +1443,8 @@ export default function ExpenseDetails() {
                         ? "border-l-emerald-400"
                         : lineState === "Rejected"
                         ? "bg-red-50/30 border-l-red-300"
+                        : needsReceipt
+                        ? "bg-amber-50/40 border-l-amber-400"
                         : "border-l-transparent hover:bg-gray-50/60"
                     }`}
                   >
@@ -1440,7 +1490,7 @@ export default function ExpenseDetails() {
                             currency
                           )}
                         </p>
-                        {editable && (
+                        {lineEditable && (
                           <div className="flex gap-1.5">
                             <button
                               type="button"
@@ -1555,11 +1605,12 @@ export default function ExpenseDetails() {
                         label="Receipts"
                         receipts={receiptsByLine[line.id] || []}
                         urls={receiptUrls}
-                        editable={editable}
+                        editable={lineEditable}
                         uploading={uploadingKey === line.id}
                         busyId={receiptBusyId}
                         feedback={receiptFeedback[line.id]}
                         missing={missingReceipt}
+                        needsReceipt={needsReceipt}
                         onPick={(file) => uploadReceipt(line.id, file)}
                         onOpen={openPreview}
                         onDelete={deleteReceipt}
@@ -1569,7 +1620,9 @@ export default function ExpenseDetails() {
                 );
               })}
 
-              {editable && editingLineId === null && (
+              {/* A claim never closes: the claimant may add another line at any
+                  status, so this form is gated on can_add_lines alone. */}
+              {canAddLines && editingLineId === null && (
                 <LineForm
                   value={newLine}
                   onChange={setNewLine}
@@ -1587,6 +1640,11 @@ export default function ExpenseDetails() {
                   }
                   submitting={lineSaving}
                   submitLabel="Add Line"
+                  note={
+                    isDraft
+                      ? null
+                      : "This claim has already been submitted — a new line goes to the approvers on its own, and the lines already decided are untouched."
+                  }
                 />
               )}
 
@@ -1693,8 +1751,8 @@ export default function ExpenseDetails() {
               {lines.length === 1 ? "line" : "lines"}.
             </p>
             <p className="text-sm text-gray-500 mt-3">
-              Once submitted the claim locks — lines, amounts and receipts can no longer be
-              changed unless an approver sends it back to you.
+              Each line is then decided on its own, and a line locks the moment it is approved or
+              rejected. The claim itself stays open — you can keep adding lines to it afterwards.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-3 mt-6">

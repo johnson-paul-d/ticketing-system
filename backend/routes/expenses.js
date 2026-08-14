@@ -58,14 +58,24 @@ const canAccessClaim = (user, claim) => {
   return claim.claimant_id === user.id;
 };
 
-// Only the claimant may edit their own draft. An admin can see a claim in order
-// to approve it, but editing someone else's claim would let them alter what
-// they are about to sign off.
+// Only the claimant may edit their own claim. An admin can see one in order to
+// approve it, but editing someone else's would let them alter what they are
+// about to sign off.
 const canEditClaim = (user, claim) => claim.claimant_id === user.id;
 
-// Nothing is editable once it leaves Draft — otherwise the approved record and
-// the printed PDF would drift apart.
-const isEditable = (claim) => claim.status === 'Draft';
+// A claim is never closed. Its lines keep arriving — an approved claim can grow
+// a new expense the following week — so the freeze is per LINE, not per claim.
+//
+// A line is editable until it has been decided. Once approved its figures are
+// covered by an approval hash and printed on a signed document, so changing them
+// would leave the paper attesting to something the record no longer says; once
+// rejected it is a record of a decision. Either way it stops moving.
+const isLineEditable = (line) => (line.approval_status || 'Pending') === 'Pending';
+
+// Deleting the whole claim stays a draft-only act: once anything inside it has
+// been decided, that decision is part of the audit trail.
+const claimIsUndecided = (lines) =>
+  lines.every((l) => (l.approval_status || 'Pending') === 'Pending');
 
 // =====================================================
 // HELPERS
@@ -203,20 +213,41 @@ const loadClaim = async (req, res) => {
   return claim;
 };
 
-// Draft-and-owner gate shared by every write path.
+// Owner gate shared by every write path. Deliberately says nothing about the
+// claim's status: a claim stays open for new lines however its existing ones
+// were decided. What is frozen is decided lines, and that is checked per line.
 const loadEditableClaim = async (req, res) => {
   const claim = await loadClaim(req, res);
   if (!claim) return null;
 
   if (!canEditClaim(req.user, claim)) {
-    res.status(403).json({ message: 'Only the claimant can edit this claim' });
-    return null;
-  }
-  if (!isEditable(claim)) {
-    res.status(400).json({ message: `A ${claim.status.toLowerCase()} claim cannot be edited` });
+    res.status(403).json({ message: 'Only the claimant can change this claim' });
     return null;
   }
   return claim;
+};
+
+// Loads a line the claimant may still change, refusing one already decided.
+const loadEditableLine = async (req, res, claim) => {
+  const { data: line } = await supabase
+    .from('expense_lines')
+    .select('*')
+    .eq('id', req.params.lineId)
+    .single();
+
+  // Check the parent too — a line id from another claim must not be reachable
+  // through this claim's URL.
+  if (!line || line.claim_id !== claim.id) {
+    res.status(404).json({ message: 'Line item not found' });
+    return null;
+  }
+  if (!isLineEditable(line)) {
+    res.status(400).json({
+      message: `That line was already ${line.approval_status.toLowerCase()} and can no longer be changed`,
+    });
+    return null;
+  }
+  return line;
 };
 
 const validateLine = (body, team) => {
@@ -415,14 +446,29 @@ router.get('/:id', async (req, res) => {
     const claim = await loadClaim(req, res);
     if (!claim) return;
 
+    const lines = await fetchLines(claim.id);
+    const receipts = await fetchReceipts(claim.id);
+    const owned = canEditClaim(req.user, claim);
+    const withReceipt = new Set(receipts.map((r) => r.line_id).filter(Boolean));
+
     res.json({
       ...claim,
-      lines: await fetchLines(claim.id),
-      receipts: await fetchReceipts(claim.id),
-      // Lets the client show who may act without duplicating the rules.
-      can_edit: canEditClaim(req.user, claim) && isEditable(claim),
-      // Whether this viewer may decide lines at all. Which lines are still
-      // open is answered per line by its own approval_status.
+      // Each line answers for itself, since a claim now holds a mixture: an
+      // approved line is frozen while the one added beside it yesterday is not.
+      lines: lines.map((l) => ({
+        ...l,
+        can_edit: owned && isLineEditable(l),
+        has_receipt: withReceipt.has(l.id),
+      })),
+      receipts,
+      // The claimant may always add another expense — a claim is never closed.
+      can_add_lines: owned,
+      // Kept for the header fields (title, currency); the currency itself is
+      // refused separately once a line has been decided.
+      can_edit: owned,
+      can_delete: owned && claimIsUndecided(lines),
+      // Whether this viewer may decide lines at all. Which lines are still open
+      // is answered per line by its own approval_status.
       can_approve: claim.status !== 'Draft' && canApproveClaim(req.user, claim),
     });
   } catch (err) {
@@ -447,7 +493,19 @@ router.put('/:id', async (req, res) => {
       updateData.title = title;
     }
     if (req.body.currency !== undefined) {
-      updateData.currency = String(req.body.currency || 'INR').toUpperCase().slice(0, 3);
+      const currency = String(req.body.currency || 'INR').toUpperCase().slice(0, 3);
+      // The currency is part of what each approval was computed over, so once a
+      // line has been approved it cannot move without invalidating that line's
+      // hash and the document already printed from it.
+      if (currency !== claim.currency) {
+        const decided = (await fetchLines(claim.id)).some((l) => !isLineEditable(l));
+        if (decided) {
+          return res.status(400).json({
+            message: 'The currency cannot change once a line on this claim has been decided',
+          });
+        }
+      }
+      updateData.currency = currency;
     }
 
     const { data, error } = await supabase
@@ -473,6 +531,14 @@ router.delete('/:id', async (req, res) => {
     const claim = await loadEditableClaim(req, res);
     if (!claim) return;
 
+    // A decision is part of the audit trail, so a claim stops being deletable
+    // the moment anything inside it has been approved or rejected.
+    if (!claimIsUndecided(await fetchLines(claim.id))) {
+      return res.status(400).json({
+        message: 'This claim has decided lines and can no longer be deleted',
+      });
+    }
+
     // expense_lines cascades on the foreign key.
     const { error } = await supabase.from('expense_claims').delete().eq('id', claim.id);
     if (error) throw error;
@@ -497,6 +563,14 @@ router.post('/:id/lines', async (req, res) => {
     const problem = validateLine(req.body, claim.team);
     if (problem) return res.status(400).json({ message: problem });
 
+    const existing = await fetchLines(claim.id);
+
+    // A line added after the claim was submitted is numbered straight away, and
+    // always appended. Renumbering to keep date order would move a reference
+    // already printed on somebody's signed document.
+    const alreadySubmitted = claim.status !== 'Draft';
+    const nextNo = existing.reduce((max, l) => Math.max(max, l.line_no || 0), 0) + 1;
+
     const { data, error } = await supabase
       .from('expense_lines')
       .insert([
@@ -507,6 +581,8 @@ router.post('/:id/lines', async (req, res) => {
           description: (req.body.description || '').trim() || null,
           amount: money(req.body.amount),
           tax_amount: money(req.body.tax_amount) || 0,
+          approval_status: 'Pending',
+          line_no: alreadySubmitted ? nextNo : null,
           created_at: getISTTime(),
         },
       ])
@@ -514,8 +590,22 @@ router.post('/:id/lines', async (req, res) => {
       .single();
     if (error) throw error;
 
-    const { total } = await recalcTotal(claim.id);
-    res.status(201).json({ line: data, total_amount: total });
+    const { total, lines } = await recalcTotal(claim.id);
+
+    // A new line reopens the claim: it was Approved, now something is pending
+    // again. Told to the approvers too, since nothing else would surface it.
+    let updatedClaim = null;
+    if (alreadySubmitted) {
+      updatedClaim = await syncClaimStatus(claim, lines, req.user.name, null);
+      await notifyAdmins(
+        'Expense Line Added',
+        `${req.user.name} added ${data.category} (${claim.currency} ${Number(data.amount).toFixed(2)}) to "${claim.title}"`,
+        null,
+        claim.team
+      );
+    }
+
+    res.status(201).json({ line: data, total_amount: total, claim: updatedClaim });
   } catch (err) {
     console.error('EXPENSE LINE CREATE ERROR:', err);
     res.status(500).json({ message: 'Failed to add line item' });
@@ -527,17 +617,8 @@ router.put('/:id/lines/:lineId', async (req, res) => {
     const claim = await loadEditableClaim(req, res);
     if (!claim) return;
 
-    const { data: existing } = await supabase
-      .from('expense_lines')
-      .select('*')
-      .eq('id', req.params.lineId)
-      .single();
-
-    // Check the parent too — a line id from another claim must not be editable
-    // through this claim's URL.
-    if (!existing || existing.claim_id !== claim.id) {
-      return res.status(404).json({ message: 'Line item not found' });
-    }
+    const existing = await loadEditableLine(req, res, claim);
+    if (!existing) return;
 
     const merged = { ...existing, ...req.body };
     const problem = validateLine(merged, claim.team);
@@ -570,15 +651,8 @@ router.delete('/:id/lines/:lineId', async (req, res) => {
     const claim = await loadEditableClaim(req, res);
     if (!claim) return;
 
-    const { data: existing } = await supabase
-      .from('expense_lines')
-      .select('id, claim_id')
-      .eq('id', req.params.lineId)
-      .single();
-
-    if (!existing || existing.claim_id !== claim.id) {
-      return res.status(404).json({ message: 'Line item not found' });
-    }
+    const existing = await loadEditableLine(req, res, claim);
+    if (!existing) return;
 
     const { error } = await supabase.from('expense_lines').delete().eq('id', existing.id);
     if (error) throw error;
@@ -641,9 +715,17 @@ router.post('/:id/receipts', upload.single('file'), async (req, res) => {
     if (lineId) {
       const { data: line } = await supabase
         .from('expense_lines')
-        .select('id, claim_id')
+        .select('id, claim_id, approval_status')
         .eq('id', lineId)
         .single();
+      // The bills behind a decided line are covered by its approval hash, so
+      // adding one afterwards would leave the signed document short of a page
+      // it claims to account for.
+      if (line && line.claim_id === claim.id && !isLineEditable(line)) {
+        return res.status(400).json({
+          message: `That line was already ${line.approval_status.toLowerCase()}; its receipts cannot change`,
+        });
+      }
       if (!line || line.claim_id !== claim.id) {
         return res.status(400).json({ message: 'That line item does not belong to this claim' });
       }
@@ -762,6 +844,21 @@ router.delete('/:id/receipts/:receiptId', async (req, res) => {
       return res.status(404).json({ message: 'Receipt not found' });
     }
 
+    // Same rule as adding one: a decided line's bills are part of what was
+    // signed and printed, so they stop moving with it.
+    if (receipt.line_id) {
+      const { data: line } = await supabase
+        .from('expense_lines')
+        .select('approval_status')
+        .eq('id', receipt.line_id)
+        .single();
+      if (line && !isLineEditable(line)) {
+        return res.status(400).json({
+          message: `That line was already ${line.approval_status.toLowerCase()}; its receipts cannot change`,
+        });
+      }
+    }
+
     const { error } = await supabase.from('expense_receipts').delete().eq('id', receipt.id);
     if (error) throw error;
 
@@ -785,6 +882,14 @@ router.post('/:id/submit', async (req, res) => {
   try {
     const claim = await loadEditableClaim(req, res);
     if (!claim) return;
+
+    // Submit is only the first hand-off. Lines added afterwards go straight to
+    // the approvers as Pending, so there is nothing to submit a second time.
+    if (claim.status !== 'Draft') {
+      return res.status(400).json({
+        message: 'This claim has already been submitted. New lines go to the approvers automatically.',
+      });
+    }
 
     const lines = await fetchLines(claim.id);
     if (!lines.length) {
@@ -958,6 +1063,17 @@ router.post('/:id/lines/:lineId/approve', async (req, res) => {
     // approver signed.
     const allReceipts = await fetchReceipts(claim.id);
     const lineReceipts = allReceipts.filter((r) => r.line_id === line.id);
+
+    // No bill, no approval. Submit checks this for the lines present at the
+    // time, but a line added to an already-submitted claim never passes through
+    // that gate — this is the one place every line must go through.
+    if (!lineReceipts.length) {
+      return res.status(400).json({
+        message: 'That line has no receipt attached, so it cannot be approved',
+        code: 'RECEIPT_REQUIRED',
+      });
+    }
+
     const now = getISTTime();
 
     const hash = lineApprovalHash(claim, line, lineReceipts, approver, now);

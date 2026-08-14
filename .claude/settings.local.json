@@ -243,7 +243,8 @@
       "Bash(awk 'NR>=770 && /^router\\\\.\\(post|get|delete|put\\)\\\\\\(/ {print NR\": \"$0}' routes/expenses.js)",
       "Bash(SUPABASE_URL=x SUPABASE_SERVICE_ROLE_KEY=y JWT_SECRET=z node -e ' *)",
       "Bash(node --check utils/expenseApproval.js)",
-      "PowerShell(cd D:\\\\Ticketing-System\\\\frontend; npm run build 2>&1 | Select-Object -Last 5; Write-Output \"=== route order check ===\"; Select-String -Path src/App.jsx -Pattern 'path=\"/expenses' | ForEach-Object { $_.LineNumber.ToString\\(\\).PadLeft\\(5\\) + \"  \" + $_.Line.Trim\\(\\) })"
+      "PowerShell(cd D:\\\\Ticketing-System\\\\frontend; npm run build 2>&1 | Select-Object -Last 5; Write-Output \"=== route order check ===\"; Select-String -Path src/App.jsx -Pattern 'path=\"/expenses' | ForEach-Object { $_.LineNumber.ToString\\(\\).PadLeft\\(5\\) + \"  \" + $_.Line.Trim\\(\\) })",
+      "PowerShell(git -C D:\\\\Ticketing-System diff --stat)"
     ]
   }
 }
