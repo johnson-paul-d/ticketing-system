@@ -397,14 +397,20 @@ router.post('/', auth, async (req, res) => {
       }
     }
 
+    // Only an admin distributes work. Anyone else raises a ticket for their own
+    // work, so it goes to them whatever the request asked for — the form does
+    // not offer the choice, and honouring it here would be a way around that.
+    const admin = isAdmin(req.user);
+    const effectiveAssignee = admin ? assigned_to : req.user.id;
+
     // Resolve the assignee before insert so assigned_to_name is stored on
     // the row — the ticket page reads it directly
     let assignedUser = null;
-    if (assigned_to) {
+    if (effectiveAssignee) {
       const { data: fetchedUser } = await supabase
         .from('users')
         .select('id, name, role')
-        .eq('id', assigned_to)
+        .eq('id', effectiveAssignee)
         .single();
       assignedUser = fetchedUser;
     }
@@ -416,8 +422,8 @@ router.post('/', auth, async (req, res) => {
 
     // The same guard PUT /:id/assign applies, so creating a ticket is not a way
     // around it. A Super Admin assignee is exempt: they span every team, and
-    // teamFromRole returns null for them.
-    if (assignedUser && !isSuperAdmin(req.user)) {
+    // teamFromRole returns null for them. Self-assignment never trips this.
+    if (assignedUser && admin && !isSuperAdmin(req.user)) {
       const targetIsSuperAdmin = isSuperAdmin({ role: assignedUser.role });
       if (!targetIsSuperAdmin && teamFromRole(assignedUser.role) !== getUserTeam(req.user)) {
         return res.status(403).json({ message: 'Cannot assign to a user on another team' });
@@ -437,10 +443,13 @@ router.post('/', auth, async (req, res) => {
       category: category || null,
       // Tasks inside a project inherit the project's division
       division: division || project?.division || null,
-      assigned_to: assigned_to || null,
+      assigned_to: effectiveAssignee || null,
       assigned_to_name: assignedUser?.name || null,
       due_date: due_date || null,
-      allotted_minutes: allotted_minutes || 0,
+      // The time budget is what delivery is measured against, so only an admin
+      // sets it. A ticket raised by anyone else starts unbudgeted and an admin
+      // fills it in — the same rule PUT /:id already enforces.
+      allotted_minutes: admin ? allotted_minutes || 0 : 0,
       status: 'Open',
       created_by: req.user.id,
       created_by_name: req.user.name,

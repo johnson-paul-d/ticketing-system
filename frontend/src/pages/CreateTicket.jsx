@@ -4,12 +4,17 @@ import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
 import { categoriesForTeam } from "../constants/categories";
 import { TICKET_DIVISIONS } from "../constants/divisions";
-import { getTeam } from "../constants/roles";
+import { getTeam, isAdmin as isAdminRole } from "../constants/roles";
 import useAuthStore from "../store/authStore";
 
 export default function CreateTicket() {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
+
+  // Only an admin distributes work or sets a time budget. Everyone else raises
+  // a ticket for themselves, and the server assigns it to them regardless of
+  // what is sent — these two just keep the form honest about that.
+  const isAdmin = isAdminRole(user);
 
   // A ticket is raised into the creator's team, so it takes that team's
   // categories. Super Admins have no team of their own and get the Marketing
@@ -35,9 +40,11 @@ export default function CreateTicket() {
   const [recurrenceInterval, setRecurrenceInterval] = useState("weekly");
 
   // Assignable people, already scoped to the caller's team by the server.
+  // Nobody else can assign, so nobody else needs the list.
   useEffect(() => {
+    if (!isAdmin) return;
     api.get("/auth/team-members").then((r) => setTeamMembers(r.data || [])).catch(() => {});
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => {
     api.get("/projects").then((r) => setProjects(r.data || [])).catch(() => {});
@@ -192,26 +199,36 @@ export default function CreateTicket() {
             </div>
           </div>
 
-          {/* Assign To */}
-          <div className="mb-6">
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-              Assign To
-            </label>
-            <select
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm sm:text-base focus:ring-2 focus:ring-[#9b2423]/40 bg-gray-50 outline-none cursor-pointer"
-              value={assignedTo}
-              onChange={(e) => setAssignedTo(e.target.value)}
-              disabled={loading}
-            >
-              <option value="">Unassigned — assign later</option>
-              {teamMembers.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                  {m.division ? ` · ${m.division}` : ""}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Assign To — admins only. Anyone else is raising their own work. */}
+          {isAdmin ? (
+            <div className="mb-6">
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                Assign To
+              </label>
+              <select
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm sm:text-base focus:ring-2 focus:ring-[#9b2423]/40 bg-gray-50 outline-none cursor-pointer"
+                value={assignedTo}
+                onChange={(e) => setAssignedTo(e.target.value)}
+                disabled={loading}
+              >
+                <option value="">Unassigned — assign later</option>
+                {teamMembers.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                    {m.division ? ` · ${m.division}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="mb-6 rounded-xl bg-gray-50 border border-gray-200 px-4 py-3">
+              <p className="text-sm text-gray-600">
+                This ticket will be assigned to{" "}
+                <span className="font-semibold text-gray-800">you</span>. An admin can
+                reassign it later and will set the allotted time.
+              </p>
+            </div>
+          )}
 
           {/* Row 2: Division + Due Date */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
@@ -325,30 +342,33 @@ export default function CreateTicket() {
             </div>
           )}
 
-          {/* Allotted time */}
-          <div className="mb-6">
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-              Allotted Time
-            </label>
-            <div className="grid grid-cols-2 gap-4 max-w-xs">
-              {[
-                { label: "Hours", value: allottedHours, set: setAllottedHours },
-                { label: "Minutes", value: allottedMins, set: setAllottedMins },
-              ].map((f) => (
-                <div key={f.label}>
-                  <input
-                    type="number"
-                    min="0"
-                    value={f.value}
-                    onChange={(e) => f.set(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-3 text-sm text-center focus:ring-2 focus:ring-[#9b2423]/40 bg-gray-50 outline-none"
-                    disabled={loading}
-                  />
-                  <p className="text-xs text-gray-400 text-center mt-1">{f.label}</p>
-                </div>
-              ))}
+          {/* Allotted time — the budget delivery is measured against, so an
+              admin sets it. The server ignores it from anyone else. */}
+          {isAdmin && (
+            <div className="mb-6">
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                Allotted Time
+              </label>
+              <div className="grid grid-cols-2 gap-4 max-w-xs">
+                {[
+                  { label: "Hours", value: allottedHours, set: setAllottedHours },
+                  { label: "Minutes", value: allottedMins, set: setAllottedMins },
+                ].map((f) => (
+                  <div key={f.label}>
+                    <input
+                      type="number"
+                      min="0"
+                      value={f.value}
+                      onChange={(e) => f.set(Math.max(0, parseInt(e.target.value) || 0))}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-3 text-sm text-center focus:ring-2 focus:ring-[#9b2423]/40 bg-gray-50 outline-none"
+                      disabled={loading}
+                    />
+                    <p className="text-xs text-gray-400 text-center mt-1">{f.label}</p>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Given By field */}
           <div className="mb-8">

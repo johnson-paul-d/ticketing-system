@@ -9,7 +9,7 @@ import { useState } from "react";
 import useAuthStore from "../store/authStore";
 import NotificationBell from "../components/NotificationBell";
 import { canAccessAbm } from "../constants/abm";
-import { isAdmin, isTeamMember, canAccessGoogleAds, canAccessLinkedIn, teamBrand } from "../constants/roles";
+import { isAdmin, canAccessGoogleAds, canAccessLinkedIn, teamBrand } from "../constants/roles";
 
 function LinkedInIcon({ size = 16 }) {
   return (
@@ -85,9 +85,7 @@ export default function MainLayout({ children }) {
     { type: "link", label: "Tickets", path: "/tickets", icon: Cpu },
     { type: "link", label: "Projects", path: "/projects", icon: FolderKanban },
     { type: "link", label: "Expenses", path: "/expenses", icon: Receipt },
-    ...(!isTeamMember(user)
-      ? [{ type: "link", label: "Create Ticket", path: "/create-ticket", icon: PlusCircle }]
-      : []),
+    { type: "link", label: "Create Ticket", path: "/create-ticket", icon: PlusCircle },
     { type: "link", label: "Kanban", path: "/kanban", icon: KanbanSquare },
     { type: "link", label: "Calendar", path: "/calendar", icon: Calendar },
     { type: "link", label: "Timeline", path: "/timeline", icon: BarChart3 },

@@ -78,7 +78,9 @@ function App() {
           <Route
             path="/create-ticket"
             element={
-              <ProtectedRoute allowedRoles={["Admin", "User"]}>
+              // Open to every role: anyone may raise a ticket for their own
+              // work. A non-admin's ticket is assigned to them by the server.
+              <ProtectedRoute>
                 <CreateTicket />
               </ProtectedRoute>
             }
