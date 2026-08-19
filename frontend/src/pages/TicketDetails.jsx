@@ -31,6 +31,7 @@ export default function TicketDetails() {
   const [allottedHours, setAllottedHours] = useState(0);
   const [allottedMins, setAllottedMins] = useState(0);
   const [editingEntryId, setEditingEntryId] = useState(null);
+  const [deletingEntryId, setDeletingEntryId] = useState(null);
   const [editWorkDate, setEditWorkDate] = useState("");
   const [editStartTime, setEditStartTime] = useState("");
   const [editEndTime, setEditEndTime] = useState("");
@@ -319,6 +320,21 @@ export default function TicketDetails() {
     setEditStartTime(moment(entry.start_time).format("HH:mm"));
     setEditEndTime(moment(entry.end_time).format("HH:mm"));
     setEditNotes(entry.notes || "");
+  };
+
+  const deleteTimeEntry = async (entry) => {
+    const label = formatMinutes(entry.duration_minutes);
+    if (!window.confirm(`Delete this ${label} entry? The ticket's consumed time drops by that much.`)) return;
+
+    setDeletingEntryId(entry.id);
+    try {
+      await api.delete(`/ticket-time-entries/${entry.id}`);
+      fetchTicket();
+    } catch (err) {
+      alert(err.response?.data?.error || err.response?.data?.message || "Failed to delete time entry");
+    } finally {
+      setDeletingEntryId(null);
+    }
   };
 
   const updateTimeEntry = async (entryId) => {
@@ -909,7 +925,16 @@ export default function TicketDetails() {
                         <div className="flex flex-col items-start lg:items-end gap-3">
                           <div><div className="text-3xl font-bold">{formatMinutes(entry.duration_minutes)}</div><div className="text-sm text-gray-500 mt-1">Time Spent</div></div>
                           {canEditEntry(entry) && (
-                            <button onClick={() => startEditEntry(entry)} className="bg-[#9b2423] text-white px-5 py-2 rounded-xl hover:bg-[#7d1d1c]">Edit</button>
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => startEditEntry(entry)} className="bg-[#9b2423] text-white px-5 py-2 rounded-xl hover:bg-[#7d1d1c]">Edit</button>
+                              <button
+                                onClick={() => deleteTimeEntry(entry)}
+                                disabled={deletingEntryId === entry.id}
+                                className="border border-red-200 text-red-600 px-5 py-2 rounded-xl hover:bg-red-50 disabled:opacity-50"
+                              >
+                                {deletingEntryId === entry.id ? "Deleting…" : "Delete"}
+                              </button>
+                            </div>
                           )}
                         </div>
                       </>

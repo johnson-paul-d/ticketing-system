@@ -11,6 +11,8 @@ const {
   teamFromRole,
   getUserTeam,
 } = require("../utils/roles");
+const { emitScoped } = require("../utils/realtime");
+const { ticketAudience } = require("../utils/ticketTeam");
 
 // =====================================================
 // TICKET ACCESS
@@ -336,6 +338,122 @@ router.put(
         .eq("id", existingEntry.ticket_id);
 
       res.json(data);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({
+        error: "Server error",
+      });
+    }
+  }
+);
+
+// =========================================
+// DELETE TIME ENTRY
+// =========================================
+router.delete(
+  "/ticket-time-entries/:id",
+  auth,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const { data: existingEntry, error: existingError } = await supabase
+        .from("ticket_time_entries")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (existingError || !existingEntry) {
+        return res.status(404).json({
+          message: "Time entry not found",
+        });
+      }
+
+      const { data: ticket, error: ticketError } = await supabase
+        .from("tickets")
+        .select("*")
+        .eq("id", existingEntry.ticket_id)
+        .single();
+
+      if (ticketError || !ticket) {
+        return res.status(404).json({
+          message: "Ticket not found",
+        });
+      }
+
+      // Same rule as editing: the person who logged it, or an admin on the
+      // ticket's team. Deleting someone else's record of their work is the
+      // same act as rewriting it.
+      if (!(await canModifyEntry(req.user, existingEntry, ticket))) {
+        return res.status(403).json({
+          error: "Access denied",
+        });
+      }
+
+      const { error } = await supabase
+        .from("ticket_time_entries")
+        .delete()
+        .eq("id", id);
+
+      if (error) {
+        console.error("Time entry delete failed:", error);
+        return res.status(400).json({
+          error: "Failed to delete time entry",
+        });
+      }
+
+      // =========================================
+      // UPDATE CONSUMED TIME + TIMELINE
+      // Re-read late, as in the create and update handlers — the same
+      // read-modify-write race applies and can only be narrowed, not closed.
+      // =========================================
+      const { data: fresh } = await supabase
+        .from("tickets")
+        .select("consumed_minutes, timeline")
+        .eq("id", existingEntry.ticket_id)
+        .single();
+
+      const current = fresh || ticket;
+      const consumed = Number(current.consumed_minutes) || 0;
+      const removed = Number(existingEntry.duration_minutes) || 0;
+
+      const timeline = Array.isArray(current.timeline) ? current.timeline : [];
+      timeline.push({
+        type: "time_log",
+        action:
+          `${req.user.name} deleted a ${formatDuration(removed)} entry` +
+          (existingEntry.user_name && existingEntry.user_name !== req.user.name
+            ? ` logged by ${existingEntry.user_name}`
+            : ""),
+        created_at: getISTTime(),
+        user: req.user.name,
+      });
+
+      await supabase
+        .from("tickets")
+        .update({
+          // Never below zero: a legacy row whose minutes were stored as a
+          // string once corrupted the running total, and the arithmetic here
+          // should not be able to leave a negative behind.
+          consumed_minutes: Math.max(0, consumed - removed),
+          timeline,
+          updated_at: getISTTime(),
+        })
+        .eq("id", existingEntry.ticket_id);
+
+      const io = req.app.get("io");
+      if (io) {
+        const { data: updated } = await supabase
+          .from("tickets")
+          .select("*")
+          .eq("id", existingEntry.ticket_id)
+          .single();
+        if (updated) {
+          emitScoped(io, "ticketUpdated", updated, await ticketAudience(updated));
+        }
+      }
+
+      res.json({ message: "Time entry deleted" });
     } catch (err) {
       console.error(err);
       res.status(500).json({
