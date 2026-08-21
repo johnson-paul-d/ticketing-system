@@ -77,11 +77,16 @@ const canDeleteClaim = (user, claim) =>
 // A claim is never closed. Its lines keep arriving — an approved claim can grow
 // a new expense the following week — so the freeze is per LINE, not per claim.
 //
-// A line is editable until it has been decided. Once approved its figures are
-// covered by an approval hash and printed on a signed document, so changing them
-// would leave the paper attesting to something the record no longer says; once
-// rejected it is a record of a decision. Either way it stops moving.
-const isLineEditable = (line) => (line.approval_status || 'Pending') === 'Pending';
+// Only APPROVAL freezes a line. Its figures are then covered by an approval hash
+// and printed on a signed document, so changing them would leave the paper
+// attesting to something the record no longer says.
+//
+// A rejection is not a freeze, it is feedback. The claimant fixes what was wrong
+// — often an unreadable bill — and sends the same line back, rather than filing
+// a fresh one and losing the thread of what was asked for.
+const isLineEditable = (line) => (line.approval_status || 'Pending') !== 'Approved';
+
+const isLineRejected = (line) => line.approval_status === 'Rejected';
 
 // Deleting the whole claim stays a draft-only act: once anything inside it has
 // been decided, that decision is part of the audit trail.
@@ -254,7 +259,7 @@ const loadEditableLine = async (req, res, claim) => {
   }
   if (!isLineEditable(line)) {
     res.status(400).json({
-      message: `That line was already ${line.approval_status.toLowerCase()} and can no longer be changed`,
+      message: `That line has been approved and can no longer be changed`,
     });
     return null;
   }
@@ -470,6 +475,9 @@ router.get('/:id', async (req, res) => {
         ...l,
         can_edit: owned && isLineEditable(l),
         has_receipt: withReceipt.has(l.id),
+        // A rejected line goes back for approval once it has been fixed and
+        // still carries a bill.
+        can_resubmit: owned && isLineRejected(l) && withReceipt.has(l.id),
       })),
       receipts,
       // Anyone on the team may add another expense — a claim is never closed,
@@ -748,7 +756,7 @@ router.post('/:id/receipts', upload.single('file'), async (req, res) => {
       // it claims to account for.
       if (line && line.claim_id === claim.id && !isLineEditable(line)) {
         return res.status(400).json({
-          message: `That line was already ${line.approval_status.toLowerCase()}; its receipts cannot change`,
+          message: `That line has been approved; its receipts cannot change`,
         });
       }
       if (!line || line.claim_id !== claim.id) {
@@ -879,7 +887,7 @@ router.delete('/:id/receipts/:receiptId', async (req, res) => {
         .single();
       if (line && !isLineEditable(line)) {
         return res.status(400).json({
-          message: `That line was already ${line.approval_status.toLowerCase()}; its receipts cannot change`,
+          message: `That line has been approved; its receipts cannot change`,
         });
       }
     }
@@ -1275,6 +1283,93 @@ router.post('/:id/approve-all', async (req, res) => {
   } catch (err) {
     console.error('EXPENSE APPROVE ALL ERROR:', err);
     res.status(500).json({ message: 'Failed to approve the claim' });
+  }
+});
+
+// =====================================================
+// SEND A REJECTED LINE BACK FOR APPROVAL
+// =====================================================
+// The rework loop. A rejection is feedback, not a verdict on the expense, so
+// the claimant fixes what was wrong and returns the SAME line — the reason and
+// the correction stay on one thread instead of being scattered across a fresh
+// line nobody can connect to the original.
+router.post('/:id/lines/:lineId/resubmit', async (req, res) => {
+  try {
+    const claim = await loadEditableClaim(req, res);
+    if (!claim) return;
+
+    const { data: line } = await supabase
+      .from('expense_lines')
+      .select('*')
+      .eq('id', req.params.lineId)
+      .single();
+
+    if (!line || line.claim_id !== claim.id) {
+      return res.status(404).json({ message: 'Line item not found' });
+    }
+    if (!isLineRejected(line)) {
+      return res.status(400).json({
+        message:
+          line.approval_status === 'Approved'
+            ? 'That line is already approved'
+            : 'That line is already waiting for approval',
+      });
+    }
+
+    // The same gate every line meets before an approver sees it.
+    const receipts = (await fetchReceipts(claim.id)).filter((r) => r.line_id === line.id);
+    if (!receipts.length) {
+      return res.status(400).json({
+        message: 'Attach a receipt before sending this line back for approval',
+        code: 'RECEIPT_REQUIRED',
+      });
+    }
+
+    const { data: updatedLine, error } = await supabase
+      .from('expense_lines')
+      .update({
+        approval_status: 'Pending',
+        // The reason has served its purpose and is preserved in the claim
+        // timeline; leaving it on the line would show a rejection notice above
+        // a line that is now waiting on a fresh decision.
+        rejection_reason: null,
+        approved_by: null,
+        approved_by_name: null,
+        approved_by_role: null,
+        approved_at: null,
+        approval_hash: null,
+        verify_code: null,
+      })
+      .eq('id', line.id)
+      .eq('approval_status', 'Rejected')
+      .select()
+      .single();
+
+    if (error) throw error;
+    if (!updatedLine) {
+      return res.status(409).json({ message: 'That line changed while you were working on it' });
+    }
+
+    const lines = await fetchLines(claim.id);
+    const updatedClaim = await syncClaimStatus(
+      claim,
+      lines,
+      req.user.name,
+      `Line ${line.line_no ?? ''} reworked and sent back for approval`.replace(/\s+/g, ' ')
+    );
+
+    await notifyAdmins(
+      'Expense Line Resubmitted',
+      `${req.user.name} reworked ${line.category} (${claim.currency} ${Number(updatedLine.amount).toFixed(2)}) ` +
+        `on "${claim.title}" and sent it back for approval`,
+      null,
+      claim.team
+    );
+
+    res.json({ line: updatedLine, claim: updatedClaim });
+  } catch (err) {
+    console.error('EXPENSE LINE RESUBMIT ERROR:', err);
+    res.status(500).json({ message: 'Failed to resubmit line item' });
   }
 });
 

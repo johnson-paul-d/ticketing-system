@@ -78,15 +78,15 @@ const rollupCopy = {
   },
   "Partially Approved": {
     title: "Partly decided",
-    body: "Some lines have been decided; the rest are still with the approver.",
+    body: "Some lines are approved. Any sent back for changes can be fixed and returned for approval; the rest are still with the approver.",
   },
   Approved: {
     title: "Every line approved",
     body: "Each approved line carries its own approval record and printable document.",
   },
   Rejected: {
-    title: "Every line rejected",
-    body: "No line on this claim was approved — the reasons are on the rows below.",
+    title: "Every line needs rework",
+    body: "Nothing here is approved yet. Each reason below says what to fix — correct the line, then send it back for approval.",
   },
   Paid: {
     title: "Paid",
@@ -634,8 +634,9 @@ export default function ExpenseDetails() {
   // The server decides who may do what and answers with these flags; mirroring
   // the rules here would only be a second place for them to drift. A claim is
   // never closed — can_add_lines stays true for the claimant whatever the
-  // status, and what freezes is an individual line once it has been decided
-  // (line.can_edit). can_edit here is claim ownership and governs the header.
+  // status, and only APPROVAL freezes an individual line (line.can_edit): a
+  // rejected line stays editable so it can be fixed and sent back on the same
+  // thread. can_edit here is claim ownership and governs the header.
   const editable = isNew || claim?.can_edit === true;
   const canAddLines = !isNew && claim?.can_add_lines === true;
   const canDeleteClaim = !isNew && claim?.can_delete === true;
@@ -1095,6 +1096,28 @@ export default function ExpenseDetails() {
     }
   };
 
+  // A rejection is feedback, not a verdict: the same line goes back to the
+  // approvers once it has been corrected, so the reason and the fix stay on one
+  // thread instead of spawning a duplicate line.
+  const resubmitLine = async (lineId) => {
+    setLineBusy(`resubmit:${lineId}`);
+    setError("");
+    setNotice("");
+    setSkippedLines([]);
+    setSignatureRequired(false);
+    try {
+      await api.post(`/expenses/${id}/lines/${lineId}/resubmit`);
+      await fetchClaim({ syncForm: false });
+      setNotice("Line sent back for approval");
+    } catch (err) {
+      setError(
+        err.response?.data?.message || "Failed to send that line back for approval"
+      );
+    } finally {
+      setLineBusy("");
+    }
+  };
+
   const downloadLinePdf = async (line, fallbackNo) => {
     setLineBusy(`pdf:${line.id}`);
     setError("");
@@ -1304,7 +1327,7 @@ export default function ExpenseDetails() {
                 {claim.status === "Approved" || claim.status === "Paid" ? (
                   <BadgeCheck size={20} className="text-emerald-600 flex-shrink-0 mt-0.5" />
                 ) : claim.status === "Rejected" ? (
-                  <XCircle size={19} className="text-red-600 flex-shrink-0 mt-0.5" />
+                  <AlertTriangle size={19} className="text-red-600 flex-shrink-0 mt-0.5" />
                 ) : claim.status === "Draft" ? (
                   <Pencil size={18} className="text-gray-400 flex-shrink-0 mt-0.5" />
                 ) : (
@@ -1326,7 +1349,7 @@ export default function ExpenseDetails() {
                         <CheckCircle2 size={12} /> {rollup.Approved} approved
                       </span>
                       <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border bg-red-50 text-red-700 border-red-200">
-                        <XCircle size={12} /> {rollup.Rejected} rejected
+                        <XCircle size={12} /> {rollup.Rejected} sent back
                       </span>
                       <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border bg-white text-gray-600 border-gray-200">
                         <Clock size={12} /> {rollup.Pending} pending
@@ -1525,14 +1548,16 @@ export default function ExpenseDetails() {
               {lines.map((line, index) => {
                 const lineState = line.approval_status || "Pending";
                 // Editing, deleting and receipt changes are the LINE's own
-                // right, not the claim's: a decided line is frozen even while
-                // the claim itself keeps taking new ones.
+                // right, not the claim's: only an approved line is frozen, and
+                // a rejected one is editable again so the claimant can correct
+                // it and send the same line back.
                 const lineEditable = line.can_edit === true;
                 const missingReceipt = missingLineIds.includes(line.id);
                 const hasReceipt = line.has_receipt ?? (receiptsByLine[line.id] || []).length > 0;
-                // Approving a line with no receipt is refused server-side
-                // (RECEIPT_REQUIRED), so say so before it reaches an approver.
-                const needsReceipt = lineState === "Pending" && !hasReceipt;
+                // Both approving a line and sending a rejected one back are
+                // refused server-side without a bill (RECEIPT_REQUIRED), so say
+                // so before either is attempted.
+                const needsReceipt = lineState !== "Approved" && !hasReceipt;
 
                 return editingLineId === line.id ? (
                   <LineForm
@@ -1547,6 +1572,11 @@ export default function ExpenseDetails() {
                     submitting={lineSaving}
                     submitLabel="Save Line"
                     submitIcon={Save}
+                    note={
+                      lineState === "Rejected"
+                        ? "This line was sent back — save the correction, then send it back for approval."
+                        : null
+                    }
                   />
                 ) : (
                   <div
@@ -1643,7 +1673,11 @@ export default function ExpenseDetails() {
                           ) : (
                             <Clock size={12} />
                           )}
-                          {lineState === "Pending" ? "Pending approval" : lineState}
+                          {lineState === "Pending"
+                            ? "Pending approval"
+                            : lineState === "Rejected"
+                            ? "Sent back"
+                            : lineState}
                         </span>
 
                         {lineState === "Approved" && (
@@ -1708,10 +1742,53 @@ export default function ExpenseDetails() {
                         </div>
                       </div>
 
-                      {lineState === "Rejected" && line.rejection_reason && (
-                        <p className="mt-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5 whitespace-pre-wrap">
-                          {line.rejection_reason}
-                        </p>
+                      {/* A rejection is a task, not a dead end — the reason is
+                          followed by what to do about it, and the same line
+                          goes back for approval once it is fixed. */}
+                      {lineState === "Rejected" && (
+                        <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5">
+                          <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
+                            <div className="flex items-start gap-2 min-w-0 flex-1">
+                              <AlertTriangle
+                                size={14}
+                                className="text-red-600 flex-shrink-0 mt-0.5"
+                              />
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-red-800">
+                                  Sent back for changes
+                                </p>
+                                {line.rejection_reason && (
+                                  <p className="text-xs text-red-700 mt-1 whitespace-pre-wrap">
+                                    {line.rejection_reason}
+                                  </p>
+                                )}
+                                <p className="text-xs text-red-600/80 mt-1.5">
+                                  {line.can_resubmit
+                                    ? "Fix this and send it back for approval — it stays on this same line."
+                                    : hasReceipt
+                                    ? "Fix this, then send it back for approval."
+                                    : "Fix this and attach the bill, then this line can go back for approval."}
+                                </p>
+                              </div>
+                            </div>
+
+                            {line.can_resubmit && (
+                              <button
+                                type="button"
+                                onClick={() => resubmitLine(line.id)}
+                                disabled={Boolean(lineBusy)}
+                                className="inline-flex items-center gap-1.5 bg-[#9b2423] hover:bg-[#7d1d1c] disabled:opacity-60 text-white font-semibold text-xs px-3 py-2 rounded-xl transition"
+                              >
+                                {lineBusy === `resubmit:${line.id}` ? (
+                                  <Loader2 size={13} className="animate-spin" />
+                                ) : (
+                                  <Send size={13} />
+                                )}
+                                Send back for approval
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       )}
                     </div>
 
@@ -1758,7 +1835,7 @@ export default function ExpenseDetails() {
                   note={
                     isDraft
                       ? null
-                      : "This claim has already been submitted — a new line goes to the approvers on its own, and the lines already decided are untouched."
+                      : "This claim has already been submitted — a new line goes to the approvers on its own, and the lines already on it are untouched."
                   }
                 />
               )}
@@ -1866,8 +1943,9 @@ export default function ExpenseDetails() {
               {lines.length === 1 ? "line" : "lines"}.
             </p>
             <p className="text-sm text-gray-500 mt-3">
-              Each line is then decided on its own, and a line locks the moment it is approved or
-              rejected. The claim itself stays open — you can keep adding lines to it afterwards.
+              Each line is then decided on its own. A line locks the moment it is approved; a line
+              sent back comes to you to fix and send again. The claim itself stays open — you can
+              keep adding lines to it afterwards.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-3 mt-6">
@@ -1960,8 +2038,9 @@ export default function ExpenseDetails() {
               on {fmtDate(rejectingLine.expense_date)}.
             </p>
             <p className="text-sm text-gray-500 mt-3">
-              Only this line is rejected — the other lines on the claim are unaffected. Say what
-              is wrong with it; the claimant only sees this reason.
+              Only this line is sent back — the other lines on the claim are unaffected. Say what
+              needs fixing; the claimant only sees this reason, and can correct this same line and
+              send it back for approval.
             </p>
 
             <textarea

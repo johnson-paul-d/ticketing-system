@@ -251,7 +251,10 @@
       "Bash(node -e \"let s='';process.stdin.on\\('data',d=>s+=d\\).on\\('end',\\(\\)=>{JSON.parse\\(s\\).forEach\\(f=>f.messages.filter\\(m=>m.ruleId!=='react/prop-types'\\).forEach\\(m=>console.log\\(f.filePath.split\\('\\\\\\\\\\\\\\\\'\\).pop\\(\\),m.line+':'+m.column,m.ruleId,'-',m.message\\)\\)\\)}\\)\")",
       "Bash(./node_modules/.bin/eslint src/pages/Expenses.jsx src/pages/ExpenseDetails.jsx)",
       "Bash(node \"C:/Users/MKTGAN~1/AppData/Local/Temp/claude/D--Ticketing-System/2ab640b4-757b-4929-8ad3-d34e0062e7af/scratchpad/render-check.js\")",
-      "Bash(node --check _pdfverify.js)"
+      "Bash(node --check _pdfverify.js)",
+      "Bash(grep -n \"already \\\\${line.approval_status.toLowerCase\\(\\)}\\\\|approval_status.toLowerCase\\(\\)\" routes/expenses.js)",
+      "Bash(SUPABASE_URL=https://x.supabase.co SUPABASE_SERVICE_ROLE_KEY=y JWT_SECRET=z node -e ' *)",
+      "Bash(node _rework.js)"
     ]
   }
 }

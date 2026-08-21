@@ -750,17 +750,19 @@ const drawSummary = (pdf, fonts, { claim, lines, receiptCount }) => {
       size: ROW_SIZE,
     });
 
-    for (const [col, value] of [
-      [COL.amount, line.amount],
-      [COL.tax, line.tax_amount],
-      [COL.total, lineTotal(line)],
+    // Right-aligned to a fixed column edge, and shrunk rather than clipped: the
+    // decimal points have to stack down the column whatever the magnitudes are.
+    for (const [col, value, font] of [
+      [COL.amount, line.amount, fonts.regular],
+      [COL.tax, line.tax_amount, fonts.regular],
+      [COL.total, lineTotal(line), fonts.bold],
     ]) {
       const figure = money(value);
       textRight(page, figure, {
         end: col.end - 5,
         y: top,
-        font: col === COL.total ? fonts.bold : fonts.regular,
-        size: fitSize(figure, fonts.regular, col.width - 10, ROW_SIZE, 6.5),
+        font,
+        size: fitSize(figure, font, col.width - 10, ROW_SIZE, 6.5),
       });
     }
 
