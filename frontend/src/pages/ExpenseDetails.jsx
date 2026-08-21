@@ -18,6 +18,7 @@ import {
   BadgeCheck,
   Download,
   Clock,
+  Users,
 } from "lucide-react";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
@@ -536,6 +537,10 @@ export default function ExpenseDetails() {
   const [rejectLineId, setRejectLineId] = useState("");
   const [rejectReason, setRejectReason] = useState("");
   const [rejectError, setRejectError] = useState("");
+  const [showApproveAllConfirm, setShowApproveAllConfirm] = useState(false);
+  // Lines the batch approval left behind. This is a partial success, not an
+  // error, so it lives apart from the error banner.
+  const [skippedLines, setSkippedLines] = useState([]);
   const [busyAction, setBusyAction] = useState("");
   // Per-line work in flight, held as "verb:lineId" — a single key is enough
   // because every row's controls are disabled while any one of them is running.
@@ -635,6 +640,9 @@ export default function ExpenseDetails() {
   const canAddLines = !isNew && claim?.can_add_lines === true;
   const canDeleteClaim = !isNew && claim?.can_delete === true;
   const isDraft = !isNew && claim?.status === "Draft";
+  // The whole team may work on a claim, but the money still goes to the person
+  // who opened it, so a viewer who is not them has to be told whose it is.
+  const isClaimant = isNew || (Boolean(user?.id) && claim?.claimant_id === user.id);
   // can_approve answers "may this viewer decide lines on this claim" — the
   // per-line gate is the line's own approval_status.
   const canApprove = claim?.can_approve === true;
@@ -682,6 +690,31 @@ export default function ExpenseDetails() {
     });
     return { ...counts, approvedTotal };
   }, [lines]);
+
+  // What "Approve all" would actually take: a pending line that has a receipt.
+  // approvable_count is the server's own count and is what the button says; the
+  // amount is totalled from the same predicate so the confirmation describes one
+  // consistent set of lines.
+  const approvableLines = useMemo(
+    () =>
+      lines.filter(
+        (line) =>
+          (line.approval_status || "Pending") === "Pending" &&
+          (line.has_receipt ?? (receiptsByLine[line.id] || []).length > 0)
+      ),
+    [lines, receiptsByLine]
+  );
+
+  const approvableCount = claim?.approvable_count ?? approvableLines.length;
+
+  const approvableTotal = useMemo(
+    () =>
+      approvableLines.reduce(
+        (sum, line) => sum + (Number(line.amount) || 0) + (Number(line.tax_amount) || 0),
+        0
+      ),
+    [approvableLines]
+  );
 
   const rejectingLine = useMemo(
     () => lines.find((line) => line.id === rejectLineId) || null,
@@ -954,6 +987,7 @@ export default function ExpenseDetails() {
     setBusyAction("submit");
     setError("");
     setNotice("");
+    setSkippedLines([]);
     try {
       await api.post(`/expenses/${id}/submit`);
       setMissingLineIds([]);
@@ -979,6 +1013,7 @@ export default function ExpenseDetails() {
     setLineBusy(`approve:${lineId}`);
     setError("");
     setNotice("");
+    setSkippedLines([]);
     setSignatureRequired(false);
     try {
       await api.post(`/expenses/${id}/lines/${lineId}/approve`);
@@ -990,6 +1025,33 @@ export default function ExpenseDetails() {
       setError(data?.message || "Failed to approve that line");
     } finally {
       setLineBusy("");
+    }
+  };
+
+  // A batch approval can come back part done: the server skips a line it cannot
+  // approve rather than failing the whole run, so the skipped list has to be
+  // shown as plainly as the success.
+  const approveAll = async () => {
+    setBusyAction("approve-all");
+    setError("");
+    setNotice("");
+    setSkippedLines([]);
+    setSignatureRequired(false);
+    try {
+      const res = await api.post(`/expenses/${id}/approve-all`);
+      const data = res.data || {};
+      setShowApproveAllConfirm(false);
+      await fetchClaim({ syncForm: false });
+      const count = data.approved_count ?? 0;
+      setNotice(`${count} ${count === 1 ? "line" : "lines"} approved`);
+      setSkippedLines(data.skipped || []);
+    } catch (err) {
+      const data = err.response?.data;
+      if (data?.code === "SIGNATURE_REQUIRED") setSignatureRequired(true);
+      setError(data?.message || "Failed to approve the pending lines");
+      setShowApproveAllConfirm(false);
+    } finally {
+      setBusyAction("");
     }
   };
 
@@ -1017,6 +1079,7 @@ export default function ExpenseDetails() {
     setRejectError("");
     setError("");
     setNotice("");
+    setSkippedLines([]);
     setSignatureRequired(false);
     try {
       await api.post(`/expenses/${id}/lines/${lineId}/reject`, { reason });
@@ -1168,7 +1231,7 @@ export default function ExpenseDetails() {
                 <Link to="/settings/signature" className="font-semibold underline">
                   Upload your signature
                 </Link>{" "}
-                and then decide the line again.
+                and then try again.
               </>
             )}
           </div>
@@ -1176,6 +1239,28 @@ export default function ExpenseDetails() {
         {notice && (
           <div className="bg-emerald-50 text-emerald-700 text-sm px-4 py-3 rounded-xl border border-emerald-200 mb-5">
             {notice}
+          </div>
+        )}
+
+        {/* Part of a batch approval went through and part did not — say which,
+            so a short count is not read as a failure */}
+        {skippedLines.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 mb-5">
+            <p className="text-sm font-semibold text-amber-800">
+              {skippedLines.length} {skippedLines.length === 1 ? "line was" : "lines were"} left
+              pending
+            </p>
+            <ul className="mt-1.5 space-y-1">
+              {skippedLines.map((skipped) => (
+                <li key={skipped.line_id} className="text-sm text-amber-700">
+                  Line {skipped.line_no ?? "—"} — {skipped.reason}
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-amber-700/80 mt-2">
+              Every other pending line was approved. Once the receipt is attached, these can be
+              approved on their own.
+            </p>
           </div>
         )}
 
@@ -1194,6 +1279,19 @@ export default function ExpenseDetails() {
                 </p>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Whose claim this is. A teammate can add lines to it, but the
+            reimbursement is still paid to the person who raised it. */}
+        {!isNew && !isClaimant && (
+          <div className="flex items-start gap-2.5 bg-white border border-gray-200 rounded-2xl px-4 py-3 mb-5">
+            <Users size={16} className="text-gray-400 flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-gray-600">
+              Raised by{" "}
+              <span className="font-semibold text-gray-800">{claim.claimant_name || "—"}</span>.
+              Reimbursement goes to them — anything you add here is claimed in their name.
+            </p>
           </div>
         )}
 
@@ -1263,6 +1361,23 @@ export default function ExpenseDetails() {
                       title={lines.length === 0 ? "Add at least one expense line first" : undefined}
                     >
                       <Send size={16} /> Submit for Approval
+                    </button>
+                  )}
+
+                  {/* A shortcut over the per-line buttons, never a replacement:
+                      the server approves each line separately either way. */}
+                  {canApprove && approvableCount > 0 && (
+                    <button
+                      onClick={() => setShowApproveAllConfirm(true)}
+                      disabled={Boolean(busyAction) || Boolean(lineBusy)}
+                      className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-semibold text-sm px-5 py-3 rounded-xl transition"
+                    >
+                      {busyAction === "approve-all" ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <CheckCircle2 size={16} />
+                      )}
+                      Approve all ({approvableCount})
                     </button>
                   )}
 
@@ -1774,6 +1889,56 @@ export default function ExpenseDetails() {
                 className={`${btnGhostCls} justify-center flex-1`}
               >
                 Keep editing
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* APPROVE EVERY PENDING LINE THAT CAN BE APPROVED */}
+      {showApproveAllConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 sm:p-8 w-full max-w-lg">
+            <h2 className="text-xl font-bold">
+              Approve {approvableCount} {approvableCount === 1 ? "line" : "lines"} at once?
+            </h2>
+            <p className="text-sm text-gray-500 mt-2">
+              <span className="font-semibold text-gray-800">{claim.title}</span> ·{" "}
+              {formatMoney(approvableTotal, currency)} across {approvableCount} pending{" "}
+              {approvableCount === 1 ? "line" : "lines"} with a receipt attached.
+            </p>
+            <p className="text-sm text-gray-500 mt-3">
+              Each line is still decided on its own — its own signature, verification code and
+              document. An approved line then locks, so this cannot be undone here.
+            </p>
+
+            {rollup.Pending > approvableCount && (
+              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-2.5 mt-4">
+                {rollup.Pending - approvableCount} other pending{" "}
+                {rollup.Pending - approvableCount === 1 ? "line has" : "lines have"} no receipt
+                and will not be touched.
+              </p>
+            )}
+
+            <div className="flex flex-col sm:flex-row gap-3 mt-6">
+              <button
+                onClick={approveAll}
+                disabled={busyAction === "approve-all"}
+                className="inline-flex items-center justify-center flex-1 gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-semibold text-sm px-5 py-3 rounded-xl transition"
+              >
+                {busyAction === "approve-all" ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <CheckCircle2 size={16} />
+                )}
+                Approve all ({approvableCount})
+              </button>
+              <button
+                onClick={() => setShowApproveAllConfirm(false)}
+                disabled={busyAction === "approve-all"}
+                className={`${btnGhostCls} justify-center flex-1`}
+              >
+                Cancel
               </button>
             </div>
           </div>

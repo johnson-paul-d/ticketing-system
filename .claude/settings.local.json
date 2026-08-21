@@ -244,7 +244,12 @@
       "Bash(SUPABASE_URL=x SUPABASE_SERVICE_ROLE_KEY=y JWT_SECRET=z node -e ' *)",
       "Bash(node --check utils/expenseApproval.js)",
       "PowerShell(cd D:\\\\Ticketing-System\\\\frontend; npm run build 2>&1 | Select-Object -Last 5; Write-Output \"=== route order check ===\"; Select-String -Path src/App.jsx -Pattern 'path=\"/expenses' | ForEach-Object { $_.LineNumber.ToString\\(\\).PadLeft\\(5\\) + \"  \" + $_.Line.Trim\\(\\) })",
-      "PowerShell(git -C D:\\\\Ticketing-System diff --stat)"
+      "PowerShell(git -C D:\\\\Ticketing-System diff --stat)",
+      "Bash(sed -n '/const updatedLine = outcome.line;/,/^}\\);/p' routes/expenses.js)",
+      "PowerShell(cd D:\\\\Ticketing-System\\\\frontend; npm run build 2>&1 | Select-Object -Last 3; Write-Output \"=== approve-all wired? ===\"; Select-String -Path src/pages/ExpenseDetails.jsx -Pattern \"approve-all|approvable_count|skipped\" | ForEach-Object { $_.LineNumber.ToString\\(\\).PadLeft\\(5\\) + \"  \" + $_.Line.Trim\\(\\).Substring\\(0,[Math]::Min\\(80,$_.Line.Trim\\(\\).Length\\)\\) } | Select-Object -First 8)",
+      "Bash(./node_modules/.bin/eslint src/pages/Expenses.jsx src/pages/ExpenseDetails.jsx -f json)",
+      "Bash(node -e \"let s='';process.stdin.on\\('data',d=>s+=d\\).on\\('end',\\(\\)=>{JSON.parse\\(s\\).forEach\\(f=>f.messages.filter\\(m=>m.ruleId!=='react/prop-types'\\).forEach\\(m=>console.log\\(f.filePath.split\\('\\\\\\\\\\\\\\\\'\\).pop\\(\\),m.line+':'+m.column,m.ruleId,'-',m.message\\)\\)\\)}\\)\")",
+      "Bash(./node_modules/.bin/eslint src/pages/Expenses.jsx src/pages/ExpenseDetails.jsx)"
     ]
   }
 }

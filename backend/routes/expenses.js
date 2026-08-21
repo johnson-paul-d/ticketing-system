@@ -49,19 +49,30 @@ const migrationResponse = (res) =>
 // =====================================================
 // ACCESS
 // =====================================================
-// A claim belongs to the team it was raised in. Team admins see their own
-// team's claims, Super Admins see everything, and everyone else sees only what
-// they filed. Mirrors canAccessTicket in routes/tickets.js.
+// A claim belongs to the team it was raised in, and the team shares it: anyone
+// on that team can see it, whoever filed it. Super Admins see everything. The
+// team boundary is the only wall — an expense is the team's business, but not
+// the other team's.
 const canAccessClaim = (user, claim) => {
   if (isSuperAdmin(user)) return true;
-  if (isAdmin(user)) return claim.team === getUserTeam(user);
-  return claim.claimant_id === user.id;
+  return claim.team === getUserTeam(user);
 };
 
-// Only the claimant may edit their own claim. An admin can see one in order to
-// approve it, but editing someone else's would let them alter what they are
-// about to sign off.
-const canEditClaim = (user, claim) => claim.claimant_id === user.id;
+// The team also works on it together: anyone on the team can add a line, attach
+// a bill and send it for approval, not only whoever opened the claim. What
+// nobody can do is change a line after it has been decided — that is enforced
+// per line, and it is what keeps a signed document honest.
+//
+// Note the reimbursement still goes to the claim's claimant, not to whoever
+// added the line, so a teammate filing on someone's behalf is filing FOR them.
+const canEditClaim = (user, claim) => canAccessClaim(user, claim);
+
+// Deleting is not shared. Removing someone else's claim outright is destructive
+// in a way that adding to it is not, so it stays with the person who opened it
+// (and an admin over that team).
+const canDeleteClaim = (user, claim) =>
+  claim.claimant_id === user.id || isSuperAdmin(user) ||
+  (isAdmin(user) && claim.team === getUserTeam(user));
 
 // A claim is never closed. Its lines keep arriving — an approved claim can grow
 // a new expense the following week — so the freeze is per LINE, not per claim.
@@ -290,10 +301,10 @@ router.get('/report', async (req, res) => {
     const from = (req.query.from || '').trim() || null;
     const to = (req.query.to || '').trim() || null;
 
+    // The team shares its expenses, so the only scope is the team itself.
     let claimQuery = supabase.from('expense_claims').select('*');
     if (!isSuperAdmin(req.user)) {
-      if (isAdmin(req.user)) claimQuery = claimQuery.eq('team', getUserTeam(req.user));
-      else claimQuery = claimQuery.eq('claimant_id', req.user.id);
+      claimQuery = claimQuery.eq('team', getUserTeam(req.user));
     }
 
     const claims = await fetchAllPages(claimQuery, 'id');
@@ -353,9 +364,9 @@ router.get('/', async (req, res) => {
 
     // Scope in the database rather than filtering after the fact — a post-hoc
     // filter would silently lose rows once the table passes the REST row cap.
+    // The team shares its expenses, so the team is the whole scope.
     if (!isSuperAdmin(req.user)) {
-      if (isAdmin(req.user)) query = query.eq('team', getUserTeam(req.user));
-      else query = query.eq('claimant_id', req.user.id);
+      query = query.eq('team', getUserTeam(req.user));
     }
 
     if (req.query.status) query = query.eq('status', req.query.status);
@@ -461,15 +472,22 @@ router.get('/:id', async (req, res) => {
         has_receipt: withReceipt.has(l.id),
       })),
       receipts,
-      // The claimant may always add another expense — a claim is never closed.
+      // Anyone on the team may add another expense — a claim is never closed,
+      // and the team works on it together.
       can_add_lines: owned,
       // Kept for the header fields (title, currency); the currency itself is
       // refused separately once a line has been decided.
       can_edit: owned,
-      can_delete: owned && claimIsUndecided(lines),
+      // Deleting is narrower than editing: the person who opened the claim, or
+      // an admin over the team.
+      can_delete: canDeleteClaim(req.user, claim) && claimIsUndecided(lines),
       // Whether this viewer may decide lines at all. Which lines are still open
       // is answered per line by its own approval_status.
       can_approve: claim.status !== 'Draft' && canApproveClaim(req.user, claim),
+      // How many lines a single "approve everything" would actually take.
+      approvable_count: lines.filter(
+        (l) => isLineEditable(l) && withReceipt.has(l.id)
+      ).length,
     });
   } catch (err) {
     console.error('EXPENSE READ ERROR:', err);
@@ -530,6 +548,13 @@ router.delete('/:id', async (req, res) => {
   try {
     const claim = await loadEditableClaim(req, res);
     if (!claim) return;
+
+    // Narrower than editing: a teammate may add to a claim but not remove it.
+    if (!canDeleteClaim(req.user, claim)) {
+      return res.status(403).json({
+        message: 'Only the person who raised this claim, or an admin, can delete it',
+      });
+    }
 
     // A decision is part of the audit trail, so a claim stops being deletable
     // the moment anything inside it has been approved or rejected.
@@ -1037,20 +1062,85 @@ const loadDecidableLine = async (req, res) => {
   return { claim, line };
 };
 
+// Approves ONE line. Both the single-line endpoint and "approve everything"
+// go through here, so the two can never drift into deciding lines differently:
+// each approved line gets its own hash over its own receipts and its own
+// verification code, whether it was approved alone or alongside ten others.
+//
+// Returns { line } on success, or { skipped: reason } when the line cannot be
+// approved. Throws only on a genuine failure.
+const approveOneLine = async (claim, line, approver, receiptsByLine) => {
+  const lineReceipts = receiptsByLine.get(line.id) || [];
+
+  // No bill, no approval. Submit checks this for the lines present at the
+  // time, but a line added to an already-submitted claim never passes through
+  // that gate — this is the one place every line must go through.
+  if (!lineReceipts.length) return { skipped: 'no receipt attached' };
+  if (line.approval_status !== 'Pending') {
+    return { skipped: `already ${line.approval_status.toLowerCase()}` };
+  }
+
+  const now = getISTTime();
+  const hash = lineApprovalHash(claim, line, lineReceipts, approver, now);
+
+  let verifyCode = verifyCodeFrom(hash);
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const result = await supabase
+      .from('expense_lines')
+      .update({
+        approval_status: 'Approved',
+        approved_by: approver.id,
+        approved_by_name: approver.name,
+        approved_by_role: approver.role,
+        approved_at: now,
+        approval_hash: hash,
+        verify_code: verifyCode,
+        rejection_reason: null,
+      })
+      .eq('id', line.id)
+      .eq('approval_status', 'Pending')
+      .select()
+      .single();
+
+    if (!result.error) return { line: result.data };
+    // 23505 = unique violation on verify_code.
+    if (result.error.code !== '23505') throw result.error;
+    verifyCode = verifyCodeFrom(hash + attempt);
+  }
+  return { skipped: 'could not allocate a verification code' };
+};
+
+// The claim number is only minted once a claim has its first decision, so an
+// abandoned draft never consumes one.
+const ensureClaimNumber = async (claim) => {
+  if (claim.claim_number) return claim.claim_number;
+  const claimNumber = await nextClaimNumber();
+  await supabase
+    .from('expense_claims')
+    .update({ claim_number: claimNumber })
+    .eq('id', claim.id)
+    .is('claim_number', null);
+  return claimNumber;
+};
+
+// The approver's signature is the point of the exercise — refuse rather than
+// produce a document with an empty stamp where one is supposed to be.
+const loadApprover = async (userId) => {
+  const { data } = await supabase
+    .from('users')
+    .select('id, name, role, signature_path')
+    .eq('id', userId)
+    .single();
+  return data;
+};
+
 router.post('/:id/lines/:lineId/approve', async (req, res) => {
   try {
     const loaded = await loadDecidableLine(req, res);
     if (!loaded) return;
     const { claim, line } = loaded;
 
-    // The signature is the point of the exercise — refuse rather than produce a
-    // document with an empty stamp where one is supposed to be.
-    const { data: approver } = await supabase
-      .from('users')
-      .select('id, name, role, signature_path')
-      .eq('id', req.user.id)
-      .single();
-
+    const approver = await loadApprover(req.user.id);
     if (!approver?.signature_path) {
       return res.status(400).json({
         message: 'Upload your signature before approving expenses',
@@ -1058,71 +1148,28 @@ router.post('/:id/lines/:lineId/approve', async (req, res) => {
       });
     }
 
-    // Only this line's receipts are covered: the document it produces contains
-    // only those, so another line's bill changing has no bearing on what this
-    // approver signed.
     const allReceipts = await fetchReceipts(claim.id);
-    const lineReceipts = allReceipts.filter((r) => r.line_id === line.id);
+    const receiptsByLine = new Map();
+    for (const r of allReceipts) {
+      if (!r.line_id) continue;
+      if (!receiptsByLine.has(r.line_id)) receiptsByLine.set(r.line_id, []);
+      receiptsByLine.get(r.line_id).push(r);
+    }
 
-    // No bill, no approval. Submit checks this for the lines present at the
-    // time, but a line added to an already-submitted claim never passes through
-    // that gate — this is the one place every line must go through.
-    if (!lineReceipts.length) {
-      return res.status(400).json({
-        message: 'That line has no receipt attached, so it cannot be approved',
-        code: 'RECEIPT_REQUIRED',
+    await ensureClaimNumber(claim);
+    const outcome = await approveOneLine(claim, line, approver, receiptsByLine);
+
+    if (outcome.skipped) {
+      const receiptGap = outcome.skipped === 'no receipt attached';
+      return res.status(receiptGap ? 400 : 409).json({
+        message: receiptGap
+          ? 'That line has no receipt attached, so it cannot be approved'
+          : `That line was ${outcome.skipped}`,
+        ...(receiptGap ? { code: 'RECEIPT_REQUIRED' } : {}),
       });
     }
 
-    const now = getISTTime();
-
-    const hash = lineApprovalHash(claim, line, lineReceipts, approver, now);
-
-    let claimNumber = claim.claim_number || (await nextClaimNumber());
-    let verifyCode = verifyCodeFrom(hash);
-    let updatedLine;
-
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      const result = await supabase
-        .from('expense_lines')
-        .update({
-          approval_status: 'Approved',
-          approved_by: approver.id,
-          approved_by_name: approver.name,
-          approved_by_role: approver.role,
-          approved_at: now,
-          approval_hash: hash,
-          verify_code: verifyCode,
-          rejection_reason: null,
-        })
-        .eq('id', line.id)
-        .eq('approval_status', 'Pending')
-        .select()
-        .single();
-
-      if (!result.error) {
-        updatedLine = result.data;
-        break;
-      }
-      // 23505 = unique violation on verify_code.
-      if (result.error.code !== '23505') throw result.error;
-      verifyCode = verifyCodeFrom(hash + attempt);
-    }
-
-    if (!updatedLine) {
-      return res.status(409).json({ message: 'That line was decided by someone else' });
-    }
-
-    // The claim number is only minted once a claim has its first decision, so
-    // an abandoned draft never consumes one.
-    if (!claim.claim_number) {
-      await supabase
-        .from('expense_claims')
-        .update({ claim_number: claimNumber })
-        .eq('id', claim.id)
-        .is('claim_number', null);
-    }
-
+    const updatedLine = outcome.line;
     const lines = await fetchLines(claim.id);
     const updatedClaim = await syncClaimStatus(
       claim,
@@ -1142,6 +1189,92 @@ router.post('/:id/lines/:lineId/approve', async (req, res) => {
   } catch (err) {
     console.error('EXPENSE LINE APPROVE ERROR:', err);
     res.status(500).json({ message: 'Failed to approve line item' });
+  }
+});
+
+// =====================================================
+// APPROVE EVERYTHING STILL PENDING
+// =====================================================
+// A convenience over the per-line decision, not a different kind of approval:
+// every line still gets its own hash, its own verification code and its own
+// signed document. Nothing is approved here that could not be approved singly.
+router.post('/:id/approve-all', async (req, res) => {
+  try {
+    const claim = await loadClaim(req, res);
+    if (!claim) return;
+
+    if (!canApproveClaim(req.user, claim)) {
+      return res.status(403).json({ message: approvalRefusalReason(req.user, claim) });
+    }
+    if (claim.status === 'Draft') {
+      return res.status(400).json({ message: 'This claim has not been submitted yet' });
+    }
+
+    const approver = await loadApprover(req.user.id);
+    if (!approver?.signature_path) {
+      return res.status(400).json({
+        message: 'Upload your signature before approving expenses',
+        code: 'SIGNATURE_REQUIRED',
+      });
+    }
+
+    const pending = (await fetchLines(claim.id)).filter((l) => l.approval_status === 'Pending');
+    if (!pending.length) {
+      return res.status(400).json({ message: 'There is nothing left to approve on this claim' });
+    }
+
+    const allReceipts = await fetchReceipts(claim.id);
+    const receiptsByLine = new Map();
+    for (const r of allReceipts) {
+      if (!r.line_id) continue;
+      if (!receiptsByLine.has(r.line_id)) receiptsByLine.set(r.line_id, []);
+      receiptsByLine.get(r.line_id).push(r);
+    }
+
+    await ensureClaimNumber(claim);
+
+    // A line with no bill is skipped rather than failing the batch. Refusing
+    // everything because one line is short a receipt would be worse: the
+    // approver would have no way to make progress and no idea which line.
+    const approved = [];
+    const skipped = [];
+    for (const line of pending) {
+      const outcome = await approveOneLine(claim, line, approver, receiptsByLine);
+      if (outcome.line) approved.push(outcome.line);
+      else skipped.push({ line_id: line.id, line_no: line.line_no, reason: outcome.skipped });
+    }
+
+    const lines = await fetchLines(claim.id);
+    const updatedClaim = await syncClaimStatus(
+      claim,
+      lines,
+      approver.name,
+      `Approved ${approved.length} line${approved.length === 1 ? '' : 's'} in one action`
+    );
+
+    if (approved.length) {
+      const total = approved.reduce(
+        (sum, l) => sum + Number(l.amount || 0) + Number(l.tax_amount || 0),
+        0
+      );
+      await notifyUser(
+        claim.claimant_name,
+        'Expense Lines Approved',
+        `${approver.name} approved ${approved.length} line${approved.length === 1 ? '' : 's'} ` +
+          `on "${claim.title}" — ${claim.currency} ${total.toFixed(2)}`,
+        null
+      );
+    }
+
+    res.json({
+      approved_count: approved.length,
+      skipped,
+      lines,
+      claim: updatedClaim,
+    });
+  } catch (err) {
+    console.error('EXPENSE APPROVE ALL ERROR:', err);
+    res.status(500).json({ message: 'Failed to approve the claim' });
   }
 });
 

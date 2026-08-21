@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Receipt, Plus, Loader2, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Receipt, Plus, Loader2, Search, ChevronLeft, ChevronRight, User } from "lucide-react";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
+import useAuthStore from "../store/authStore";
 
 const PAGE_SIZE = 20;
 
@@ -39,11 +40,6 @@ const fmtDate = (value) => {
   return y && m && d ? `${d}/${m}/${y}` : String(value);
 };
 
-const fmtPeriod = (from, to) => {
-  if (!from && !to) return "—";
-  return `${fmtDate(from)} → ${fmtDate(to)}`;
-};
-
 // A claim is only numbered when it is approved, so most rows have none yet.
 const claimRef = (claim) => claim.claim_number || "Not yet numbered";
 
@@ -52,8 +48,24 @@ const claimRef = (claim) => claim.claim_number || "Not yet numbered";
 const wasSentBack = (claim) =>
   Boolean(claim.rejection_reason) && (claim.status === "Draft" || claim.status === "Rejected");
 
+// Every row is now a colleague's claim as often as it is the viewer's own, so
+// the claimant is a first-class column and "mine" needs marking.
+function ClaimantTag({ name, mine }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 min-w-0">
+      <span className="font-medium text-gray-800 truncate">{name || "—"}</span>
+      {mine && (
+        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full border bg-[#9b2423]/5 text-[#9b2423] border-[#9b2423]/20 flex-shrink-0">
+          You
+        </span>
+      )}
+    </span>
+  );
+}
+
 export default function Expenses() {
   const navigate = useNavigate();
+  const user = useAuthStore((state) => state.user);
 
   const [claims, setClaims] = useState([]);
   const [total, setTotal] = useState(0);
@@ -103,6 +115,7 @@ export default function Expenses() {
 
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const isFiltered = Boolean(debouncedSearch || status);
+  const isMine = (claim) => Boolean(user?.id) && claim.claimant_id === user.id;
 
   return (
     <MainLayout>
@@ -113,7 +126,8 @@ export default function Expenses() {
             <Receipt className="text-[#9b2423]" size={28} /> Expenses
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            {total} {total === 1 ? "claim" : "claims"} · reimbursement claims and their line items
+            {total} {total === 1 ? "claim" : "claims"} · reimbursement claims raised across the
+            team — everyone sees them all and can add lines to any of them
           </p>
         </div>
         <button
@@ -163,11 +177,11 @@ export default function Expenses() {
         <div className="bg-white rounded-2xl shadow-sm p-12 text-center">
           <Receipt size={40} className="mx-auto text-gray-300 mb-3" />
           <p className="text-gray-500 font-medium">
-            {isFiltered ? "No claims match the filters" : "No expense claims yet"}
+            {isFiltered ? "No claims match the filters" : "No expense claims on the team yet"}
           </p>
           {!isFiltered && (
             <p className="text-sm text-gray-400 mt-1">
-              Create your first claim to start recording reimbursable expenses
+              Create the first claim to start recording reimbursable expenses
             </p>
           )}
         </div>
@@ -175,11 +189,10 @@ export default function Expenses() {
         <>
           {/* Desktop table */}
           <div className="hidden md:block bg-white rounded-2xl shadow-sm overflow-x-auto">
-            <table className="w-full text-sm min-w-[860px]">
+            <table className="w-full text-sm min-w-[760px]">
               <thead>
                 <tr className="text-left text-xs text-gray-400 border-b">
                   <th className="px-5 py-3 font-medium">Claim</th>
-                  <th className="px-3 py-3 font-medium">Period</th>
                   <th className="px-3 py-3 font-medium">Claimant</th>
                   <th className="px-3 py-3 font-medium">Status</th>
                   <th className="px-3 py-3 font-medium">Created</th>
@@ -197,10 +210,9 @@ export default function Expenses() {
                       <div className="font-semibold text-gray-800">{claim.title}</div>
                       <div className="text-[11px] text-gray-400">{claimRef(claim)}</div>
                     </td>
-                    <td className="px-3 py-3 text-gray-600 whitespace-nowrap">
-                      {fmtPeriod(claim.period_from, claim.period_to)}
+                    <td className="px-3 py-3">
+                      <ClaimantTag name={claim.claimant_name} mine={isMine(claim)} />
                     </td>
-                    <td className="px-3 py-3 text-gray-600">{claim.claimant_name || "—"}</td>
                     <td className="px-3 py-3">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span
@@ -241,6 +253,10 @@ export default function Expenses() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <h2 className="font-bold text-base line-clamp-1">{claim.title}</h2>
+                    <p className="flex items-center gap-1.5 text-xs mt-1">
+                      <User size={12} className="text-gray-400 flex-shrink-0" />
+                      <ClaimantTag name={claim.claimant_name} mine={isMine(claim)} />
+                    </p>
                     <p className="text-[11px] text-gray-400 mt-0.5">{claimRef(claim)}</p>
                   </div>
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
@@ -259,18 +275,13 @@ export default function Expenses() {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-gray-500">
-                    {fmtPeriod(claim.period_from, claim.period_to)}
+                <div className="flex items-center justify-between gap-2 border-t pt-3">
+                  <span className="text-[11px] text-gray-400">
+                    Raised {fmtDate(claim.created_at)}
                   </span>
                   <span className="text-base font-bold text-gray-800">
                     {formatMoney(claim.total_amount, claim.currency)}
                   </span>
-                </div>
-
-                <div className="flex items-center justify-between gap-2 text-[11px] text-gray-400 border-t pt-2">
-                  <span>{claim.claimant_name || "—"}</span>
-                  <span>{fmtDate(claim.created_at)}</span>
                 </div>
               </button>
             ))}
