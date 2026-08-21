@@ -25,28 +25,66 @@ const { formatIST } = require('../utils/time');
 //      it was approved.
 //   2. Nothing is ever stamped on top of a receipt. The bill is evidence; a
 //      caption belongs above it, not across it.
+//
+// The visual system, in one paragraph: a slim Signal Red rule across the top of
+// every page this file draws, a cream masthead carrying the document type, the
+// reference and — as the largest thing on the sheet — the amount; meta as small
+// letter-spaced labels over their values; one table with a cream header, a red
+// underscore, an alternating wash light enough to survive a photocopier, and a
+// footed total row; approval set as a signature block over a rule with the
+// verification code in its own bordered panel. Everything is measured against
+// the margins with fitText / fitSize / wrapText, because a document that
+// overflows its margin is a document that was never proofed.
 
 const PAGE = { width: 595.28, height: 841.89 }; // A4
 const MARGIN = 48;
 const CONTENT_W = PAGE.width - MARGIN * 2;
 const BODY_BOTTOM = 62; // floor for drawn content, leaving the footer band clear
 const FOOTER_Y = 28;
+const TOP_BAR_H = 5; // the red rule that marks a page as ours
+const MASTHEAD_H = 108;
 
+// =====================================================
+// PALETTE
+// =====================================================
+// Sieger: Signal Red, cream, black. Red is kept scarce on purpose — it marks the
+// page, the amount, and anything that is not approved, and nothing else, so that
+// a red mark on the sheet always means "look here".
+const RED = rgb(0.608, 0.141, 0.137);
+const CREAM = rgb(0.953, 0.925, 0.878);
+const CREAM_DEEP = rgb(0.898, 0.855, 0.788);
 const INK = rgb(0.09, 0.09, 0.09);
 const MUTED = rgb(0.42, 0.42, 0.42);
+const FAINT = rgb(0.58, 0.58, 0.58);
 const RULE = rgb(0.78, 0.78, 0.78);
-const WASH = rgb(0.95, 0.95, 0.95);
-const ALERT = rgb(0.61, 0.14, 0.14);
+const HAIR = rgb(0.9, 0.9, 0.9);
+// Deliberately barely there: these documents get photocopied, and a row wash
+// heavy enough to look good on screen turns into grey mud on the third copy.
+const ROW_WASH = rgb(0.973, 0.969, 0.961);
+const ALERT = RED;
 const PAPER = rgb(1, 1, 1);
 
+// Status pills. Tints rather than solids, so the text inside stays readable in
+// black and white and the row does not turn into a colour block.
+const PILL_STYLES = {
+  Approved: { fill: rgb(0.898, 0.937, 0.898), ink: rgb(0.11, 0.36, 0.17), border: rgb(0.71, 0.83, 0.72) },
+  Rejected: { fill: rgb(0.973, 0.906, 0.902), ink: RED, border: rgb(0.87, 0.74, 0.73) },
+  Default: { fill: rgb(0.933, 0.933, 0.933), ink: rgb(0.34, 0.34, 0.34), border: rgb(0.84, 0.84, 0.84) },
+};
+
+const pillStyle = (status) => PILL_STYLES[status] || PILL_STYLES.Default;
+
+// Money columns are fixed width and right-aligned: Helvetica has no tabular
+// figures, so a '1' is narrower than a '7' and only a shared right edge makes
+// the decimal points line up down the column.
 const COLUMNS = [
-  { key: 'date', label: 'Date', width: 58 },
-  { key: 'category', label: 'Category', width: 82 },
-  { key: 'description', label: 'Description', width: 137 },
-  { key: 'amount', label: 'Amount', width: 58, right: true },
-  { key: 'tax', label: 'Tax', width: 46, right: true },
-  { key: 'total', label: 'Line total', width: 62, right: true },
-  { key: 'status', label: 'Status', width: 56 },
+  { key: 'date', label: 'Date', width: 70 },
+  { key: 'category', label: 'Category', width: 74 },
+  { key: 'description', label: 'Description', width: 116 },
+  { key: 'amount', label: 'Amount', width: 62, right: true },
+  { key: 'tax', label: 'Tax', width: 50, right: true },
+  { key: 'total', label: 'Line total', width: 68, right: true },
+  { key: 'status', label: 'Status', width: 59.28 },
 ];
 
 // Left edge of each column, and (for right-aligned money) its right edge.
@@ -75,14 +113,14 @@ const TRANSLIT = {
   '–': '-',
   '—': '-',
   '…': '...',
-  ' ': ' ',
+  ' ': ' ',
   '₹': 'INR ',
 };
 
 const safe = (value) =>
   String(value ?? '')
     .replace(/[\r\n\t]+/g, ' ')
-    .replace(/[‘’“”–—… ₹]/g, (ch) => TRANSLIT[ch])
+    .replace(/[‘’“”–—… ₹]/g, (ch) => TRANSLIT[ch])
     .replace(/[^\x20-\x7E¡-ÿ]/g, '?');
 
 const fitText = (text, font, size, maxWidth) => {
@@ -92,6 +130,14 @@ const fitText = (text, font, size, maxWidth) => {
     out = out.slice(0, -1);
   }
   return `${out}...`;
+};
+
+// For strings that must not be truncated — an amount, a verification code — the
+// type shrinks instead. A cut-off total is a wrong total.
+const fitSize = (text, font, maxWidth, size, min = 7) => {
+  let out = size;
+  while (out > min && font.widthOfTextAtSize(text, out) > maxWidth) out -= 0.5;
+  return out;
 };
 
 const wrapText = (text, font, size, maxWidth, maxLines) => {
@@ -133,8 +179,78 @@ const textRight = (page, value, { end, y, font, size, color = INK }) => {
   });
 };
 
+// pdf-lib's drawText has no character-spacing option, so the small uppercase
+// labels are set one glyph at a time. Tracking is what makes a 6pt label read as
+// a label rather than as shrunken body copy.
+// Measured glyph by glyph, exactly as textTracked draws it: widthOfTextAtSize
+// kerns the pairs in a whole string, so measuring the string and then drawing
+// the characters separately leaves the run a point or two wider than measured —
+// enough to push a right-aligned label past the margin.
+const trackedWidth = (value, font, size, tracking = 0) => {
+  const rendered = safe(value);
+  if (!rendered.length) return 0;
+  let width = 0;
+  for (const ch of rendered) width += font.widthOfTextAtSize(ch, size);
+  return width + tracking * (rendered.length - 1);
+};
+
+const fitTrackedSize = (value, font, maxWidth, size, tracking, min = 6) => {
+  let out = size;
+  while (out > min && trackedWidth(value, font, out, tracking) > maxWidth) out -= 0.5;
+  return out;
+};
+
+const textTracked = (page, value, { x, y, font, size, color = MUTED, tracking = 1 }) => {
+  const rendered = safe(value);
+  let cursor = x;
+  for (const ch of rendered) {
+    if (ch !== ' ') page.drawText(ch, { x: cursor, y, size, font, color });
+    cursor += font.widthOfTextAtSize(ch, size) + tracking;
+  }
+  return rendered.length ? cursor - x - tracking : 0;
+};
+
+const textTrackedRight = (page, value, options) =>
+  textTracked(page, value, {
+    ...options,
+    x: options.end - trackedWidth(value, options.font, options.size, options.tracking ?? 1),
+  });
+
+const textTrackedCenter = (page, value, options) =>
+  textTracked(page, value, {
+    ...options,
+    x: options.center - trackedWidth(value, options.font, options.size, options.tracking ?? 1) / 2,
+  });
+
 const hairline = (page, y, { from = MARGIN, to = PAGE.width - MARGIN, color = RULE, thickness = 0.6 } = {}) =>
   page.drawLine({ start: { x: from, y }, end: { x: to, y }, thickness, color });
+
+/**
+ * A status pill. Anchored either by its left edge (`x`) or its right edge
+ * (`end`); returns the width it took so a caller can set another one beside it.
+ */
+const drawPill = (page, fonts, label, { x, end, y, status, size = 6.5, maxWidth = 160 }) => {
+  const style = pillStyle(status);
+  const pad = 6;
+  const inner = Math.max(12, maxWidth - pad * 2);
+  const upper = safe(label).toUpperCase();
+  const fitted = fitSize(upper, fonts.bold, inner, size, 5);
+  const rendered = fitText(upper, fonts.bold, fitted, inner);
+  const width = fonts.bold.widthOfTextAtSize(rendered, fitted) + pad * 2;
+  const left = x != null ? x : end - width;
+
+  page.drawRectangle({
+    x: left,
+    y: y - 3.5,
+    width,
+    height: fitted + 5.5,
+    color: style.fill,
+    borderColor: style.border,
+    borderWidth: 0.5,
+  });
+  page.drawText(rendered, { x: left + pad, y, size: fitted, font: fonts.bold, color: style.ink });
+  return width;
+};
 
 // =====================================================
 // FORMATTING
@@ -380,143 +496,285 @@ const loadSignatureImage = async (pdf, userId) => {
 };
 
 // =====================================================
-// SUMMARY PAGE
+// PAGE HEADS
 // =====================================================
-// Label / value pair in a two-column grid, drawn from `top` downwards.
+/**
+ * The masthead: a cream band carrying the document type, the reference and the
+ * amount. The amount is set largest because it is the one thing every reader —
+ * claimant, approver, accounts, vendor — looks for first.
+ *
+ * Returns the y at which body content may begin.
+ */
+const drawMasthead = (page, fonts, { docType, reference, amountLabel, amount, title, pill }) => {
+  const top = PAGE.height - TOP_BAR_H;
+  const bottom = top - MASTHEAD_H;
+
+  page.drawRectangle({ x: 0, y: bottom, width: PAGE.width, height: MASTHEAD_H, color: CREAM });
+  page.drawLine({ start: { x: 0, y: bottom }, end: { x: PAGE.width, y: bottom }, thickness: 0.8, color: CREAM_DEEP });
+
+  textTracked(page, 'SIEGER', { x: MARGIN, y: top - 24, font: fonts.bold, size: 10, color: INK, tracking: 2.6 });
+  textTrackedRight(page, 'PARTNERING PROGRESS', {
+    end: PAGE.width - MARGIN,
+    y: top - 24,
+    font: fonts.regular,
+    size: 6.6,
+    color: MUTED,
+    tracking: 1.5,
+  });
+
+  const typeSize = fitTrackedSize(docType, fonts.bold, 250, 19, 1.2, 11);
+  textTracked(page, docType, { x: MARGIN, y: top - 58, font: fonts.bold, size: typeSize, color: INK, tracking: 1.2 });
+
+  // Reference, label over value. A pill (only the line document has one to show)
+  // sits beside it, which is why the reference gets a narrower box in that case.
+  textTracked(page, 'REFERENCE', { x: MARGIN, y: top - 76, font: fonts.bold, size: 6.2, color: MUTED, tracking: 1.2 });
+  const refWidth = pill ? 138 : 235;
+  text(page, fitText(safe(reference || '-'), fonts.bold, 12, refWidth), {
+    x: MARGIN,
+    y: top - 92,
+    font: fonts.bold,
+    size: 12,
+  });
+  if (pill) {
+    drawPill(page, fonts, pill, { x: MARGIN + refWidth + 12, y: top - 92, status: pill, size: 7.5, maxWidth: 92 });
+  }
+
+  // The amount. Right-aligned against the margin and shrunk rather than clipped,
+  // so a crore-scale figure still lands inside the sheet.
+  textTrackedRight(page, amountLabel, {
+    end: PAGE.width - MARGIN,
+    y: top - 58,
+    font: fonts.bold,
+    size: 6.6,
+    color: MUTED,
+    tracking: 1.3,
+  });
+  const figure = safe(amount);
+  const amountBox = PAGE.width - MARGIN - (MARGIN + 252);
+  textRight(page, figure, {
+    end: PAGE.width - MARGIN,
+    y: top - 92,
+    font: fonts.bold,
+    size: fitSize(figure, fonts.bold, amountBox, 30, 12),
+    color: RED,
+  });
+
+  let y = bottom - 24;
+  const heading = safe(title || '');
+  if (heading) {
+    text(page, fitText(heading, fonts.regular, 11.5, CONTENT_W), {
+      x: MARGIN,
+      y,
+      font: fonts.regular,
+      size: 11.5,
+      color: INK,
+    });
+    y -= 24;
+  }
+  return y;
+};
+
+// Second and later pages of a document: no masthead, just enough to say what
+// this sheet belongs to if it is separated from page 1.
+const drawContinuation = (page, fonts, { docType, reference }) => {
+  const top = PAGE.height - TOP_BAR_H;
+  textTracked(page, `${docType} (CONTINUED)`, {
+    x: MARGIN,
+    y: top - 26,
+    font: fonts.bold,
+    size: 8,
+    color: MUTED,
+    tracking: 1.2,
+  });
+  textRight(page, fitText(safe(reference || '-'), fonts.bold, 9, 200), {
+    end: PAGE.width - MARGIN,
+    y: top - 26,
+    font: fonts.bold,
+    size: 9,
+    color: INK,
+  });
+  hairline(page, top - 38, { from: 0, to: PAGE.width, color: CREAM_DEEP, thickness: 0.8 });
+  return top - 62;
+};
+
+// =====================================================
+// META GRID
+// =====================================================
+// Small letter-spaced label, value beneath it, generous air between rows. Rows
+// are laid out on a 38pt pitch from `top`.
+const META_PITCH = 38;
+
+const metaLabel = (page, fonts, label, x, top) =>
+  textTracked(page, label.toUpperCase(), { x, y: top, font: fonts.bold, size: 6.4, color: MUTED, tracking: 1.15 });
+
 const metaCell = (page, fonts, label, value, x, top, width) => {
-  text(page, label.toUpperCase(), { x, y: top, font: fonts.bold, size: 7.5, color: MUTED });
+  metaLabel(page, fonts, label, x, top);
   text(page, fitText(safe(value), fonts.regular, 10.5, width), {
     x,
-    y: top - 13,
+    y: top - 15,
     font: fonts.regular,
     size: 10.5,
   });
 };
 
+const metaPill = (page, fonts, label, status, x, top, width) => {
+  metaLabel(page, fonts, label, x, top);
+  drawPill(page, fonts, status || 'Pending', { x, y: top - 13, status, size: 7.5, maxWidth: width });
+};
+
+// Three columns across the content width, with a gutter that keeps a long name
+// from crowding the value next to it.
+const GRID = (() => {
+  const step = CONTENT_W / 3;
+  return { step, width: step - 18, x: [MARGIN, MARGIN + step, MARGIN + step * 2] };
+})();
+
+// =====================================================
+// SUMMARY PAGE
+// =====================================================
 const drawSummary = (pdf, fonts, { claim, lines, receiptCount }) => {
   const approved = claim.status === 'Approved';
   const currency = claim.currency || 'INR';
+  const docType = 'EXPENSE CLAIM';
+  const reference = claim.claim_number || 'UNNUMBERED';
 
   let page = pdf.addPage([PAGE.width, PAGE.height]);
-  let y = PAGE.height - MARGIN;
+  let y = drawMasthead(page, fonts, {
+    docType,
+    reference,
+    amountLabel: `CLAIMED TOTAL (${currency})`,
+    amount: money(claim.total_amount),
+    title: claim.title || '',
+  });
 
   const newPage = () => {
     page = pdf.addPage([PAGE.width, PAGE.height]);
-    y = PAGE.height - MARGIN;
+    y = drawContinuation(page, fonts, { docType, reference });
     return page;
   };
 
-  // Header
-  text(page, 'EXPENSE CLAIM', { x: MARGIN, y: y - 20, font: fonts.bold, size: 22 });
-  textRight(page, claim.claim_number || 'UNNUMBERED', {
-    end: PAGE.width - MARGIN,
-    y: y - 16,
-    font: fonts.bold,
-    size: 13,
-  });
-  y -= 30;
-  text(page, claim.title || '', {
-    x: MARGIN,
-    y: y - 12,
-    font: fonts.regular,
-    size: 12,
-    color: MUTED,
-  });
-  y -= 26;
-  hairline(page, y, { thickness: 1, color: INK });
-  y -= 24;
-
   // Meta grid
-  const colL = MARGIN;
-  const colR = MARGIN + CONTENT_W / 2;
-  const cellW = CONTENT_W / 2 - 12;
-
-  const cell = (label, value, x, top) => metaCell(page, fonts, label, value, x, top, cellW);
-
   const metaRows = [
-    ['Claimant', claim.claimant_name || '-', 'Team', claim.team || '-'],
-    ['Submitted', fmtStamp(claim.submitted_at), 'Currency', currency],
-    ['Status', claim.status || '-', 'Revision', String(claim.revision ?? 1)],
+    [
+      ['Claimant', claim.claimant_name || '-'],
+      ['Team', claim.team || '-'],
+      ['Submitted', fmtStamp(claim.submitted_at)],
+    ],
+    [
+      ['Currency', currency],
+      ['Revision', String(claim.revision ?? 1)],
+      ['Status', claim.status || 'Pending', 'pill'],
+    ],
   ];
-  for (const [l1, v1, l2, v2] of metaRows) {
-    cell(l1, v1, colL, y);
-    cell(l2, v2, colR, y);
-    y -= 34;
+  for (const row of metaRows) {
+    row.forEach(([label, value, kind], i) => {
+      if (kind === 'pill') metaPill(page, fonts, label, value, GRID.x[i], y, GRID.width);
+      else metaCell(page, fonts, label, value, GRID.x[i], y, GRID.width);
+    });
+    y -= META_PITCH;
   }
 
-  y -= 4;
+  y -= 6;
 
+  // ---------------------------------------------------
   // Line item table
-  const HEADER_H = 18;
+  // ---------------------------------------------------
+  const HEADER_H = 20;
+  const ROW_SIZE = 9;
+  const LINE_H = 11.5;
+
   const drawTableHeader = () => {
-    page.drawRectangle({
-      x: MARGIN,
-      y: y - HEADER_H + 4,
-      width: CONTENT_W,
-      height: HEADER_H,
-      color: WASH,
+    page.drawRectangle({ x: MARGIN, y: y - HEADER_H, width: CONTENT_W, height: HEADER_H, color: CREAM });
+    page.drawLine({
+      start: { x: MARGIN, y: y - HEADER_H },
+      end: { x: PAGE.width - MARGIN, y: y - HEADER_H },
+      thickness: 1,
+      color: RED,
     });
     for (const col of COLUMN_X) {
-      const opts = { y: y - HEADER_H + 10, font: fonts.bold, size: 8, color: MUTED };
-      if (col.right) textRight(page, col.label.toUpperCase(), { end: col.end - 4, ...opts });
-      else text(page, col.label.toUpperCase(), { x: col.x + 4, ...opts });
+      const opts = { y: y - HEADER_H + 7, font: fonts.bold, size: 6.6, color: INK, tracking: 1 };
+      if (col.right) textTrackedRight(page, col.label.toUpperCase(), { end: col.end - 5, ...opts });
+      else textTracked(page, col.label.toUpperCase(), { x: col.x + 5, ...opts });
     }
-    y -= HEADER_H + 6;
+    y -= HEADER_H + 2;
   };
 
   drawTableHeader();
 
-  const ROW_SIZE = 9.5;
-  const LINE_H = 12;
-
   if (!lines.length) {
     text(page, 'No line items on this claim.', {
-      x: MARGIN + 4,
-      y: y - 10,
+      x: MARGIN + 5,
+      y: y - 14,
       font: fonts.regular,
       size: ROW_SIZE,
       color: MUTED,
     });
-    y -= 24;
+    y -= 26;
   }
 
-  for (const line of lines) {
+  let totals = { amount: 0, tax: 0, total: 0 };
+  lines.forEach((line, index) => {
     const descCol = COL.description;
-    const desc = wrapText(line.description || '-', fonts.regular, ROW_SIZE, descCol.width - 8, 2);
-    const rowH = Math.max(1, desc.length) * LINE_H + 6;
+    const desc = wrapText(line.description || '-', fonts.regular, ROW_SIZE, descCol.width - 10, 2);
+    const rowH = Math.max(1, desc.length) * LINE_H + 10;
 
-    // The table is allowed to run past one page; the total and approval block
-    // then land on the last one rather than being pushed off the sheet.
-    if (y - rowH < BODY_BOTTOM + 140) {
+    // The table is allowed to run past one page; the total and the approval
+    // rollup then land on the last one rather than being pushed off the sheet.
+    if (y - rowH < BODY_BOTTOM + 150) {
       newPage();
       drawTableHeader();
     }
 
-    const top = y - 10;
-    const status = lineStatus(line);
-    const cells = [
-      { col: COL.date, value: fmtDate(line.expense_date) },
-      { col: COL.category, value: fitText(safe(line.category || '-'), fonts.regular, ROW_SIZE, COL.category.width - 8) },
-      { col: COL.amount, value: money(line.amount) },
-      { col: COL.tax, value: money(line.tax_amount) },
-      { col: COL.total, value: money(lineTotal(line)) },
-      {
-        col: COL.status,
-        value: fitText(safe(status), fonts.regular, ROW_SIZE, COL.status.width - 8),
-        color: status === 'Rejected' ? ALERT : status === 'Approved' ? INK : MUTED,
-      },
-    ];
-
-    for (const { col, value, color = INK } of cells) {
-      if (col.right) {
-        textRight(page, value, { end: col.end - 4, y: top, font: fonts.regular, size: ROW_SIZE, color });
-      } else {
-        text(page, value, { x: col.x + 4, y: top, font: fonts.regular, size: ROW_SIZE, color });
-      }
+    if (index % 2 === 1) {
+      page.drawRectangle({ x: MARGIN, y: y - rowH, width: CONTENT_W, height: rowH, color: ROW_WASH });
     }
+
+    const top = y - 13;
+    const status = lineStatus(line);
+    totals = {
+      amount: totals.amount + Number(line.amount || 0),
+      tax: totals.tax + Number(line.tax_amount || 0),
+      total: totals.total + lineTotal(line),
+    };
+
+    text(page, fitText(safe(fmtDate(line.expense_date)), fonts.regular, ROW_SIZE, COL.date.width - 10), {
+      x: COL.date.x + 5,
+      y: top,
+      font: fonts.regular,
+      size: ROW_SIZE,
+    });
+    text(page, fitText(safe(line.category || '-'), fonts.regular, ROW_SIZE, COL.category.width - 10), {
+      x: COL.category.x + 5,
+      y: top,
+      font: fonts.regular,
+      size: ROW_SIZE,
+    });
+
+    for (const [col, value] of [
+      [COL.amount, line.amount],
+      [COL.tax, line.tax_amount],
+      [COL.total, lineTotal(line)],
+    ]) {
+      const figure = money(value);
+      textRight(page, figure, {
+        end: col.end - 5,
+        y: top,
+        font: col === COL.total ? fonts.bold : fonts.regular,
+        size: fitSize(figure, fonts.regular, col.width - 10, ROW_SIZE, 6.5),
+      });
+    }
+
+    drawPill(page, fonts, status, {
+      x: COL.status.x + 5,
+      y: top,
+      status,
+      size: 6.3,
+      maxWidth: COL.status.width - 10,
+    });
+
     desc.forEach((part, i) => {
       text(page, part, {
-        x: descCol.x + 4,
+        x: descCol.x + 5,
         y: top - i * LINE_H,
         font: fonts.regular,
         size: ROW_SIZE,
@@ -525,59 +783,86 @@ const drawSummary = (pdf, fonts, { claim, lines, receiptCount }) => {
     });
 
     y -= rowH;
-    hairline(page, y + 2, { color: rgb(0.9, 0.9, 0.9), thickness: 0.4 });
-  }
+    hairline(page, y, { color: HAIR, thickness: 0.3 });
+  });
 
-  // Grand total
-  if (y - 60 < BODY_BOTTOM) newPage();
-  y -= 10;
-  hairline(page, y, { from: PAGE.width - MARGIN - 240, thickness: 1, color: INK });
-  y -= 22;
-  // "Claimed", not "total": rejected lines are still counted here, and the
-  // figure that was actually approved is the one in the rollup below.
-  text(page, `CLAIMED TOTAL (${currency})`, { x: PAGE.width - MARGIN - 240, y, font: fonts.bold, size: 11 });
-  textRight(page, money(claim.total_amount), {
-    end: PAGE.width - MARGIN,
-    y: y - 4,
+  // ---------------------------------------------------
+  // Total row — foots the columns printed directly above it
+  // ---------------------------------------------------
+  const TOTAL_H = 26;
+  if (y - TOTAL_H < BODY_BOTTOM) newPage();
+
+  page.drawRectangle({ x: MARGIN, y: y - TOTAL_H, width: CONTENT_W, height: TOTAL_H, color: CREAM });
+  page.drawLine({
+    start: { x: MARGIN, y },
+    end: { x: PAGE.width - MARGIN, y },
+    thickness: 1,
+    color: RED,
+  });
+  const totalY = y - 17;
+  textTracked(page, `TOTAL (${currency})`, {
+    x: COL.date.x + 5,
+    y: totalY,
     font: fonts.bold,
-    size: 18,
+    size: 7.5,
+    color: INK,
+    tracking: 1.2,
   });
-  y -= 20;
-  text(page, `${lines.length} line item${lines.length === 1 ? '' : 's'} | ${receiptCount} receipt${receiptCount === 1 ? '' : 's'} attached`, {
-    x: PAGE.width - MARGIN - 240,
-    y,
-    font: fonts.regular,
-    size: 8.5,
-    color: MUTED,
-  });
-  y -= 30;
+  for (const [col, value, size] of [
+    [COL.amount, totals.amount, 9],
+    [COL.tax, totals.tax, 9],
+    [COL.total, totals.total, 10.5],
+  ]) {
+    const figure = money(value);
+    textRight(page, figure, {
+      end: col.end - 5,
+      y: totalY,
+      font: fonts.bold,
+      size: fitSize(figure, fonts.bold, col.width - 10, size, 6.5),
+    });
+  }
+  y -= TOTAL_H + 12;
 
+  text(
+    page,
+    `${lines.length} line item${lines.length === 1 ? '' : 's'}  |  ${receiptCount} receipt${
+      receiptCount === 1 ? '' : 's'
+    } attached  |  claimed total of record ${currency} ${money(claim.total_amount)}`,
+    { x: MARGIN, y, font: fonts.regular, size: 8, color: MUTED }
+  );
+  y -= 26;
+
+  // ---------------------------------------------------
   // No signature and no verification code on this sheet: nobody signs a claim.
   // What the claim can honestly report is the tally of its lines, so a reader
   // holding only this page can see that some of it may have been refused.
+  // ---------------------------------------------------
   if (y - (approved ? 110 : 190) < BODY_BOTTOM) newPage();
 
   if (!approved) {
-    page.drawRectangle({ x: MARGIN, y: y - 34, width: CONTENT_W, height: 38, color: ALERT });
-    text(page, bannerLabel(claim.status), {
+    const BANNER_H = 34;
+    page.drawRectangle({ x: MARGIN, y: y - BANNER_H, width: CONTENT_W, height: BANNER_H, color: ALERT });
+    textTracked(page, bannerLabel(claim.status), {
       x: MARGIN + 14,
       y: y - 22,
       font: fonts.bold,
-      size: 15,
-      color: PAPER,
+      size: fitTrackedSize(bannerLabel(claim.status), fonts.bold, CONTENT_W - 28, 13, 1.4, 8),
+      color: CREAM,
+      tracking: 1.4,
     });
-    y -= 48;
+    y -= BANNER_H + 14;
+
     const explanation = wrapText(
       `This claim is in "${claim.status}" status. Only the lines marked Approved above were signed off, each on its own document; this summary is not evidence of approval.`,
       fonts.regular,
-      9.5,
+      9,
       CONTENT_W,
       2
     );
     explanation.forEach((part, i) => {
-      text(page, part, { x: MARGIN, y: y - i * 13, font: fonts.regular, size: 9.5, color: ALERT });
+      text(page, part, { x: MARGIN, y: y - i * 12, font: fonts.regular, size: 9, color: ALERT });
     });
-    y -= explanation.length * 13 + 16;
+    y -= explanation.length * 12 + 14;
   }
 
   const tally = { Approved: 0, Rejected: 0, Pending: 0 };
@@ -588,29 +873,58 @@ const drawSummary = (pdf, fonts, { claim, lines, receiptCount }) => {
     if (status === 'Approved') approvedTotal += lineTotal(line);
   }
 
-  text(page, 'APPROVAL', { x: MARGIN, y, font: fonts.bold, size: 7.5, color: MUTED });
-  y -= 16;
-  text(
-    page,
-    `${tally.Approved} approved  |  ${tally.Rejected} rejected  |  ${tally.Pending} pending`,
-    { x: MARGIN, y, font: fonts.bold, size: 12 }
-  );
-  y -= 17;
-  text(page, `Approved total (${currency}) ${money(approvedTotal)}`, {
+  const PANEL_H = 86;
+  if (y - PANEL_H < BODY_BOTTOM) newPage();
+  page.drawRectangle({
     x: MARGIN,
-    y,
-    font: fonts.regular,
-    size: 10.5,
+    y: y - PANEL_H,
+    width: CONTENT_W,
+    height: PANEL_H,
+    color: PAPER,
+    borderColor: CREAM_DEEP,
+    borderWidth: 0.8,
   });
-  y -= 16;
+  page.drawRectangle({ x: MARGIN, y: y - PANEL_H, width: 3, height: PANEL_H, color: RED });
+
+  textTracked(page, 'APPROVAL', { x: MARGIN + 16, y: y - 18, font: fonts.bold, size: 6.4, color: MUTED, tracking: 1.15 });
+  textTrackedRight(page, `APPROVED TOTAL (${currency})`, {
+    end: PAGE.width - MARGIN - 16,
+    y: y - 18,
+    font: fonts.bold,
+    size: 6.4,
+    color: MUTED,
+    tracking: 1.15,
+  });
+  textRight(page, money(approvedTotal), {
+    end: PAGE.width - MARGIN - 16,
+    y: y - 40,
+    font: fonts.bold,
+    size: 15,
+  });
+
+  let cursor = MARGIN + 16;
+  for (const [status, count] of [
+    ['Approved', tally.Approved],
+    ['Rejected', tally.Rejected],
+    ['Pending', tally.Pending],
+  ]) {
+    cursor += drawPill(page, fonts, `${count} ${status}`, {
+      x: cursor,
+      y: y - 40,
+      status,
+      size: 7.5,
+      maxWidth: 92,
+    }) + 8;
+  }
+
   wrapText(
     'Each line is approved on its own. An approved line has a separate signed document carrying the approver and a verification code; this summary carries neither.',
     fonts.regular,
-    8.5,
-    CONTENT_W,
+    7.8,
+    CONTENT_W - 32,
     2
   ).forEach((part, i) => {
-    text(page, part, { x: MARGIN, y: y - i * 11, font: fonts.regular, size: 8.5, color: MUTED });
+    text(page, part, { x: MARGIN + 16, y: y - 62 - i * 11, font: fonts.regular, size: 7.8, color: MUTED });
   });
 };
 
@@ -622,94 +936,123 @@ const drawSummary = (pdf, fonts, { claim, lines, receiptCount }) => {
 // role, timestamp, code — describes the line and nothing wider.
 const drawLineDocument = (pdf, fonts, { claim, line, reference, signature, receiptCount }) => {
   const currency = claim.currency || 'INR';
+  const docType = 'APPROVED EXPENSE';
 
   let page = pdf.addPage([PAGE.width, PAGE.height]);
-  let y = PAGE.height - MARGIN;
+  let y = drawMasthead(page, fonts, {
+    docType,
+    reference,
+    amountLabel: `APPROVED AMOUNT (${currency})`,
+    amount: money(lineTotal(line)),
+    title: claim.title || '',
+    // buildLinePdf refuses to render anything but an approved line, so this pill
+    // can only ever read Approved — it is never a claim about a pending expense.
+    pill: 'Approved',
+  });
 
   const newPage = () => {
     page = pdf.addPage([PAGE.width, PAGE.height]);
-    y = PAGE.height - MARGIN;
+    y = drawContinuation(page, fonts, { docType, reference });
     return page;
   };
 
-  text(page, 'APPROVED EXPENSE', { x: MARGIN, y: y - 20, font: fonts.bold, size: 22 });
-  textRight(page, reference, { end: PAGE.width - MARGIN, y: y - 16, font: fonts.bold, size: 13 });
-  y -= 30;
-  text(page, claim.title || '', { x: MARGIN, y: y - 12, font: fonts.regular, size: 12, color: MUTED });
-  y -= 26;
-  hairline(page, y, { thickness: 1, color: INK });
-  y -= 24;
-
-  const colL = MARGIN;
-  const colR = MARGIN + CONTENT_W / 2;
-  const cellW = CONTENT_W / 2 - 12;
-
   const metaRows = [
-    ['Claimant', claim.claimant_name || '-', 'Team', claim.team || '-'],
-    ['Expense date', fmtDate(line.expense_date), 'Category', line.category || '-'],
-    [`Amount (${currency})`, money(line.amount), `Tax (${currency})`, money(line.tax_amount)],
+    [
+      ['Claimant', claim.claimant_name || '-'],
+      ['Team', claim.team || '-'],
+      ['Expense date', fmtDate(line.expense_date)],
+    ],
+    [
+      ['Category', line.category || '-'],
+      [`Amount (${currency})`, money(line.amount)],
+      [`Tax (${currency})`, money(line.tax_amount)],
+    ],
   ];
-  for (const [l1, v1, l2, v2] of metaRows) {
-    metaCell(page, fonts, l1, v1, colL, y, cellW);
-    metaCell(page, fonts, l2, v2, colR, y, cellW);
-    y -= 34;
+  for (const row of metaRows) {
+    row.forEach(([label, value], i) => metaCell(page, fonts, label, value, GRID.x[i], y, GRID.width));
+    y -= META_PITCH;
   }
 
-  text(page, 'DESCRIPTION', { x: MARGIN, y, font: fonts.bold, size: 7.5, color: MUTED });
-  y -= 14;
+  metaLabel(page, fonts, 'Description', MARGIN, y);
+  y -= 16;
   const description = wrapText(line.description || '-', fonts.regular, 10.5, CONTENT_W, 6);
   (description.length ? description : ['-']).forEach((part, i) => {
     text(page, part, { x: MARGIN, y: y - i * 14, font: fonts.regular, size: 10.5 });
   });
-  y -= Math.max(1, description.length) * 14 + 16;
+  y -= Math.max(1, description.length) * 14 + 14;
 
-  hairline(page, y, { from: PAGE.width - MARGIN - 240, thickness: 1, color: INK });
-  y -= 22;
-  text(page, `LINE TOTAL (${currency})`, { x: PAGE.width - MARGIN - 240, y, font: fonts.bold, size: 11 });
-  textRight(page, money(lineTotal(line)), {
-    end: PAGE.width - MARGIN,
-    y: y - 4,
+  // Amount band: the same figure as the masthead, footed where an invoice foots
+  // its total, so the sheet reads correctly from either end.
+  const BAND_H = 30;
+  if (y - BAND_H < BODY_BOTTOM) newPage();
+  page.drawRectangle({ x: MARGIN, y: y - BAND_H, width: CONTENT_W, height: BAND_H, color: CREAM });
+  page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE.width - MARGIN, y }, thickness: 1, color: RED });
+  textTracked(page, `LINE TOTAL (${currency})`, {
+    x: MARGIN + 14,
+    y: y - 19,
     font: fonts.bold,
-    size: 18,
+    size: 7.5,
+    color: INK,
+    tracking: 1.2,
   });
-  y -= 20;
+  const bandFigure = money(lineTotal(line));
+  textRight(page, bandFigure, {
+    end: PAGE.width - MARGIN - 14,
+    y: y - 21,
+    font: fonts.bold,
+    size: fitSize(bandFigure, fonts.bold, 240, 15, 9),
+  });
+  y -= BAND_H + 12;
+
   text(page, `${receiptCount} receipt${receiptCount === 1 ? '' : 's'} attached`, {
-    x: PAGE.width - MARGIN - 240,
+    x: MARGIN,
     y,
     font: fonts.regular,
-    size: 8.5,
+    size: 8,
     color: MUTED,
   });
-  y -= 34;
+  y -= 30;
 
-  // The reserve covers the verification lines too — the code must never be
-  // orphaned onto a page away from the signature it belongs to.
-  if (y - 200 < BODY_BOTTOM) newPage();
+  // ---------------------------------------------------
+  // Signature block. The reserve covers the verification panel too — the code
+  // must never be orphaned onto a page away from the signature it belongs to.
+  // ---------------------------------------------------
+  if (y - 210 < BODY_BOTTOM) newPage();
 
-  text(page, 'APPROVED BY', { x: MARGIN, y, font: fonts.bold, size: 7.5, color: MUTED });
-  y -= 12;
+  metaLabel(page, fonts, 'Approved by', MARGIN, y);
+  y -= 10;
 
+  const SIG_AREA_H = 60;
+  const sigRule = y - SIG_AREA_H;
   if (signature) {
-    const box = signature.scaleToFit(190, 58);
-    page.drawImage(signature, { x: MARGIN, y: y - box.height, width: box.width, height: box.height });
-    y -= box.height + 6;
+    const box = signature.scaleToFit(200, SIG_AREA_H - 8);
+    page.drawImage(signature, { x: MARGIN + 4, y: sigRule + 5, width: box.width, height: box.height });
   } else {
-    y -= 12;
     text(page, '(signature image unavailable)', {
-      x: MARGIN,
-      y,
+      x: MARGIN + 4,
+      y: sigRule + 10,
       font: fonts.regular,
       size: 8.5,
       color: MUTED,
     });
-    y -= 18;
   }
+  hairline(page, sigRule, { to: MARGIN + 230, thickness: 0.9, color: INK });
 
-  hairline(page, y, { to: MARGIN + 210, thickness: 0.8, color: INK });
-  y -= 14;
-  text(page, line.approved_by_name || 'Unknown approver', { x: MARGIN, y, font: fonts.bold, size: 11 });
+  y = sigRule - 15;
+  text(page, fitText(safe(line.approved_by_name || 'Unknown approver'), fonts.bold, 11.5, 230), {
+    x: MARGIN,
+    y,
+    font: fonts.bold,
+    size: 11.5,
+  });
   y -= 13;
-  text(page, line.approved_by_role || '-', { x: MARGIN, y, font: fonts.regular, size: 9.5, color: MUTED });
+  text(page, fitText(safe(line.approved_by_role || '-'), fonts.regular, 9.5, 230), {
+    x: MARGIN,
+    y,
+    font: fonts.regular,
+    size: 9.5,
+    color: MUTED,
+  });
   y -= 13;
   text(page, `Approved ${fmtStamp(line.approved_at)}`, {
     x: MARGIN,
@@ -720,19 +1063,44 @@ const drawLineDocument = (pdf, fonts, { claim, line, reference, signature, recei
   });
   y -= 26;
 
+  const BOX_H = 62;
+  page.drawRectangle({
+    x: MARGIN,
+    y: y - BOX_H,
+    width: CONTENT_W,
+    height: BOX_H,
+    color: PAPER,
+    borderColor: RULE,
+    borderWidth: 0.8,
+  });
+  page.drawRectangle({ x: MARGIN, y: y - BOX_H, width: 3, height: BOX_H, color: RED });
+
+  textTracked(page, 'VERIFICATION CODE', {
+    x: MARGIN + 16,
+    y: y - 18,
+    font: fonts.bold,
+    size: 6.3,
+    color: MUTED,
+    tracking: 1.2,
+  });
+  const code = safe(line.verify_code || 'not issued');
+  text(page, code, {
+    x: MARGIN + 16,
+    y: y - 38,
+    font: fonts.bold,
+    size: fitSize(code, fonts.bold, CONTENT_W - 32, 15, 8),
+  });
+
   const url = verifyUrl(line.verify_code);
-  text(page, 'VERIFICATION CODE', { x: MARGIN, y, font: fonts.bold, size: 7.5, color: MUTED });
-  y -= 15;
-  text(page, line.verify_code || 'not issued', { x: MARGIN, y, font: fonts.bold, size: 13 });
-  y -= 14;
   const verifyLine = url
     ? `Verify at ${url}`
     : 'Verify this approval in the expense system using the code above.';
-  text(page, fitText(safe(verifyLine), fonts.regular, 9, CONTENT_W), {
-    x: MARGIN,
-    y,
+  const verifySize = fitSize(safe(verifyLine), fonts.regular, CONTENT_W - 32, 8.5, 6.5);
+  text(page, fitText(safe(verifyLine), fonts.regular, verifySize, CONTENT_W - 32), {
+    x: MARGIN + 16,
+    y: y - 53,
     font: fonts.regular,
-    size: 9,
+    size: verifySize,
     color: MUTED,
   });
 };
@@ -748,59 +1116,88 @@ const approvalStamp = (claim, line) => {
     if (lineStatus(line) === 'Approved') {
       return {
         approved: true,
+        status: 'Approved',
         label: `Approved by ${line.approved_by_name || 'unknown'}, ${line.approved_by_role || '-'} - ${fmtStamp(line.approved_at)}`,
       };
     }
-    return { approved: false, label: `NOT APPROVED - line status "${lineStatus(line)}"` };
+    return {
+      approved: false,
+      status: lineStatus(line),
+      label: `NOT APPROVED - line status "${lineStatus(line)}"`,
+    };
   }
   if (claim.status === 'Approved') {
     return {
       approved: true,
+      status: 'Approved',
       label: `Approved by ${claim.approved_by_name || 'unknown'}, ${claim.approved_by_role || '-'} - ${fmtStamp(claim.approved_at)}`,
     };
   }
-  return { approved: false, label: `NOT APPROVED - claim status "${claim.status}"` };
+  return {
+    approved: false,
+    status: claim.status || 'Pending',
+    label: `NOT APPROVED - claim status "${claim.status}"`,
+  };
 };
 
-// Caption band across the top of a page we own. Returns the y below which the
-// receipt itself may be drawn — nothing above that line belongs to the bill,
-// and nothing below it belongs to us.
+// Caption band across the top of a page we own: one cream header block, not a
+// stack of loose lines. Returns the y below which the receipt itself may be
+// drawn — nothing above that line belongs to the bill, and nothing below it
+// belongs to us.
 const drawReceiptHeader = (page, fonts, { claim, receipt, line, index, count, note, reference, verifyCode }) => {
   const stamp = approvalStamp(claim, line);
-  let y = PAGE.height - MARGIN;
+  const top = PAGE.height - TOP_BAR_H;
+  const bandH = note ? 92 : 78;
+  const bottom = top - bandH;
 
-  text(page, `RECEIPT ${index} OF ${count}`, { x: MARGIN, y: y - 10, font: fonts.bold, size: 11 });
-  textRight(page, fitText(safe(safeFileName(receipt.file_name, 'unnamed file')), fonts.regular, 9, 230), {
-    end: PAGE.width - MARGIN,
-    y: y - 10,
-    font: fonts.regular,
+  page.drawRectangle({ x: 0, y: bottom, width: PAGE.width, height: bandH, color: CREAM });
+  page.drawLine({ start: { x: 0, y: bottom }, end: { x: PAGE.width, y: bottom }, thickness: 0.8, color: CREAM_DEEP });
+
+  textTracked(page, `RECEIPT ${index} OF ${count}`, {
+    x: MARGIN,
+    y: top - 22,
+    font: fonts.bold,
     size: 9,
+    color: INK,
+    tracking: 1.4,
+  });
+  textRight(page, fitText(safe(safeFileName(receipt.file_name, 'unnamed file')), fonts.regular, 8.5, 210), {
+    end: PAGE.width - MARGIN,
+    y: top - 22,
+    font: fonts.regular,
+    size: 8.5,
     color: MUTED,
   });
-  y -= 26;
 
   const lineSummary = line
-    ? `${fmtDate(line.expense_date)} | ${line.category || '-'} | ${claim.currency || 'INR'} ${money(
+    ? `${fmtDate(line.expense_date)}  |  ${line.category || '-'}  |  ${claim.currency || 'INR'} ${money(
         lineTotal(line)
       )}`
     : 'Not linked to a line item';
-  text(page, fitText(safe(lineSummary), fonts.regular, 10, CONTENT_W), {
+  text(page, fitText(safe(lineSummary), fonts.regular, 9.5, CONTENT_W - 120), {
     x: MARGIN,
-    y,
+    y: top - 42,
     font: fonts.regular,
-    size: 10,
+    size: 9.5,
     color: INK,
   });
-  y -= 14;
+  // The pill is the loudest thing in the band on purpose: on a receipt page it
+  // is doing the work the watermark is not allowed to do across the bill below.
+  drawPill(page, fonts, stamp.status, {
+    end: PAGE.width - MARGIN,
+    y: top - 42,
+    status: stamp.status,
+    size: 7,
+    maxWidth: 104,
+  });
 
-  text(page, fitText(safe(stamp.label), fonts.regular, 9, CONTENT_W), {
+  text(page, fitText(safe(stamp.label), fonts.regular, 8.5, CONTENT_W), {
     x: MARGIN,
-    y,
+    y: top - 58,
     font: fonts.regular,
-    size: 9,
+    size: 8.5,
     color: stamp.approved ? MUTED : ALERT,
   });
-  y -= 12;
 
   // A verification code appears only where it belongs to what is being printed:
   // the claim document has none to show.
@@ -810,29 +1207,26 @@ const drawReceiptHeader = (page, fonts, { claim, receipt, line, index, count, no
     verifyCode ? `Verify ${verifyCode}` : null,
   ]
     .filter(Boolean)
-    .join(' | ');
-  text(page, fitText(safe(provenance), fonts.regular, 8, CONTENT_W), {
+    .join('  |  ');
+  text(page, fitText(safe(provenance), fonts.regular, 7.5, CONTENT_W), {
     x: MARGIN,
-    y,
+    y: top - 70,
     font: fonts.regular,
-    size: 8,
+    size: 7.5,
     color: MUTED,
   });
-  y -= 10;
 
   if (note) {
-    text(page, fitText(safe(note), fonts.regular, 8.5, CONTENT_W), {
+    text(page, fitText(safe(note), fonts.regular, 8, CONTENT_W), {
       x: MARGIN,
-      y,
+      y: top - 84,
       font: fonts.regular,
-      size: 8.5,
+      size: 8,
       color: MUTED,
     });
-    y -= 12;
   }
 
-  hairline(page, y);
-  return y - 12;
+  return bottom - 14;
 };
 
 const drawPlaceholder = (pdf, fonts, context, reason) => {
@@ -850,27 +1244,46 @@ const drawPlaceholder = (pdf, fonts, context, reason) => {
     borderDashArray: [4, 4],
   });
 
-  let y = top - 60;
-  text(page, 'RECEIPT FILE NOT INCLUDED', { x: MARGIN + 20, y, font: fonts.bold, size: 13, color: ALERT });
+  let y = top - 64;
+  textTracked(page, 'RECEIPT FILE NOT INCLUDED', {
+    x: MARGIN + 22,
+    y,
+    font: fonts.bold,
+    size: 11,
+    color: ALERT,
+    tracking: 1.3,
+  });
+  y -= 12;
+  hairline(page, y, { from: MARGIN + 22, to: MARGIN + 222, thickness: 0.8, color: ALERT });
   y -= 22;
-  for (const row of [
-    `File: ${safeFileName(receipt.file_name, 'unnamed')}`,
-    `Type: ${receipt.mime_type || 'unknown'}`,
-    `SHA-256: ${receipt.file_sha256 || 'unknown'}`,
-    `Reason: ${reason}`,
+
+  for (const [label, value] of [
+    ['File', safeFileName(receipt.file_name, 'unnamed')],
+    ['Type', receipt.mime_type || 'unknown'],
+    ['SHA-256', receipt.file_sha256 || 'unknown'],
+    ['Reason', reason],
   ]) {
-    text(page, fitText(safe(row), fonts.regular, 9.5, CONTENT_W - 40), {
-      x: MARGIN + 20,
+    textTracked(page, label.toUpperCase(), {
+      x: MARGIN + 22,
+      y,
+      font: fonts.bold,
+      size: 6.3,
+      color: MUTED,
+      tracking: 1.1,
+    });
+    text(page, fitText(safe(value), fonts.regular, 9.5, CONTENT_W - 128), {
+      x: MARGIN + 96,
       y,
       font: fonts.regular,
       size: 9.5,
       color: INK,
     });
-    y -= 15;
+    y -= 17;
   }
-  y -= 6;
+
+  y -= 8;
   text(page, 'The receipt record still stands; only the stored file could not be read at render time.', {
-    x: MARGIN + 20,
+    x: MARGIN + 22,
     y,
     font: fonts.regular,
     size: 8.5,
@@ -900,7 +1313,7 @@ const drawImageReceipt = async (pdf, fonts, context, bytes, kind) => {
 // the reader is the original document. That leaves nowhere safe to print the
 // caption, so it goes on a divider page ahead of the copied pages and the pages
 // themselves are left untouched.
-const appendPdfReceipt = async (pdf, fonts, context, bytes, verbatim) => {
+const appendPdfReceipt = async (pdf, fonts, context, bytes, guard) => {
   // Encryption has to be rejected, not ignored. Loading with
   // ignoreEncryption:true succeeds but leaves every stream encrypted, so the
   // copied pages carry undecodable bytes and render BLANK — a bill that looks
@@ -920,7 +1333,7 @@ const appendPdfReceipt = async (pdf, fonts, context, bytes, verbatim) => {
   });
   text(divider, 'The pages that follow are the receipt exactly as it was uploaded.', {
     x: MARGIN,
-    y: top - 30,
+    y: top - 24,
     font: fonts.regular,
     size: 10,
     color: MUTED,
@@ -929,11 +1342,11 @@ const appendPdfReceipt = async (pdf, fonts, context, bytes, verbatim) => {
   const copied = await pdf.copyPages(source, indices);
   for (const copiedPage of copied) {
     pdf.addPage(copiedPage);
-    verbatim.add(copiedPage);
+    guard.verbatim.add(copiedPage);
   }
 };
 
-const appendReceipt = async (pdf, fonts, context, verbatim) => {
+const appendReceipt = async (pdf, fonts, context, guard) => {
   const { receipt } = context;
   let bytes;
   let mimeType;
@@ -949,9 +1362,12 @@ const appendReceipt = async (pdf, fonts, context, verbatim) => {
 
   const kind = sniff(bytes);
   try {
-    if (kind === 'pdf') await appendPdfReceipt(pdf, fonts, context, bytes, verbatim);
-    else if (kind === 'png' || kind === 'jpg') await drawImageReceipt(pdf, fonts, context, bytes, kind);
-    else drawPlaceholder(pdf, fonts, context, `unsupported file type "${receipt.mime_type || mimeType || 'unknown'}"`);
+    if (kind === 'pdf') await appendPdfReceipt(pdf, fonts, context, bytes, guard);
+    else if (kind === 'png' || kind === 'jpg') {
+      guard.evidence.add(await drawImageReceipt(pdf, fonts, context, bytes, kind));
+    } else {
+      drawPlaceholder(pdf, fonts, context, `unsupported file type "${receipt.mime_type || mimeType || 'unknown'}"`);
+    }
   } catch (err) {
     drawPlaceholder(pdf, fonts, context, err.message || 'the file could not be embedded');
   }
@@ -961,14 +1377,30 @@ const appendReceipt = async (pdf, fonts, context, verbatim) => {
 // PAGE FURNITURE
 // =====================================================
 // Runs last, when the page count is finally known. Copied receipt pages are
-// skipped: a footer over someone's invoice is still ink on the evidence.
-const finishPages = (pdf, fonts, verbatim, { footer, watermark }) => {
+// skipped entirely: a footer over someone's invoice is still ink on the
+// evidence.
+//
+// `guard.evidence` holds the pages where we embedded a receipt image ourselves.
+// Those keep the red rule and the footer — both sit outside the image box — but
+// not the diagonal watermark, which would run straight across the bill. The
+// caption band on those pages already carries the status pill and, when the
+// expense is not approved, a red NOT APPROVED stamp, so nothing there can read
+// as approved when it is not.
+const finishPages = (pdf, fonts, guard, { footer, watermark }) => {
   const all = pdf.getPages();
 
   all.forEach((page, i) => {
-    if (verbatim.has(page)) return;
+    if (guard.verbatim.has(page)) return;
 
-    if (watermark) {
+    page.drawRectangle({
+      x: 0,
+      y: PAGE.height - TOP_BAR_H,
+      width: PAGE.width,
+      height: TOP_BAR_H,
+      color: RED,
+    });
+
+    if (watermark && !guard.evidence.has(page)) {
       page.drawText(watermark, {
         x: 72,
         y: 215,
@@ -980,13 +1412,21 @@ const finishPages = (pdf, fonts, verbatim, { footer, watermark }) => {
       });
     }
 
-    hairline(page, FOOTER_Y + 14, { color: rgb(0.88, 0.88, 0.88), thickness: 0.4 });
-    text(page, footer, {
+    hairline(page, FOOTER_Y + 13, { color: HAIR, thickness: 0.5 });
+    text(page, fitText(safe(footer), fonts.regular, 7.5, 185), {
       x: MARGIN,
       y: FOOTER_Y,
       font: fonts.regular,
       size: 7.5,
       color: MUTED,
+    });
+    textTrackedCenter(page, 'PARTNERING PROGRESS', {
+      center: PAGE.width / 2,
+      y: FOOTER_Y,
+      font: fonts.regular,
+      size: 6.2,
+      color: FAINT,
+      tracking: 1.2,
     });
     textRight(page, `Page ${i + 1} of ${all.length}`, {
       end: PAGE.width - MARGIN,
@@ -997,6 +1437,8 @@ const finishPages = (pdf, fonts, verbatim, { footer, watermark }) => {
     });
   });
 };
+
+const newGuard = () => ({ verbatim: new Set(), evidence: new Set() });
 
 // =====================================================
 // ENTRY POINT
@@ -1020,7 +1462,7 @@ const buildClaimPdf = async (claimId) => {
   drawSummary(pdf, fonts, { claim, lines, receiptCount: receipts.length });
 
   const linesById = new Map(lines.map((line) => [line.id, line]));
-  const verbatim = new Set();
+  const guard = newGuard();
 
   for (let i = 0; i < receipts.length; i += 1) {
     const receipt = receipts[i];
@@ -1036,11 +1478,11 @@ const buildClaimPdf = async (claimId) => {
         reference: claim.claim_number || '-',
         verifyCode: null,
       },
-      verbatim
+      guard
     );
   }
 
-  finishPages(pdf, fonts, verbatim, {
+  finishPages(pdf, fonts, guard, {
     footer: claim.claim_number || 'Expense claim',
     watermark: watermarkLabel(claim.status),
   });
@@ -1090,7 +1532,7 @@ const buildLinePdf = async (claimId, lineId) => {
     receiptCount: receipts.length,
   });
 
-  const verbatim = new Set();
+  const guard = newGuard();
   for (let i = 0; i < receipts.length; i += 1) {
     await appendReceipt(
       pdf,
@@ -1104,11 +1546,11 @@ const buildLinePdf = async (claimId, lineId) => {
         reference,
         verifyCode: line.verify_code,
       },
-      verbatim
+      guard
     );
   }
 
-  finishPages(pdf, fonts, verbatim, {
+  finishPages(pdf, fonts, guard, {
     footer: `${reference} | Verify ${line.verify_code || '-'}`,
     watermark: null,
   });

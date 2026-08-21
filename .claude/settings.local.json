@@ -249,7 +249,9 @@
       "PowerShell(cd D:\\\\Ticketing-System\\\\frontend; npm run build 2>&1 | Select-Object -Last 3; Write-Output \"=== approve-all wired? ===\"; Select-String -Path src/pages/ExpenseDetails.jsx -Pattern \"approve-all|approvable_count|skipped\" | ForEach-Object { $_.LineNumber.ToString\\(\\).PadLeft\\(5\\) + \"  \" + $_.Line.Trim\\(\\).Substring\\(0,[Math]::Min\\(80,$_.Line.Trim\\(\\).Length\\)\\) } | Select-Object -First 8)",
       "Bash(./node_modules/.bin/eslint src/pages/Expenses.jsx src/pages/ExpenseDetails.jsx -f json)",
       "Bash(node -e \"let s='';process.stdin.on\\('data',d=>s+=d\\).on\\('end',\\(\\)=>{JSON.parse\\(s\\).forEach\\(f=>f.messages.filter\\(m=>m.ruleId!=='react/prop-types'\\).forEach\\(m=>console.log\\(f.filePath.split\\('\\\\\\\\\\\\\\\\'\\).pop\\(\\),m.line+':'+m.column,m.ruleId,'-',m.message\\)\\)\\)}\\)\")",
-      "Bash(./node_modules/.bin/eslint src/pages/Expenses.jsx src/pages/ExpenseDetails.jsx)"
+      "Bash(./node_modules/.bin/eslint src/pages/Expenses.jsx src/pages/ExpenseDetails.jsx)",
+      "Bash(node \"C:/Users/MKTGAN~1/AppData/Local/Temp/claude/D--Ticketing-System/2ab640b4-757b-4929-8ad3-d34e0062e7af/scratchpad/render-check.js\")",
+      "Bash(node --check _pdfverify.js)"
     ]
   }
 }
