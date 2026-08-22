@@ -584,7 +584,7 @@ export default function ProjectDetails() {
           </div>
 
           <div className="flex items-center gap-4 flex-wrap mt-5">
-            <TargetChip date={dstr(project.target_date)} />
+            <TargetChip date={dstr(project.target_date)} stats={project.stats} />
             <span className="inline-flex items-center gap-1.5 text-xs text-gray-500">
               <Users size={13} />
               <MemberAvatars members={project.member_details} max={6} />

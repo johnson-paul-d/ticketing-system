@@ -25,6 +25,7 @@ import api from "../services/api";
 import useAuthStore from "../store/authStore";
 import { getTeam } from "../constants/roles";
 import { expenseCategoriesForTeam } from "../constants/expenseCategories";
+import { TICKET_DIVISIONS } from "../constants/divisions";
 
 const CURRENCIES = ["INR", "USD", "EUR", "GBP", "AED"];
 const CURRENCY_SYMBOL = { INR: "₹", USD: "$", EUR: "€", GBP: "£" };
@@ -511,6 +512,7 @@ export default function ExpenseDetails() {
   const [form, setForm] = useState({
     title: "",
     currency: "INR",
+    division: "",
   });
   const [headerErrors, setHeaderErrors] = useState({});
 
@@ -560,6 +562,7 @@ export default function ExpenseDetails() {
         setForm({
           title: data.title || "",
           currency: data.currency || "INR",
+          division: data.division || "",
         });
       }
       setError("");
@@ -742,6 +745,7 @@ export default function ExpenseDetails() {
     const body = {
       title: form.title.trim(),
       currency: form.currency,
+      division: form.division,
     };
     try {
       if (isNew) {
@@ -754,9 +758,13 @@ export default function ExpenseDetails() {
       }
     } catch (err) {
       const message = err.response?.data?.message;
-      // The currency is refused once any line has been decided. That reason
-      // belongs against the field that caused it, not in the page banner.
-      if (message && err.response?.status === 400 && (currencyChanged || /currenc/i.test(message))) {
+      const rejectedField = err.response?.status === 400 && message;
+      // A refused value belongs against the field that caused it, not in the
+      // page banner. Division is checked first: its message names the field
+      // outright, whereas a changed currency is only a suspect.
+      if (rejectedField && /division/i.test(message)) {
+        setHeaderErrors({ division: message });
+      } else if (rejectedField && (currencyChanged || /currenc/i.test(message))) {
         setHeaderErrors({ currency: message });
       } else {
         setError(message || "Failed to save the expense claim");
@@ -1462,6 +1470,30 @@ export default function ExpenseDetails() {
                 ))}
               </select>
               <FieldError>{headerErrors.currency}</FieldError>
+            </div>
+
+            {/* Unlike the currency, the division is not part of what an approval
+                was computed over, so it stays editable after lines are decided. */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Division</label>
+              <select
+                value={form.division}
+                onChange={(e) => {
+                  setForm((f) => ({ ...f, division: e.target.value }));
+                  if (headerErrors.division)
+                    setHeaderErrors((prev) => ({ ...prev, division: "" }));
+                }}
+                disabled={!editable || saving}
+                className={`${inputCls} ${headerErrors.division ? errorCls : ""}`}
+              >
+                <option value="">— No division —</option>
+                {TICKET_DIVISIONS.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+              <FieldError>{headerErrors.division}</FieldError>
             </div>
           </div>
 

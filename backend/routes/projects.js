@@ -57,7 +57,7 @@ const fetchProjectTickets = () =>
     () =>
       supabase
         .from('tickets')
-        .select('id, project_id, status, due_date, assigned_to')
+        .select('id, project_id, status, due_date, assigned_to, completed_date')
         .not('project_id', 'is', null)
         .order('id', { ascending: true }),
     // A missing tickets.project_id column means the migration has not run yet —
@@ -88,10 +88,26 @@ const taskStats = (tasks, targetDate) => {
   const overdue = tasks.filter(
     (t) => !DONE_STATUSES.includes(t.status) && t.due_date && t.due_date < today
   ).length;
+  // When the last piece of work actually closed. A finished project is not
+  // overdue however long ago its target passed — it was late, which is a
+  // different thing and needs a date to state honestly.
+  const complete = total > 0 && done === total;
+  const completedOn = complete
+    ? tasks.reduce((latest, t) => (t.completed_date && t.completed_date > latest ? t.completed_date : latest), '') || null
+    : null;
+
   return {
     total,
     done,
     overdue,
+    complete,
+    completed_on: completedOn,
+    // Days past target at the moment the work finished. Null when it landed on
+    // time, or when the tasks predate completed_date being recorded.
+    days_late:
+      complete && completedOn && targetDate && completedOn > targetDate
+        ? Math.round((new Date(completedOn) - new Date(targetDate)) / 86400000)
+        : null,
     progress: total ? Math.round((done / total) * 100) : 0,
     max_task_due: tasks.reduce(
       (max, t) => (t.due_date && t.due_date > max ? t.due_date : max),

@@ -50,6 +50,10 @@ const monthLabel = (key) => {
   return `${MONTH_NAMES[Number(m) - 1] || key} ${y}`;
 };
 
+// Claims raised before divisions existed have none, so "No division" has to be a
+// selectable value of its own — a sentinel, since "" already means "all".
+const NO_DIVISION = "__none__";
+
 // A line is only referenceable once its claim has been numbered.
 const lineRef = (line) =>
   line.claim_number ? `${line.claim_number}-${String(line.line_no ?? 0).padStart(2, "0")}` : "—";
@@ -115,6 +119,7 @@ export default function ExpenseReport() {
   const [fStatus, setFStatus] = useState("All");
   const [fCategory, setFCategory] = useState("");
   const [fPerson, setFPerson] = useState("");
+  const [fDivision, setFDivision] = useState("");
 
   // Fetched once, unfiltered: every filter below is a client-side narrowing of
   // the same rows, so re-querying per dropdown change would only add latency.
@@ -149,6 +154,13 @@ export default function ExpenseReport() {
     [lines]
   );
 
+  const divisionOptions = useMemo(
+    () => [...new Set(lines.map((l) => l.division).filter(Boolean))].sort(),
+    [lines]
+  );
+
+  const hasUndivided = useMemo(() => lines.some((l) => !l.division), [lines]);
+
   const filtered = useMemo(
     () =>
       lines.filter((l) => {
@@ -156,18 +168,22 @@ export default function ExpenseReport() {
         if (fStatus !== "All" && (l.approval_status || "Pending") !== fStatus) return false;
         if (fCategory && l.category !== fCategory) return false;
         if (fPerson && (l.claimant_name || "—") !== fPerson) return false;
+        if (fDivision === NO_DIVISION) {
+          if (l.division) return false;
+        } else if (fDivision && l.division !== fDivision) return false;
         return true;
       }),
-    [lines, fMonth, fStatus, fCategory, fPerson]
+    [lines, fMonth, fStatus, fCategory, fPerson, fDivision]
   );
 
-  const filtersActive = !!(fMonth || fStatus !== "All" || fCategory || fPerson);
+  const filtersActive = !!(fMonth || fStatus !== "All" || fCategory || fPerson || fDivision);
 
   const clearFilters = () => {
     setFMonth("");
     setFStatus("All");
     setFCategory("");
     setFPerson("");
+    setFDivision("");
   };
 
   // The API's `totals` cover the whole fetched range; the cards have to track
@@ -214,7 +230,7 @@ export default function ExpenseReport() {
 
   const exportCsv = () => {
     const header = [
-      "Date", "Reference", "Claim", "Claimant", "Team", "Category", "Description",
+      "Date", "Reference", "Claim", "Claimant", "Division", "Team", "Category", "Description",
       "Currency", "Amount", "Tax", "Total", "Status", "Approved By", "Approved At", "Reason",
     ];
     const body = detail.map((l) => [
@@ -222,6 +238,7 @@ export default function ExpenseReport() {
       lineRef(l),
       l.title,
       l.claimant_name,
+      l.division,
       l.team,
       l.category,
       l.description,
@@ -312,6 +329,12 @@ export default function ExpenseReport() {
               <option value="">All people</option>
               {personOptions.map((p) => <option key={p}>{p}</option>)}
             </select>
+            <select value={fDivision} onChange={(e) => setFDivision(e.target.value)}
+              className="bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs outline-none text-gray-600 max-w-[180px]">
+              <option value="">All divisions</option>
+              {divisionOptions.map((d) => <option key={d}>{d}</option>)}
+              {hasUndivided && <option value={NO_DIVISION}>No division</option>}
+            </select>
             {filtersActive && (
               <button
                 onClick={clearFilters}
@@ -396,12 +419,13 @@ export default function ExpenseReport() {
 
               {/* Detail table */}
               <div className="hidden md:block bg-white rounded-2xl shadow-sm overflow-x-auto">
-                <table className="w-full min-w-[1080px] text-sm">
+                <table className="w-full min-w-[1180px] text-sm">
                   <thead>
                     <tr className="text-left text-[11px] uppercase tracking-wide text-gray-400 border-b border-gray-100">
                       <th className="px-5 py-2.5 font-semibold">Date</th>
                       <th className="px-3 py-2.5 font-semibold">Reference</th>
                       <th className="px-3 py-2.5 font-semibold">Claimant</th>
+                      <th className="px-3 py-2.5 font-semibold">Division</th>
                       <th className="px-3 py-2.5 font-semibold">Category</th>
                       <th className="px-3 py-2.5 font-semibold">Description</th>
                       <th className="px-3 py-2.5 font-semibold text-right">Amount</th>
@@ -431,6 +455,9 @@ export default function ExpenseReport() {
                         </td>
                         <td className="px-3 py-3 text-xs text-gray-600 whitespace-nowrap">
                           {l.claimant_name || "—"}
+                        </td>
+                        <td className="px-3 py-3 text-xs text-gray-600 whitespace-nowrap">
+                          {l.division || "—"}
                         </td>
                         <td className="px-3 py-3 text-xs text-gray-600">{l.category || "—"}</td>
                         <td className="px-3 py-3 text-xs text-gray-500 max-w-[240px]">
@@ -487,6 +514,7 @@ export default function ExpenseReport() {
 
                     <div className="flex items-center justify-between gap-2 text-[11px] text-gray-400 border-t pt-2">
                       <span>{l.claimant_name || "—"}</span>
+                      <span>{l.division || "—"}</span>
                       <span>{l.approved_by_name ? `by ${l.approved_by_name}` : "—"}</span>
                     </div>
                   </button>

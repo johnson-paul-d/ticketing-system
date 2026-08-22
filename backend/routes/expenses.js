@@ -9,6 +9,7 @@ const { TEAM, isAdmin, isSuperAdmin, getUserTeam, teamFromRole } = require('../u
 const { expenseCategoriesForTeam, isValidExpenseCategory } = require('../utils/expenseCategories');
 const { detectFileType, safeFileName, validateFileStructure } = require('../utils/fileType');
 const { probePdf } = require('../utils/pdfProbe');
+const { isValidDivision } = require('../utils/divisions');
 const fileStore = require('../services/fileStore');
 const { notifyAdmins, notifyUser } = require('../services/notificationService');
 const {
@@ -38,6 +39,14 @@ const upload = multer({
 // Migration not run yet → say so instead of a generic 500.
 const isMissingSchema = (error) =>
   error && ['PGRST205', '42P01', '42703'].includes(error.code);
+
+// One specific column is missing, as opposed to the whole table. PostgREST
+// answers PGRST204 from its schema cache and Postgres 42703 directly, and only
+// the latter names the column, so an unnamed PGRST204 is taken at face value.
+const isMissingColumn = (error, column) =>
+  !!error &&
+  (error.code === 'PGRST204' || error.code === '42703') &&
+  (!error.message || error.message.includes(column));
 
 const migrationResponse = (res) =>
   res.status(503).json({
@@ -332,6 +341,7 @@ router.get('/report', async (req, res) => {
         title: claim.title || null,
         claimant_name: claim.claimant_name || null,
         team: claim.team || null,
+        division: claim.division || null,
         currency: claim.currency || 'INR',
         expense_date: l.expense_date,
         category: l.category,
@@ -409,7 +419,10 @@ router.post('/', async (req, res) => {
     const title = (req.body.title || '').trim();
     if (!title) return res.status(400).json({ message: 'Title is required' });
 
-    const { currency } = req.body;
+    const { currency, division } = req.body;
+    if (!isValidDivision(division)) {
+      return res.status(400).json({ message: `"${division}" is not a valid division` });
+    }
 
     const now = getISTTime();
 
@@ -421,6 +434,7 @@ router.post('/', async (req, res) => {
       claimant_name: req.user.name,
       team: claimTeamFor(req.user),
       title,
+      division: division || null,
       currency: (currency || 'INR').toUpperCase().slice(0, 3),
       total_amount: 0,
       status: 'Draft',
@@ -436,11 +450,23 @@ router.post('/', async (req, res) => {
       ],
     };
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('expense_claims')
       .insert([insertRow])
       .select()
       .single();
+
+    // expenses-division-migration.sql may not have run yet. Retry without the
+    // column rather than refusing to create the claim: a division is useful,
+    // but not worth blocking every claim until someone runs some SQL.
+    if (error && isMissingColumn(error, 'division')) {
+      const { division: _dropped, ...withoutDivision } = insertRow;
+      ({ data, error } = await supabase
+        .from('expense_claims')
+        .insert([withoutDivision])
+        .select()
+        .single());
+    }
 
     if (error) {
       if (isMissingSchema(error)) return migrationResponse(res);
@@ -518,6 +544,13 @@ router.put('/:id', async (req, res) => {
       if (!title) return res.status(400).json({ message: 'Title is required' });
       updateData.title = title;
     }
+    if (req.body.division !== undefined) {
+      if (!isValidDivision(req.body.division)) {
+        return res.status(400).json({ message: `"${req.body.division}" is not a valid division` });
+      }
+      updateData.division = req.body.division || null;
+    }
+
     if (req.body.currency !== undefined) {
       const currency = String(req.body.currency || 'INR').toUpperCase().slice(0, 3);
       // The currency is part of what each approval was computed over, so once a
@@ -534,12 +567,25 @@ router.put('/:id', async (req, res) => {
       updateData.currency = currency;
     }
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('expense_claims')
       .update(updateData)
       .eq('id', claim.id)
       .select()
       .single();
+
+    // Same fallback as the create path, for the window before the division
+    // migration runs.
+    if (error && isMissingColumn(error, 'division')) {
+      const { division: _dropped, ...withoutDivision } = updateData;
+      ({ data, error } = await supabase
+        .from('expense_claims')
+        .update(withoutDivision)
+        .eq('id', claim.id)
+        .select()
+        .single());
+    }
+
     if (error) throw error;
 
     res.json({ ...data, lines: await fetchLines(claim.id) });

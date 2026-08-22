@@ -254,7 +254,8 @@
       "Bash(node --check _pdfverify.js)",
       "Bash(grep -n \"already \\\\${line.approval_status.toLowerCase\\(\\)}\\\\|approval_status.toLowerCase\\(\\)\" routes/expenses.js)",
       "Bash(SUPABASE_URL=https://x.supabase.co SUPABASE_SERVICE_ROLE_KEY=y JWT_SECRET=z node -e ' *)",
-      "Bash(node _rework.js)"
+      "Bash(node _rework.js)",
+      "PowerShell(cd D:\\\\Ticketing-System; git fetch origin -q 2>$null; Write-Output \"local HEAD : $\\(git rev-parse --short HEAD\\)\"; Write-Output \"origin/main: $\\(git rev-parse --short origin/main\\)\"; Write-Output \"\"; Write-Output \"--- last 8 commits ---\"; git log --oneline -8)"
     ]
   }
 }

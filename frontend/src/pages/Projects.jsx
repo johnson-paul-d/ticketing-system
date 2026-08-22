@@ -32,8 +32,25 @@ export const daysLeft = (dateStr) => {
   return diff;
 };
 
-export function TargetChip({ date }) {
+// `stats` comes from the server's taskStats. It matters because a finished
+// project is not overdue however long ago its target passed — there is nothing
+// outstanding. Late delivery is still worth showing, but as a record of what
+// happened, not as an alarm about work that no longer exists.
+export function TargetChip({ date, stats }) {
   const d = daysLeft(date);
+
+  if (stats?.complete) {
+    const late = stats.days_late;
+    const cls = late ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700";
+    return (
+      <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${cls}`}>
+        <CalendarDays size={12} />
+        {late ? `Completed ${late}d late` : "Completed on time"}
+        {stats.completed_on ? ` · ${stats.completed_on}` : ""}
+      </span>
+    );
+  }
+
   if (d === null)
     return (
       <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full">
@@ -109,6 +126,7 @@ export default function Projects() {
   const [showCreate, setShowCreate] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [fDivision, setFDivision] = useState("");
 
   // Create form
   const [name, setName] = useState("");
@@ -159,6 +177,18 @@ export default function Projects() {
     allUsers.forEach((u) => (map[u.id] = u));
     return map;
   }, [allUsers]);
+
+  // Read off the loaded projects rather than the constant, so a division that is
+  // no longer offered is still selectable while projects are carrying it.
+  const divisionOptions = useMemo(
+    () => [...new Set(projects.map((p) => p.division).filter(Boolean))].sort(),
+    [projects]
+  );
+
+  const visibleProjects = useMemo(
+    () => (fDivision ? projects.filter((p) => p.division === fDivision) : projects),
+    [projects, fDivision]
+  );
 
   const toggleMember = (id) =>
     setMemberIds((prev) =>
@@ -246,75 +276,98 @@ export default function Projects() {
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
-          {projects.map((p) => (
-            <Link
-              key={p.id}
-              to={`/projects/${p.id}`}
-              className="bg-white rounded-2xl shadow-sm hover:shadow-md border border-transparent hover:border-[#9b2423]/20 transition p-5 flex flex-col gap-3 group"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <h2 className="font-bold text-base group-hover:text-[#9b2423] transition line-clamp-1">
-                  {p.name}
-                </h2>
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  {p.division && (
-                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                      {p.division}
+        <>
+          {divisionOptions.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap mb-5">
+              <select
+                value={fDivision}
+                onChange={(e) => setFDivision(e.target.value)}
+                className="bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs outline-none text-gray-600"
+              >
+                <option value="">All divisions</option>
+                {divisionOptions.map((d) => (
+                  <option key={d}>{d}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {visibleProjects.length === 0 ? (
+            <div className="bg-white rounded-2xl shadow-sm p-12 text-center text-gray-400">
+              No projects in this division
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
+              {visibleProjects.map((p) => (
+                <Link
+                  key={p.id}
+                  to={`/projects/${p.id}`}
+                  className="bg-white rounded-2xl shadow-sm hover:shadow-md border border-transparent hover:border-[#9b2423]/20 transition p-5 flex flex-col gap-3 group"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <h2 className="font-bold text-base group-hover:text-[#9b2423] transition line-clamp-1">
+                      {p.name}
+                    </h2>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      {p.division && (
+                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                          {p.division}
+                        </span>
+                      )}
+                      <span
+                        className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+                          statusChip[p.status] || statusChip.Active
+                        }`}
+                      >
+                        {p.status}
+                      </span>
+                    </div>
+                  </div>
+
+                  {p.description && (
+                    <p className="text-sm text-gray-500 line-clamp-2">{p.description}</p>
+                  )}
+
+                  <div className="flex items-center justify-between gap-2 mt-auto">
+                    <TargetChip date={p.target_date} stats={p.stats} />
+                    {p.stats?.overdue > 0 && (
+                      <span className="text-[11px] font-semibold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
+                        {p.stats.overdue} overdue
+                      </span>
+                    )}
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5">
+                      <span className="inline-flex items-center gap-1">
+                        <CheckCircle2 size={12} className="text-emerald-600" />
+                        {p.stats?.done}/{p.stats?.total} tasks
+                      </span>
+                      <span className="font-semibold">{p.stats?.progress}%</span>
+                    </div>
+                    <ProgressBar value={p.stats?.progress || 0} />
+                  </div>
+
+                  {p.owner && membersById[p.owner] && (
+                    <span
+                      className="inline-flex items-center gap-1 self-start text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200"
+                      title="Project owner"
+                    >
+                      👑 {membersById[p.owner].name}
                     </span>
                   )}
-                  <span
-                    className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
-                      statusChip[p.status] || statusChip.Active
-                    }`}
-                  >
-                    {p.status}
-                  </span>
-                </div>
-              </div>
 
-              {p.description && (
-                <p className="text-sm text-gray-500 line-clamp-2">{p.description}</p>
-              )}
-
-              <div className="flex items-center justify-between gap-2 mt-auto">
-                <TargetChip date={p.target_date} />
-                {p.stats?.overdue > 0 && (
-                  <span className="text-[11px] font-semibold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
-                    {p.stats.overdue} overdue
-                  </span>
-                )}
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5">
-                  <span className="inline-flex items-center gap-1">
-                    <CheckCircle2 size={12} className="text-emerald-600" />
-                    {p.stats?.done}/{p.stats?.total} tasks
-                  </span>
-                  <span className="font-semibold">{p.stats?.progress}%</span>
-                </div>
-                <ProgressBar value={p.stats?.progress || 0} />
-              </div>
-
-              {p.owner && membersById[p.owner] && (
-                <span
-                  className="inline-flex items-center gap-1 self-start text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200"
-                  title="Project owner"
-                >
-                  👑 {membersById[p.owner].name}
-                </span>
-              )}
-
-              <div className="flex items-center justify-between pt-1">
-                <MemberAvatars
-                  members={(p.members || []).map((id) => membersById[id]).filter(Boolean)}
-                />
-                <span className="text-[11px] text-gray-400">by {p.created_by_name}</span>
-              </div>
-            </Link>
-          ))}
-        </div>
+                  <div className="flex items-center justify-between pt-1">
+                    <MemberAvatars
+                      members={(p.members || []).map((id) => membersById[id]).filter(Boolean)}
+                    />
+                    <span className="text-[11px] text-gray-400">by {p.created_by_name}</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {/* Create modal */}
