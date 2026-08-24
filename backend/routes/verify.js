@@ -45,14 +45,31 @@ const lineReference = (claimNumber, lineNo) => {
 const withTax = (amount, tax) =>
   Number((Number(amount || 0) + Number(tax || 0)).toFixed(2));
 
+const LINE_COLUMNS =
+  'claim_id, line_no, amount, tax_amount, category, expense_date, approval_status, approved_by_name, approved_by_role, approved_at';
+
+// approved_by_designation arrives with designation-migration.sql. Asking for it
+// before that has run fails the whole query, which here would look like a valid
+// code being rejected — so it is dropped on the first miss and the lookup
+// answers as it always did, just without the job title.
+let hasDesignation = true;
+const lineColumns = () =>
+  hasDesignation ? `${LINE_COLUMNS}, approved_by_designation` : LINE_COLUMNS;
+const missingDesignation = (error) =>
+  !!error &&
+  (error.code === '42703' || error.code === 'PGRST204') &&
+  !!error.message &&
+  error.message.includes('approved_by_designation');
+
 const lookupLine = async (code) => {
-  const { data, error } = await supabase
-    .from('expense_lines')
-    .select(
-      'claim_id, line_no, amount, tax_amount, category, expense_date, approval_status, approved_by_name, approved_by_role, approved_at'
-    )
-    .eq('verify_code', code)
-    .maybeSingle();
+  const run = () =>
+    supabase.from('expense_lines').select(lineColumns()).eq('verify_code', code).maybeSingle();
+
+  let { data, error } = await run();
+  if (hasDesignation && missingDesignation(error)) {
+    hasDesignation = false;
+    ({ data, error } = await run());
+  }
 
   // Before the line-approval migration these columns do not exist and the query
   // fails outright. That is not an error worth showing: every code in print at
@@ -101,7 +118,10 @@ router.get(
           category: line.category,
           expense_date: line.expense_date,
           approved_by_name: line.approved_by_name,
-          approved_by_role: line.approved_by_role,
+          // The job title that was printed under the signature, so the page and
+          // the document say the same thing. Falls back to the role for
+          // approvals made before designations existed.
+          approved_by_role: line.approved_by_designation || line.approved_by_role,
           approved_at: line.approved_at,
         });
       }

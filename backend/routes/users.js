@@ -14,11 +14,39 @@ const { isSuperAdmin, teamFromRole, getUserTeam } = require('../utils/roles');
 // signature_path is deliberately absent: it is a per-user secret handle and has
 // no business being broadcast in the admin user list. The signature routes
 // select it explicitly, for the caller's own row only.
-const USER_COLUMNS = 'id, name, email, role, division, active, created_at';
+const BASE_USER_COLUMNS = 'id, name, email, role, division, active, created_at';
+const USER_COLUMNS_WITH_DESIGNATION =
+  'id, name, email, role, division, designation, active, created_at';
+
+// designation arrives with database/designation-migration.sql. Until that has
+// been run, naming the column would fail every query in this file — and this
+// list also populates the ticket assignee dropdown, so an unrun migration would
+// take far more than the job titles with it. The first "no such column" flips
+// this off for the life of the process; a restart re-tests.
+let hasDesignation = true;
+const userColumns = () => (hasDesignation ? USER_COLUMNS_WITH_DESIGNATION : BASE_USER_COLUMNS);
+const missingDesignation = (error) =>
+  !!error &&
+  (error.code === '42703' || error.code === 'PGRST204') &&
+  (!error.message || error.message.includes('designation'));
+
+// Runs a query and, if designation is not there yet, drops it and runs again.
+// Takes a builder because each caller filters differently.
+const selectUsers = async (build) => {
+  const result = await build(userColumns());
+  if (hasDesignation && missingDesignation(result.error)) {
+    hasDesignation = false;
+    return build(userColumns());
+  }
+  return result;
+};
 
 // The only columns an admin may write. Anything else in the body (id,
 // created_at, columns added later) is dropped instead of reaching Supabase.
-const EDITABLE_FIELDS = ['name', 'email', 'role', 'division', 'active', 'password'];
+// designation is the job title printed above a signature on an approved expense
+// document. An admin sets it, not the person themselves — see
+// database/designation-migration.sql.
+const EDITABLE_FIELDS = ['name', 'email', 'role', 'division', 'designation', 'active', 'password'];
 
 const isNonEmptyString = (value) => typeof value === 'string' && value.trim().length > 0;
 
@@ -44,11 +72,9 @@ const canView = (actor, targetRole) =>
 // Supabase runs with the service-role key and no RLS, so the target has to be
 // read back before a write to know which team it belongs to.
 const findUser = async (id) => {
-  const { data, error } = await supabase
-    .from('users')
-    .select(USER_COLUMNS)
-    .eq('id', id)
-    .limit(1);
+  const { data, error } = await selectUsers((cols) =>
+    supabase.from('users').select(cols).eq('id', id).limit(1)
+  );
   if (error) throw error;
   return data && data[0] ? data[0] : null;
 };
@@ -56,10 +82,9 @@ const findUser = async (id) => {
 // GET all users (admin only) – team admins see only their own team
 router.get('/', auth, admin, async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from('users')
-      .select(USER_COLUMNS)
-      .order('created_at', { ascending: false });
+    const { data, error } = await selectUsers((cols) =>
+      supabase.from('users').select(cols).order('created_at', { ascending: false })
+    );
     if (error) throw error;
     res.json((data || []).filter((u) => canView(req.user, u.role)));
   } catch (err) {
@@ -71,7 +96,7 @@ router.get('/', auth, admin, async (req, res) => {
 // CREATE user
 router.post('/', auth, admin, async (req, res) => {
   try {
-    const { name, email, password, role, division } = req.body;
+    const { name, email, password, role, division, designation } = req.body;
 
     // A row with a null/blank password can never be logged into and fails with
     // an opaque error, so reject it up front.
@@ -86,10 +111,13 @@ router.post('/', auth, admin, async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const { data, error } = await supabase
-      .from('users')
-      .insert([{ name, email, password: hashedPassword, role, division, active: true }])
-      .select(USER_COLUMNS);
+    // Built inside the builder so a retry after "no such column" drops
+    // designation from the row as well as from the returned columns.
+    const { data, error } = await selectUsers((cols) => {
+      const row = { name, email, password: hashedPassword, role, division, active: true };
+      if (hasDesignation && isNonEmptyString(designation)) row.designation = designation.trim();
+      return supabase.from('users').insert([row]).select(cols);
+    });
     if (error) throw error;
     res.json(data[0]);
   } catch (err) {
@@ -137,6 +165,13 @@ router.put('/:id', auth, admin, async (req, res) => {
       updateData.password = await bcrypt.hash(updateData.password, 10);
     }
 
+    // Cleared rather than stored as an empty string, so the PDF's fallback to
+    // the role fires instead of printing a blank line under the signature.
+    if ('designation' in updateData) {
+      const title = typeof updateData.designation === 'string' ? updateData.designation.trim() : '';
+      updateData.designation = title || null;
+    }
+
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({ message: 'No updatable fields provided' });
     }
@@ -145,7 +180,17 @@ router.put('/:id', auth, admin, async (req, res) => {
       .from('users')
       .update(updateData)
       .eq('id', req.params.id);
-    if (error) throw error;
+    if (error) {
+      // Said plainly rather than as a generic 500 — the only way to hit this is
+      // an unrun designation-migration.sql, and the fix is to run it.
+      if (missingDesignation(error)) {
+        hasDesignation = false;
+        return res.status(409).json({
+          message: 'Designations are not enabled yet - run database/designation-migration.sql',
+        });
+      }
+      throw error;
+    }
     res.json({ message: 'User updated' });
   } catch (err) {
     console.error(err);

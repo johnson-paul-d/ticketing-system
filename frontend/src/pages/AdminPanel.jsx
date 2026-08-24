@@ -54,6 +54,9 @@ export default function AdminPanel() {
     return creatable.includes("User - MKTG") ? "User - MKTG" : creatable[0] || "User - MKTG";
   });
   const [division, setDivision] = useState("CPS");
+  // Job title, not a permissions label. It is what prints under the signature
+  // on an approved expense document, so an admin sets it, not the person.
+  const [designation, setDesignation] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
@@ -64,6 +67,11 @@ export default function AdminPanel() {
   // of the page — a row action's failure shown there reads as a create failure
   // and is usually scrolled off screen.
   const [rowError, setRowError] = useState("");
+  // Bumped when a designation fails to save. Without it the box keeps the
+  // rejected text — the stored value did not change, so the remount key below
+  // would not change either, and a title nobody saved would sit there looking
+  // saved.
+  const [designationTick, setDesignationTick] = useState(0);
 
   const fetchUsers = async () => {
     try {
@@ -88,10 +96,11 @@ export default function AdminPanel() {
     setSaving(true);
     setError("");
     try {
-      await api.post("/users", { name, email, password, role, division });
+      await api.post("/users", { name, email, password, role, division, designation: designation.trim() });
       setName("");
       setEmail("");
       setPassword("");
+      setDesignation("");
       fetchUsers();
     } catch (err) {
       setError(err.response?.data?.message || "Failed to create user");
@@ -127,6 +136,25 @@ export default function AdminPanel() {
     } catch (err) {
       setRowError(err.response?.data?.message || "Failed to change role");
       // Re-sync from the server so the dropdown reflects what is actually stored.
+      fetchUsers();
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  // Saved on blur rather than per keystroke — this is a free-text field edited
+  // in place in a table row, and a request per character would be absurd.
+  const saveDesignation = async (user, value) => {
+    const next = value.trim();
+    if (next === (user.designation || "")) return;
+    setBusyId(user.id);
+    setRowError("");
+    try {
+      await api.put(`/users/${user.id}`, { designation: next });
+      fetchUsers();
+    } catch (err) {
+      setRowError(err.response?.data?.message || "Failed to save designation");
+      setDesignationTick((n) => n + 1);
       fetchUsers();
     } finally {
       setBusyId(null);
@@ -219,6 +247,20 @@ export default function AdminPanel() {
               <option>All User</option>
             </select>
           </div>
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-semibold text-gray-500 mb-1.5">
+              Designation <span className="font-normal text-gray-400">· optional</span>
+            </label>
+            <input
+              placeholder="e.g. General Manager - Marketing"
+              value={designation}
+              onChange={(e) => setDesignation(e.target.value)}
+              className={inputCls}
+            />
+            <p className="text-[11px] text-gray-400 mt-1.5">
+              The job title printed under this person's signature on approved expense documents.
+            </p>
+          </div>
         </div>
 
         <button
@@ -249,6 +291,16 @@ export default function AdminPanel() {
         />
       </div>
 
+      {/* A row action's failure, shown next to the rows rather than in the
+          Create User card at the top — which is usually scrolled off screen
+          and reads as a create failure. */}
+      {rowError && (
+        <div className="mb-4 bg-red-50 text-red-700 text-sm px-4 py-3 rounded-xl border border-red-200 flex items-start justify-between gap-3">
+          <span>{rowError}</span>
+          <button onClick={() => setRowError("")} className="text-red-400 hover:text-red-600 font-bold flex-shrink-0">✕</button>
+        </div>
+      )}
+
       {/* USERS */}
       {loading ? (
         <div className="flex items-center justify-center py-16 text-gray-400 gap-2">
@@ -264,6 +316,7 @@ export default function AdminPanel() {
                   <th className="px-5 py-3 font-semibold">Name</th>
                   <th className="px-4 py-3 font-semibold">Email</th>
                   <th className="px-4 py-3 font-semibold">Role</th>
+                  <th className="px-4 py-3 font-semibold">Designation</th>
                   <th className="px-4 py-3 font-semibold">Division</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
                   <th className="px-4 py-3 font-semibold text-right">Action</th>
@@ -307,6 +360,29 @@ export default function AdminPanel() {
                         >
                           {user.role || "—"}
                         </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {canManageUser(user) ? (
+                        <input
+                          // Re-keyed on the stored value so a refetch (or a
+                          // rejected save) resets the box to what is actually saved.
+                          key={`${user.id}:${user.designation || ""}:${designationTick}`}
+                          defaultValue={user.designation || ""}
+                          placeholder="Add title…"
+                          disabled={busyId === user.id}
+                          onBlur={(e) => saveDesignation(user, e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") e.target.blur();
+                            if (e.key === "Escape") {
+                              e.target.value = user.designation || "";
+                              e.target.blur();
+                            }
+                          }}
+                          className="w-40 text-xs px-2 py-1 rounded-lg border border-transparent hover:border-gray-200 focus:border-gray-200 bg-transparent outline-none focus:ring-2 focus:ring-[#9b2423]/40 disabled:opacity-50 placeholder:text-gray-300"
+                        />
+                      ) : (
+                        <span className="text-xs text-gray-600">{user.designation || "—"}</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-gray-600">{user.division}</td>
@@ -412,6 +488,23 @@ export default function AdminPanel() {
                     <span className="text-xs text-gray-400">Not on your team</span>
                   )}
                 </div>
+                {canManageUser(user) ? (
+                  <input
+                    key={`${user.id}:${user.designation || ""}:${designationTick}`}
+                    defaultValue={user.designation || ""}
+                    placeholder="Designation (e.g. General Manager - Marketing)"
+                    disabled={busyId === user.id}
+                    onBlur={(e) => saveDesignation(user, e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.target.blur();
+                    }}
+                    className="mt-3 w-full text-xs px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 outline-none focus:ring-2 focus:ring-[#9b2423]/40 disabled:opacity-50"
+                  />
+                ) : (
+                  user.designation && (
+                    <p className="mt-3 text-xs text-gray-500">{user.designation}</p>
+                  )
+                )}
                 {canManageUser(user) && (
                   <button
                     onClick={() => sendReset(user)}

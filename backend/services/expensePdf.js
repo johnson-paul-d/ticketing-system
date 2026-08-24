@@ -279,6 +279,17 @@ const fmtStamp = (value) => formatIST(value, { withTime: true }) || '-';
 
 const lineStatus = (line) => line.approval_status || 'Pending';
 
+/**
+ * What to print under an approver's signature.
+ *
+ * The job title, not the permissions label. "Admin - Marketing" says what
+ * someone may do in this system; "General Manager - Marketing" is who signed
+ * the document. Both are frozen onto the line at approval time, so this reads
+ * what the signer was then rather than what they are now. Falls back to the
+ * role for approvals predating designations, or for anyone without one set.
+ */
+const approverTitle = (line) => line.approved_by_designation || line.approved_by_role || '';
+
 const lineTotal = (line) => Number(line.amount || 0) + Number(line.tax_amount || 0);
 
 /**
@@ -643,8 +654,9 @@ const GRID = (() => {
 const drawClaimApproval = (
   page,
   fonts,
-  { y, approvers, signature, approvedTotal, currency, lineCount }
+  { y, approvers, signature, approvedTotal, currency, approvedCount, lineCount }
 ) => {
+  const partial = approvedCount < lineCount;
   let cursor = y;
 
   metaLabel(page, fonts, 'Approved by', MARGIN, cursor);
@@ -727,18 +739,26 @@ const drawClaimApproval = (
     font: fonts.bold,
     size: fitSize(figure, fonts.bold, 220, 18, 10),
   });
-  textTrackedRight(page, `ALL ${lineCount} LINE${lineCount === 1 ? '' : 'S'} APPROVED`, {
+  // What the signature covers, stated beside the figure it covers. On a partly
+  // approved claim this is the line that stops the sheet reading as blanket
+  // approval, so it is never omitted.
+  const coverage = partial
+    ? `${approvedCount} OF ${lineCount} LINES APPROVED`
+    : `ALL ${lineCount} LINE${lineCount === 1 ? '' : 'S'} APPROVED`;
+  textTrackedRight(page, coverage, {
     end: PAGE.width - MARGIN,
     y: sigRule - 54,
-    font: fonts.regular,
+    font: fonts.bold,
     size: 6.4,
-    color: MUTED,
+    color: partial ? ALERT : MUTED,
     tracking: 1.1,
   });
 
   cursor -= 22;
   wrapText(
-    'Each line was approved separately and has its own signed document carrying a verification code. This sheet summarises those approvals.',
+    partial
+      ? `This signature covers the ${approvedCount} line${approvedCount === 1 ? '' : 's'} marked Approved above and no others. Each was approved separately and has its own signed document carrying a verification code.`
+      : 'Each line was approved separately and has its own signed document carrying a verification code. This sheet summarises those approvals.',
     fonts.regular,
     7.8,
     CONTENT_W,
@@ -954,9 +974,12 @@ const drawSummary = async (pdf, fonts, { claim, lines, receiptCount }) => {
   y -= 26;
 
   // ---------------------------------------------------
-  // No signature and no verification code on this sheet: nobody signs a claim.
-  // What the claim can honestly report is the tally of its lines, so a reader
-  // holding only this page can see that some of it may have been refused.
+  // The sheet is signed by whoever approved its lines. Where not every line was
+  // approved it still says so — the banner below, the per-line status column,
+  // and the signature block itself, which states how many of how many the
+  // signature covers. What it must never do is imply blanket approval, which is
+  // why the count sits next to the name rather than the signature standing
+  // alone.
   // ---------------------------------------------------
   if (y - (approved ? 110 : 190) < BODY_BOTTOM) newPage();
 
@@ -974,7 +997,7 @@ const drawSummary = async (pdf, fonts, { claim, lines, receiptCount }) => {
     y -= BANNER_H + 14;
 
     const explanation = wrapText(
-      `This claim is in "${claim.status}" status. Only the lines marked Approved above were signed off, each on its own document; this summary is not evidence of approval.`,
+      `This claim is in "${claim.status}" status. Only the lines marked Approved above were signed off; the signature below covers those lines and no others.`,
       fonts.regular,
       9,
       CONTENT_W,
@@ -1005,7 +1028,10 @@ const drawSummary = async (pdf, fonts, { claim, lines, receiptCount }) => {
   // signature is drawn — a graphic beside a list of names would suggest one
   // person signed for all of them.
   // ---------------------------------------------------
-  const everyLineApproved = lines.length > 0 && tally.Approved === lines.length;
+  // Signed whenever anything on the sheet actually was approved. With nothing
+  // approved there is no signature to give: a graphic there would attest to a
+  // decision nobody made.
+  const anyLineApproved = tally.Approved > 0;
   const approvers = [];
   for (const line of lines) {
     if (!line.approved_by_name) continue;
@@ -1013,7 +1039,7 @@ const drawSummary = async (pdf, fonts, { claim, lines, receiptCount }) => {
     if (!seen) {
       approvers.push({
         name: line.approved_by_name,
-        role: line.approved_by_role || '',
+        role: approverTitle(line),
         id: line.approved_by,
         at: line.approved_at,
       });
@@ -1022,7 +1048,7 @@ const drawSummary = async (pdf, fonts, { claim, lines, receiptCount }) => {
     }
   }
 
-  if (everyLineApproved && approvers.length) {
+  if (anyLineApproved && approvers.length) {
     const signature =
       approvers.length === 1 ? await loadSignatureImage(pdf, approvers[0].id) : null;
     y = drawClaimApproval(page, fonts, {
@@ -1032,9 +1058,10 @@ const drawSummary = async (pdf, fonts, { claim, lines, receiptCount }) => {
       signature,
       approvedTotal,
       currency,
+      approvedCount: tally.Approved,
       lineCount: lines.length,
     });
-    return; // the rollup panel below is for a claim that is not wholly approved
+    return; // the rollup panel below is for a claim with nothing approved yet
   }
 
   const PANEL_H = 86;
@@ -1210,7 +1237,7 @@ const drawLineDocument = (pdf, fonts, { claim, line, reference, signature, recei
     size: 11.5,
   });
   y -= 13;
-  text(page, fitText(safe(line.approved_by_role || '-'), fonts.regular, 9.5, 230), {
+  text(page, fitText(safe(approverTitle(line) || '-'), fonts.regular, 9.5, 230), {
     x: MARGIN,
     y,
     font: fonts.regular,
@@ -1281,7 +1308,7 @@ const approvalStamp = (claim, line) => {
       return {
         approved: true,
         status: 'Approved',
-        label: `Approved by ${line.approved_by_name || 'unknown'}, ${line.approved_by_role || '-'} - ${fmtStamp(line.approved_at)}`,
+        label: `Approved by ${line.approved_by_name || 'unknown'}, ${approverTitle(line) || '-'} - ${fmtStamp(line.approved_at)}`,
       };
     }
     return {

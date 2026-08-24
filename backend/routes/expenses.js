@@ -1138,25 +1138,41 @@ const approveOneLine = async (claim, line, approver, receiptsByLine) => {
   const hash = lineApprovalHash(claim, line, lineReceipts, approver, now);
 
   let verifyCode = verifyCodeFrom(hash);
-  for (let attempt = 0; attempt < 5; attempt += 1) {
+  let withDesignation = hasDesignation;
+
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const patch = {
+      approval_status: 'Approved',
+      approved_by: approver.id,
+      approved_by_name: approver.name,
+      approved_by_role: approver.role,
+      approved_at: now,
+      approval_hash: hash,
+      verify_code: verifyCode,
+      rejection_reason: null,
+    };
+    // Frozen at approval, like the role: a later promotion must not rewrite
+    // what an already-printed document says the signer was.
+    if (withDesignation) patch.approved_by_designation = approver.designation || null;
+
     const result = await supabase
       .from('expense_lines')
-      .update({
-        approval_status: 'Approved',
-        approved_by: approver.id,
-        approved_by_name: approver.name,
-        approved_by_role: approver.role,
-        approved_at: now,
-        approval_hash: hash,
-        verify_code: verifyCode,
-        rejection_reason: null,
-      })
+      .update(patch)
       .eq('id', line.id)
       .eq('approval_status', 'Pending')
       .select()
       .single();
 
     if (!result.error) return { line: result.data };
+
+    // designation-migration.sql may not have run. Drop the column and retry
+    // rather than refusing the approval — a missing job title on the document
+    // is a smaller problem than an expense nobody can approve.
+    if (withDesignation && isMissingColumn(result.error, 'approved_by_designation')) {
+      withDesignation = false;
+      hasDesignation = false; // spare every later approval the same wasted round-trip
+      continue;
+    }
     // 23505 = unique violation on verify_code.
     if (result.error.code !== '23505') throw result.error;
     verifyCode = verifyCodeFrom(hash + attempt);
@@ -1179,12 +1195,24 @@ const ensureClaimNumber = async (claim) => {
 
 // The approver's signature is the point of the exercise — refuse rather than
 // produce a document with an empty stamp where one is supposed to be.
+// designation arrives with designation-migration.sql. Naming a column that is
+// not there yet fails the whole query, and a null approver here reads as "no
+// signature" — which would refuse every approval in the system. So it is asked
+// for once and dropped for good on the first miss.
+let hasDesignation = true;
 const loadApprover = async (userId) => {
-  const { data } = await supabase
-    .from('users')
-    .select('id, name, role, signature_path')
-    .eq('id', userId)
-    .single();
+  const run = () =>
+    supabase
+      .from('users')
+      .select(`id, name, role, ${hasDesignation ? 'designation, ' : ''}signature_path`)
+      .eq('id', userId)
+      .single();
+
+  let { data, error } = await run();
+  if (hasDesignation && isMissingColumn(error, 'designation')) {
+    hasDesignation = false;
+    ({ data, error } = await run());
+  }
   return data;
 };
 
