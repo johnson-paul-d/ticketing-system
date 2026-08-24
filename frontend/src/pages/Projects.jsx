@@ -109,6 +109,20 @@ export function MemberAvatars({ members, max = 4 }) {
   );
 }
 
+// Where a project actually stands, read from its tasks rather than from the
+// stored `status` column — every project in the system sits at "Active", so
+// that field says nothing. A project with no tasks yet counts as Open: there is
+// certainly no progress on it.
+export const WORK_STATES = ["Open", "In Progress", "Completed"];
+
+export const workState = (project) => {
+  const total = project.stats?.total || 0;
+  const done = project.stats?.done || 0;
+  if (total > 0 && done === total) return "Completed";
+  if (done > 0) return "In Progress";
+  return "Open";
+};
+
 const statusChip = {
   Active: "bg-emerald-50 text-emerald-700 border-emerald-200",
   "On Hold": "bg-amber-50 text-amber-700 border-amber-200",
@@ -127,6 +141,7 @@ export default function Projects() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [fDivision, setFDivision] = useState("");
+  const [fState, setFState] = useState("");
 
   // Create form
   const [name, setName] = useState("");
@@ -186,9 +201,16 @@ export default function Projects() {
   );
 
   const visibleProjects = useMemo(
-    () => (fDivision ? projects.filter((p) => p.division === fDivision) : projects),
-    [projects, fDivision]
+    () =>
+      projects.filter((p) => {
+        if (fDivision && p.division !== fDivision) return false;
+        if (fState && workState(p) !== fState) return false;
+        return true;
+      }),
+    [projects, fDivision, fState]
   );
+
+  const filtersActive = Boolean(fDivision || fState);
 
   const toggleMember = (id) =>
     setMemberIds((prev) =>
@@ -277,8 +299,20 @@ export default function Projects() {
         </div>
       ) : (
         <>
-          {divisionOptions.length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap mb-5">
+          <div className="flex items-center gap-2 flex-wrap mb-5">
+            <select
+              value={fState}
+              onChange={(e) => setFState(e.target.value)}
+              className="bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs outline-none text-gray-600"
+            >
+              <option value="">All projects</option>
+              {WORK_STATES.map((s) => (
+                <option key={s} value={s}>
+                  {s} ({projects.filter((p) => workState(p) === s).length})
+                </option>
+              ))}
+            </select>
+            {divisionOptions.length > 0 && (
               <select
                 value={fDivision}
                 onChange={(e) => setFDivision(e.target.value)}
@@ -289,12 +323,26 @@ export default function Projects() {
                   <option key={d}>{d}</option>
                 ))}
               </select>
-            </div>
-          )}
+            )}
+            {filtersActive && (
+              <button
+                onClick={() => {
+                  setFState("");
+                  setFDivision("");
+                }}
+                className="inline-flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-[#9b2423] px-2 py-2"
+              >
+                <X size={14} /> Clear
+              </button>
+            )}
+            <span className="text-xs text-gray-400 ml-auto">
+              {visibleProjects.length} of {projects.length}
+            </span>
+          </div>
 
           {visibleProjects.length === 0 ? (
             <div className="bg-white rounded-2xl shadow-sm p-12 text-center text-gray-400">
-              No projects in this division
+              No projects match these filters
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
