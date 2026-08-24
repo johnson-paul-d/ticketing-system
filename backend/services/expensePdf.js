@@ -632,7 +632,126 @@ const GRID = (() => {
 // =====================================================
 // SUMMARY PAGE
 // =====================================================
-const drawSummary = (pdf, fonts, { claim, lines, receiptCount }) => {
+/**
+ * The approval block on a claim every line of which was approved.
+ *
+ * Mirrors the line document's signature block, because it is making the same
+ * statement — this was signed off — and the two should not look like different
+ * kinds of document. It is only ever reached when nothing on the claim is
+ * pending or refused.
+ */
+const drawClaimApproval = (
+  page,
+  fonts,
+  { y, approvers, signature, approvedTotal, currency, lineCount }
+) => {
+  let cursor = y;
+
+  metaLabel(page, fonts, 'Approved by', MARGIN, cursor);
+  cursor -= 10;
+
+  const SIG_AREA_H = 60;
+  const sigRule = cursor - SIG_AREA_H;
+
+  if (signature) {
+    const box = signature.scaleToFit(200, SIG_AREA_H - 8);
+    page.drawImage(signature, { x: MARGIN + 4, y: sigRule + 5, width: box.width, height: box.height });
+  } else if (approvers.length > 1) {
+    // Several people signed different lines. Drawing one signature here would
+    // say something none of them said.
+    text(page, 'Signed line by line - see each line document', {
+      x: MARGIN + 4,
+      y: sigRule + 10,
+      font: fonts.regular,
+      size: 8.5,
+      color: MUTED,
+    });
+  } else {
+    text(page, '(signature image unavailable)', {
+      x: MARGIN + 4,
+      y: sigRule + 10,
+      font: fonts.regular,
+      size: 8.5,
+      color: MUTED,
+    });
+  }
+  hairline(page, sigRule, { to: MARGIN + 230, thickness: 0.9, color: INK });
+
+  cursor = sigRule - 15;
+  const primary = approvers[0];
+  text(page, fitText(safe(primary.name || 'Unknown approver'), fonts.bold, 11.5, 230), {
+    x: MARGIN,
+    y: cursor,
+    font: fonts.bold,
+    size: 11.5,
+  });
+  cursor -= 13;
+  text(page, fitText(safe(primary.role || '-'), fonts.regular, 9.5, 230), {
+    x: MARGIN,
+    y: cursor,
+    font: fonts.regular,
+    size: 9.5,
+    color: MUTED,
+  });
+  cursor -= 13;
+  text(page, `Approved ${fmtStamp(primary.at)}`, {
+    x: MARGIN,
+    y: cursor,
+    font: fonts.regular,
+    size: 8.5,
+    color: MUTED,
+  });
+
+  if (approvers.length > 1) {
+    cursor -= 12;
+    const rest = approvers.slice(1).map((a) => `${a.name}${a.role ? ` (${a.role})` : ''}`).join('; ');
+    wrapText(`Also approved by ${rest}`, fonts.regular, 8, 240, 2).forEach((part, i) => {
+      text(page, part, { x: MARGIN, y: cursor - i * 10, font: fonts.regular, size: 8, color: MUTED });
+    });
+    cursor -= 10;
+  }
+
+  // The figure, right-aligned opposite the signature.
+  textTrackedRight(page, `APPROVED TOTAL (${currency})`, {
+    end: PAGE.width - MARGIN,
+    y: sigRule - 15,
+    font: fonts.bold,
+    size: 6.4,
+    color: MUTED,
+    tracking: 1.15,
+  });
+  const figure = money(approvedTotal);
+  textRight(page, figure, {
+    end: PAGE.width - MARGIN,
+    y: sigRule - 40,
+    font: fonts.bold,
+    size: fitSize(figure, fonts.bold, 220, 18, 10),
+  });
+  textTrackedRight(page, `ALL ${lineCount} LINE${lineCount === 1 ? '' : 'S'} APPROVED`, {
+    end: PAGE.width - MARGIN,
+    y: sigRule - 54,
+    font: fonts.regular,
+    size: 6.4,
+    color: MUTED,
+    tracking: 1.1,
+  });
+
+  cursor -= 22;
+  wrapText(
+    'Each line was approved separately and has its own signed document carrying a verification code. This sheet summarises those approvals.',
+    fonts.regular,
+    7.8,
+    CONTENT_W,
+    2
+  ).forEach((part, i) => {
+    text(page, part, { x: MARGIN, y: cursor - i * 11, font: fonts.regular, size: 7.8, color: MUTED });
+  });
+
+  return cursor - 24;
+};
+
+// Async because a wholly-approved claim fetches the approver's signature.
+const drawSummary = async (pdf, fonts, { claim, lines, receiptCount }) => {
   const approved = claim.status === 'Approved';
   const currency = claim.currency || 'INR';
   const docType = 'EXPENSE CLAIM';
@@ -873,6 +992,49 @@ const drawSummary = (pdf, fonts, { claim, lines, receiptCount }) => {
     const status = lineStatus(line);
     tally[status] = (tally[status] || 0) + 1;
     if (status === 'Approved') approvedTotal += lineTotal(line);
+  }
+
+  // ---------------------------------------------------
+  // A claim whose every line was approved is, in substance, an approved claim,
+  // and the sheet says so with the approver's signature. The rule it must not
+  // break is the other direction: a claim with anything still pending or
+  // refused gets the rollup below and no signature, so a summary can never
+  // stand in for an approval that was not given.
+  //
+  // Several people may have signed different lines. Only a sole approver's
+  // signature is drawn — a graphic beside a list of names would suggest one
+  // person signed for all of them.
+  // ---------------------------------------------------
+  const everyLineApproved = lines.length > 0 && tally.Approved === lines.length;
+  const approvers = [];
+  for (const line of lines) {
+    if (!line.approved_by_name) continue;
+    const seen = approvers.find((a) => a.name === line.approved_by_name);
+    if (!seen) {
+      approvers.push({
+        name: line.approved_by_name,
+        role: line.approved_by_role || '',
+        id: line.approved_by,
+        at: line.approved_at,
+      });
+    } else if (line.approved_at && (!seen.at || line.approved_at > seen.at)) {
+      seen.at = line.approved_at;
+    }
+  }
+
+  if (everyLineApproved && approvers.length) {
+    const signature =
+      approvers.length === 1 ? await loadSignatureImage(pdf, approvers[0].id) : null;
+    y = drawClaimApproval(page, fonts, {
+      y,
+      claim,
+      approvers,
+      signature,
+      approvedTotal,
+      currency,
+      lineCount: lines.length,
+    });
+    return; // the rollup panel below is for a claim that is not wholly approved
   }
 
   const PANEL_H = 86;
@@ -1461,7 +1623,7 @@ const buildClaimPdf = async (claimId) => {
 
   // No signature is fetched at all: the claim document has nowhere honest to put
   // one, since the approvals it summarises belong to individual lines.
-  drawSummary(pdf, fonts, { claim, lines, receiptCount: receipts.length });
+  await drawSummary(pdf, fonts, { claim, lines, receiptCount: receipts.length });
 
   const linesById = new Map(lines.map((line) => [line.id, line]));
   const guard = newGuard();
