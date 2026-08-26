@@ -3,7 +3,7 @@ import {
   Menu, X, LayoutDashboard, Cpu, KanbanSquare, Calendar,
   Shield, BarChart3, LogOut, PlusCircle, ChevronRight, ClipboardCheck, FolderKanban,
   Target, Building2, CalendarCheck, TrendingUp, Gauge, ChevronDown, Receipt, Signature,
-  Wallet
+  Wallet, KeyRound
 } from "lucide-react";
 import { useState } from "react";
 import useAuthStore from "../store/authStore";
@@ -73,6 +73,7 @@ export default function MainLayout({ children }) {
   const adminChildren = admin
     ? [
         { label: "Admin Panel", path: "/admin", icon: Shield },
+        { label: "API Keys", path: "/admin/api-keys", icon: KeyRound },
         { label: "Pending Requests", path: "/pending-approvals", icon: ClipboardCheck },
         // Admins only: a signature is only ever used on something you approve, so
         // the link would be noise for everyone else. The route itself stays open.
