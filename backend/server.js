@@ -24,6 +24,7 @@ const projectRoutes = require('./routes/projects');
 const abmRoutes = require('./routes/abm');
 const expenseRoutes = require('./routes/expenses');
 const verifyRoutes = require('./routes/verify');
+const apiKeyRoutes = require('./routes/apiKeys');
 
 const app = express();
 const server = http.createServer(app);
@@ -127,6 +128,7 @@ app.get('/api/test', (req, res) => res.json({ message: 'Backend works' }));
 app.use('/api/auth', authRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/api-keys', apiKeyRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/abm', abmRoutes);

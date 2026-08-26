@@ -15,6 +15,7 @@ const EditTicket         = lazy(() => import("./pages/EditTicket"));
 const Kanban             = lazy(() => import("./pages/Kanban"));
 const TicketCalendar     = lazy(() => import("./pages/TicketCalendar"));
 const AdminPanel         = lazy(() => import("./pages/AdminPanel"));
+const ApiKeys            = lazy(() => import("./pages/ApiKeys"));
 const PendingApprovals   = lazy(() => import("./pages/PendingApprovals"));
 const Projects           = lazy(() => import("./pages/Projects"));
 const ProjectDetails     = lazy(() => import("./pages/ProjectDetails"));
@@ -194,6 +195,15 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={["Admin"]}>
                 <AdminPanel />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/api-keys"
+            element={
+              <ProtectedRoute allowedRoles={["Admin"]}>
+                <ApiKeys />
               </ProtectedRoute>
             }
           />

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { UserPlus, Users, Search, Loader2, ShieldCheck } from "lucide-react";
+import { UserPlus, Users, Search, Loader2, ShieldCheck, KeyRound } from "lucide-react";
+import { Link } from "react-router-dom";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
 import useAuthStore from "../store/authStore";
@@ -192,13 +193,21 @@ export default function AdminPanel() {
 
   return (
     <MainLayout>
-      <div className="mb-6">
-        <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-3">
-          <ShieldCheck className="text-[#9b2423]" size={28} /> Admin Panel
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          {users.length} users · {activeCount} active
-        </p>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-3">
+            <ShieldCheck className="text-[#9b2423]" size={28} /> Admin Panel
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">
+            {users.length} users · {activeCount} active
+          </p>
+        </div>
+        <Link
+          to="/admin/api-keys"
+          className="inline-flex items-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl bg-white border border-gray-200 text-gray-700 hover:bg-gray-50"
+        >
+          <KeyRound size={16} className="text-[#9b2423]" /> API Keys
+        </Link>
       </div>
 
       {/* CREATE USER */}
