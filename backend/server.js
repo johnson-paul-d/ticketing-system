@@ -26,6 +26,7 @@ const abmRoutes = require('./routes/abm');
 const expenseRoutes = require('./routes/expenses');
 const verifyRoutes = require('./routes/verify');
 const apiKeyRoutes = require('./routes/apiKeys');
+const openapiRoutes = require('./routes/openapi');
 
 const app = express();
 const server = http.createServer(app);
@@ -151,6 +152,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/api-keys', apiKeyRoutes);
+// Public by design — an agent platform fetches the schema anonymously, before
+// it has any credential to fetch it with. It carries no data.
+app.use('/api/openapi.json', openapiRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/abm', abmRoutes);
