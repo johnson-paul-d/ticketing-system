@@ -7,6 +7,7 @@ const jwt = require('jsonwebtoken');
 
 const { TEAM, isAdmin, isSuperAdmin, getUserTeam } = require('./utils/roles');
 const { teamRoom, userRoom } = require('./utils/realtime');
+const { looksLikeApiKey } = require('./utils/apiKeys');
 
 // Fail fast rather than booting an app whose auth silently accepts nothing.
 for (const key of ['JWT_SECRET', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']) {
@@ -55,19 +56,40 @@ const allowedOrigins = [
 
 
 
-const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps, curl)
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true,
+// An API key request is allowed from anywhere.
+//
+// CORS exists to stop a hostile page using a victim's *ambient* credentials —
+// cookies the browser attaches on its own. This API has none: every caller
+// presents a bearer token it had to be given. A page that does not hold the key
+// gains nothing from being allowed to ask, and one that does hold it could call
+// from a server anyway, where CORS does not apply at all.
+//
+// The browser sends no Authorization header on a preflight, so the intent has
+// to be read from Access-Control-Request-Headers instead.
+const carriesApiKey = (req) => {
+  const direct = req.headers.authorization || '';
+  if (looksLikeApiKey(direct.replace(/^Bearer\s+/i, '').trim())) return true;
+  const asked = String(req.headers['access-control-request-headers'] || '');
+  return req.method === 'OPTIONS' && /authorization/i.test(asked);
+};
+
+const corsOptions = (req, callback) => {
+  const origin = req.headers.origin;
+  const allowed =
+    // No origin at all: curl, a server-side script, a mobile app.
+    !origin ||
+    allowedOrigins.includes(origin) ||
+    carriesApiKey(req);
+
+  callback(allowed ? null : new Error('Not allowed by CORS'), {
+    origin: allowed ? origin || true : false,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    // Only the first-party app relies on cookie-style credentials. Echoing an
+    // arbitrary origin with credentials:true is the one combination browsers
+    // refuse outright, so it is not claimed for key callers.
+    credentials: !origin || allowedOrigins.includes(origin),
+  });
 };
 
 app.use(cors(corsOptions));
