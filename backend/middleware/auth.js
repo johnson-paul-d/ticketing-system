@@ -42,7 +42,20 @@ module.exports = async (req, res, next) => {
   }
 
   try {
-    req.user = jwt.verify(credential, process.env.JWT_SECRET);
+    const payload = jwt.verify(credential, process.env.JWT_SECRET);
+
+    // A read-only session, which today means a token the OAuth layer minted so
+    // an MCP read can call these same routes as the signed-in person without
+    // carrying their ability to change anything. Enforced here, before any route
+    // can act on it — otherwise read_only would be a label on a token that in
+    // fact works everywhere. See services/oauth.js, portalCredentialFor.
+    if (payload.read_only === true && req.method !== 'GET' && req.method !== 'OPTIONS') {
+      return res.status(403).json({
+        message: `This session is read-only and cannot ${req.method} anything`,
+      });
+    }
+
+    req.user = payload;
     return next();
   } catch {
     return res.status(401).json({ message: 'Invalid token' });

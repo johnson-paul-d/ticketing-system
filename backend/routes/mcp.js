@@ -23,6 +23,7 @@ const express = require('express');
 const router = express.Router();
 
 const { looksLikeApiKey, resolveApiKey } = require('../utils/apiKeys');
+const oauth = require('../services/oauth');
 const { rateLimit } = require('../utils/rateLimit');
 const tools = require('../services/mcpTools');
 const { PortalError } = require('../services/portalApi');
@@ -122,52 +123,89 @@ const credentialFrom = (req) => {
   return inQuery || null;
 };
 
-// Resolved up front so a bad key fails once, loudly, instead of turning into
-// four identical tool errors the model then tries to work around.
+// Resolved up front so a bad credential fails once, loudly, instead of turning
+// into four identical tool errors the model then tries to work around.
 //
-// Note the absence of a WWW-Authenticate header. Emitting one would advertise
-// the MCP OAuth discovery flow, and a client that followed it would go looking
-// for an authorisation server this app does not have — the failure would then
-// read as "the server is broken" rather than "that key is wrong".
+// Every 401 carries the resource_metadata pointer, which is how a client
+// discovers it can sign in rather than demanding a pasted key: it reads the
+// header, fetches the metadata, finds the authorization server, and starts the
+// OAuth flow on its own. RFC 6750 for the shape, the MCP authorization spec for
+// the resource_metadata parameter.
+// A header value must be ASCII, and these descriptions are written for people —
+// the key prompt carries an ellipsis, and a portal error could carry anything.
+// Node throws on the non-ASCII byte rather than dropping it, which took the whole
+// 401 down with it. The readable form still goes in the JSON body.
+const headerSafe = (text) => String(text).replace(/[^\x20-\x7E]/g, '').replace(/"/g, "'");
+
+const unauthorized = (req, res, error, description) => {
+  res.set(
+    'WWW-Authenticate',
+    `Bearer realm="mcp", error="${error}", error_description="${headerSafe(description)}", ` +
+      `resource_metadata="${oauth.publicOrigin(req)}/.well-known/oauth-protected-resource"`
+  );
+  res.status(401).json({ error, message: description });
+  return null;
+};
+
+// Two kinds of credential reach this endpoint, and they are told apart by shape
+// rather than by asking: an API key is a person deciding a machine may act as
+// them indefinitely, an OAuth token is a person signing in as themselves. Both
+// end up as the same ctx, so nothing downstream has to care which happened.
 const authenticate = async (req, res) => {
   const credential = credentialFrom(req);
   if (!credential) {
-    res.status(401).json({
-      error: 'missing_api_key',
-      message:
-        'This MCP server needs a ticketing API key. Send it as "Authorization: Bearer stk_…". ' +
-        'Mint one in the portal under Admin Panel → API Keys.',
-    });
-    return null;
+    return unauthorized(
+      req,
+      res,
+      'missing_token',
+      'Sign in, or send a ticketing API key as "Authorization: Bearer stk_…"'
+    );
   }
 
-  // A JWT works too — the API accepts both — but it expires in seven days, so a
-  // connector built on one silently dies. Only keys get past here.
-  if (!looksLikeApiKey(credential)) {
-    res.status(401).json({
-      error: 'not_an_api_key',
-      message:
-        'That credential is not a ticketing API key. Keys start with "stk_" and are minted in ' +
-        'the portal under Admin Panel → API Keys.',
-    });
-    return null;
+  if (looksLikeApiKey(credential)) {
+    let resolved;
+    try {
+      resolved = await resolveApiKey(credential);
+    } catch (err) {
+      console.error('MCP AUTH ERROR:', err);
+      res.status(500).json({ error: 'auth_failed', message: 'Could not verify the API key' });
+      return null;
+    }
+
+    if (resolved.error) return unauthorized(req, res, 'invalid_token', resolved.error);
+
+    return { credential, user: resolved.user, key: resolved.key };
   }
 
-  let resolved;
-  try {
-    resolved = await resolveApiKey(credential);
-  } catch (err) {
-    console.error('MCP AUTH ERROR:', err);
-    res.status(500).json({ error: 'auth_failed', message: 'Could not verify the API key' });
-    return null;
+  if (oauth.looksLikeOAuthToken(credential)) {
+    let resolved;
+    try {
+      resolved = await oauth.verifyAccessToken(credential);
+    } catch (err) {
+      console.error('MCP OAUTH ERROR:', err);
+      res.status(500).json({ error: 'auth_failed', message: 'Could not verify the access token' });
+      return null;
+    }
+
+    if (resolved.error) return unauthorized(req, res, 'invalid_token', resolved.error);
+
+    // The tools read through this app's own routes, which want a session token
+    // rather than an OAuth one. This mints a short-lived, read-only session for
+    // the person who signed in — so the reads carry their permissions and
+    // nothing more. See services/oauth.js.
+    return {
+      credential: oauth.cachedPortalCredential(resolved.user),
+      user: resolved.user,
+      key: { id: null, name: 'OAuth sign-in', readOnly: true },
+    };
   }
 
-  if (resolved.error) {
-    res.status(resolved.status || 401).json({ error: 'invalid_api_key', message: resolved.error });
-    return null;
-  }
-
-  return { credential, user: resolved.user, key: resolved.key };
+  return unauthorized(
+    req,
+    res,
+    'invalid_token',
+    'That credential is neither a ticketing API key nor an access token from this server'
+  );
 };
 
 // ---------------------------------------------------------------

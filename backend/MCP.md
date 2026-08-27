@@ -5,13 +5,39 @@ ticketing portal directly, instead of being handed exports.
 
 ```
 POST https://ticketing-backend-6azk.onrender.com/mcp
-Authorization: Bearer stk_…
+Authorization: Bearer <OAuth token, or an stk_ API key>
 ```
 
 It runs inside this same Express app. There is no second service to deploy and
 nothing to host: mounting `/mcp` is the whole of it.
 
 ## Connecting ChatGPT
+
+Two ways in. **Signing in is the better one** — the connection then carries the
+permissions of whoever signed in, each person gets their own, and nobody has to
+handle a credential. Use an API key when there is no person: a scheduled job, a
+shared workspace connector, something running unattended.
+
+### Option A — sign in (OAuth)
+
+Add the connector with just the URL and no credential:
+
+```
+https://ticketing-backend-6azk.onrender.com/mcp
+```
+
+The client reads the 401, discovers the authorization server, registers itself,
+and sends the person to a Sieger sign-in page. They enter their normal portal
+email and password, and the connector is theirs. Their password never reaches
+ChatGPT — it is typed into this app.
+
+Access lasts an hour and renews silently for thirty days. Disabling the account
+in the admin panel ends it within thirty seconds.
+
+Nothing needs configuring for this. There is no client to register by hand, no
+secret to set, and no new database table — see the notes at the bottom for why.
+
+### Option B — an API key
 
 1. **Mint a key.** Portal → Admin Panel → API Keys → create one. Choose the user
    it should act as, and leave *read-only* ticked. The key is shown once.
@@ -107,8 +133,26 @@ Nothing is required. Two optional variables:
 - **Adding a write tool means re-reading that boundary.** Read-only keys are
   refused anything that is not a GET, and the write routes carry approval side
   effects and realtime emits that an agent should not fire by accident.
-- **`/mcp` is mounted ahead of the global CORS check** in `server.js`, and is the
-  only route that skips it. The reasoning is in the comment there.
+- **`/mcp` and the OAuth routes are mounted ahead of the global CORS check** in
+  `server.js`, and are the only routes that skip it. The reasoning is in the
+  comment there.
+- **OAuth stores nothing.** There is no DDL access to this database, so a design
+  needing tables would ship as a migration somebody has to remember to run.
+  Instead the `client_id` *is* the registration — a signed token carrying the
+  redirect URIs — and tokens are signed rather than stored. The only state is a
+  Map of authorization codes that live sixty seconds. A redeploy therefore does
+  not invalidate anyone's connector.
+- **The OAuth signing keys are derived from `JWT_SECRET`, not equal to it.**
+  `middleware/auth.js` verifies a `JWT_SECRET` token and trusts it as a full
+  session, so an access token signed with that same secret would also be a
+  session valid on every write route in the app. `services/oauth.js` derives four
+  separate keys, and a token signed for one job fails verification for any other.
+  There is a test for this; keep it.
+- **An OAuth read borrows a read-only session.** The tools call this app's own
+  routes, which want a login-style token, so `portalCredentialFor` mints one for
+  the signed-in person marked `read_only` and valid two minutes.
+  `middleware/auth.js` enforces that flag. Remove the enforcement and the flag
+  becomes a label on a token that can write.
 - The tool descriptions are written for a model, not a developer. They are the
   only instructions it gets, so the non-obvious rules live in them — that a
   finished project is late rather than overdue, that expense lines are approved

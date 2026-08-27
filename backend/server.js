@@ -28,6 +28,7 @@ const verifyRoutes = require('./routes/verify');
 const apiKeyRoutes = require('./routes/apiKeys');
 const openapiRoutes = require('./routes/openapi');
 const mcpRoutes = require('./routes/mcp');
+const oauthRoutes = require('./routes/oauth');
 const workReportRoutes = require('./routes/workReports');
 
 const app = express();
@@ -108,6 +109,13 @@ const corsOptions = (req, callback) => {
 // here. /mcp reads no cookies and every call presents a bearer key, so it sets
 // its own permissive headers instead. See routes/mcp.js.
 app.use('/mcp', mcpRoutes);
+
+// The OAuth endpoints an MCP client walks through to sign someone in, plus the
+// /.well-known documents it reads first. Mounted at the root because discovery
+// is defined against the origin, not against a path the app chose, and ahead of
+// the CORS check for the same reason as /mcp: these are fetched anonymously,
+// carry no data, and are protected by PKCE and a password rather than by origin.
+app.use(oauthRoutes);
 
 app.use(cors(corsOptions));
 
