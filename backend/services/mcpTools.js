@@ -22,6 +22,7 @@
 // are that contract; the other ten are the ones worth using in conversation.
 
 const portal = require('./portalApi');
+const tables = require('./mcpTables');
 const { todayIST } = require('../utils/time');
 
 const APP_URL = (process.env.FRONTEND_URL || 'https://mktg-ticketing-system.vercel.app').replace(
@@ -731,6 +732,91 @@ const tools = [
         return true;
       });
       return { matched: rows.length, users: rows };
+    },
+  },
+
+  // ---------------------------------------------------------------
+  // Everything else in the database
+  // ---------------------------------------------------------------
+  {
+    name: 'describe_tables',
+    title: 'What else can be read',
+    description:
+      'Lists every table this connection can read, what each one holds, and — where it cannot be ' +
+      'read — why. Call this before query_table rather than guessing a table name. Tables that ' +
+      'hold credentials are not listed at all.',
+    inputSchema: { type: 'object', properties: {} },
+    handler: async (_args, ctx) => ({
+      tables: tables.describeTables(ctx.user),
+      note:
+        'Read with query_table. Rows are scoped the same way the app scopes them: you see what you ' +
+        'would see signed in, no more.',
+    }),
+  },
+
+  {
+    name: 'query_table',
+    title: 'Read any table',
+    description:
+      'Reads one table directly — time entries, notifications, leave and permission requests, the ' +
+      'ABM CRM, the LinkedIn and Google Ads analytics, and the tables behind the tools above. ' +
+      'Rows are already scoped to what this connection may see. Use the purpose-built tools where ' +
+      'one exists (ticket_stats, expense_report); this is for everything they do not cover.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        table: { type: 'string', description: 'Table name, as listed by describe_tables.' },
+        columns: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Columns to return. Omit for all of them.',
+        },
+        filters: {
+          type: 'array',
+          description: 'Conditions, all of which must hold.',
+          items: {
+            type: 'object',
+            properties: {
+              column: { type: 'string', description: 'Column to test.' },
+              op: {
+                type: 'string',
+                enum: ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'is_null', 'not_null'],
+                description: '"contains" is a case-insensitive substring match.',
+              },
+              value: { description: 'Value to compare against. Not needed for is_null/not_null.' },
+            },
+            required: ['column', 'op'],
+          },
+        },
+        order: {
+          type: 'object',
+          description: 'Sort order.',
+          properties: {
+            column: { type: 'string' },
+            direction: { type: 'string', enum: ['asc', 'desc'] },
+          },
+        },
+        limit: { type: 'integer', minimum: 1, maximum: 500, description: 'Rows to return. Default 50.' },
+        offset: { type: 'integer', minimum: 0, description: 'Rows to skip, for paging.' },
+      },
+      required: ['table'],
+    },
+    handler: async (args, ctx) => {
+      const result = await tables.queryTable(
+        {
+          table: String(args.table || ''),
+          columns: args.columns,
+          filters: Array.isArray(args.filters) ? args.filters : [],
+          order: args.order,
+          limit: clampLimit(args.limit, 50, 500),
+          offset: Math.max(0, Number(args.offset) || 0),
+        },
+        ctx
+      );
+      // A refusal is an answer — this connection may not read that — so it comes
+      // back as a tool error the model can relay rather than retry.
+      if (result.error) throw new portal.PortalError(403, result.error);
+      return result;
     },
   },
 

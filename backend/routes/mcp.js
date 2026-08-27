@@ -56,6 +56,11 @@ const INSTRUCTIONS = [
   '- A project is late, not overdue, once its tasks are all done — read `complete` and `days_late`',
   '  rather than comparing target_date to today.',
   '- Dates are Indian Standard Time. whoami reports today.',
+  '',
+  'Beyond those: describe_tables lists everything else readable — time entries, notifications,',
+  'leave and permission requests, the ABM CRM, LinkedIn and Google Ads analytics — and query_table',
+  'reads it. Those rows are scoped the same way, so a refusal there is a real answer, not a fault',
+  'to retry.',
 ].join('\n');
 
 // A tool result that large is unusable in the client anyway, and truncating

@@ -103,7 +103,23 @@ edit, approve or delete anything.
 | `list_expense_claims` | Claims, for finding one or seeing where approval is stuck |
 | `get_expense_claim` | One claim with each bill's own decision |
 | `list_users` | People, to resolve names and teams (admin keys only) |
+| `describe_tables` | What else is readable, and why anything is not |
+| `query_table` | Read any of those tables directly — filters, sort, paging |
 | `search` / `fetch` | Free-text across everything, then pull one record |
+
+`query_table` covers the rest of the database: time entries, notifications, leave
+and permission requests, the ABM CRM, and the LinkedIn and Google Ads analytics —
+21 tables in all.
+
+**Rows are scoped exactly as the app scopes them.** A team member sees their own
+tickets and their own time entries; an admin sees their team's; a Service admin
+is refused the ABM CRM the same way the web app refuses it. Nobody gets more
+through MCP than they get signed in.
+
+Three things are unreachable at any level, because this endpoint exists to hand
+data to a third-party AI client: `users.password`, `api_keys` (the hashes are the
+lookup value for every live key), and `linkedin_tokens` (live LinkedIn API
+credentials). They have no entry in the registry and cannot be named.
 
 `search` and `fetch` exist under exactly those names because ChatGPT's deep
 research mode will not accept a connector without them.
@@ -158,5 +174,14 @@ Nothing is required. Two optional variables:
   finished project is late rather than overdue, that expense lines are approved
   individually, that `ticket_stats` beats listing tickets to count them.
 
+- **A table with no entry in `services/mcpTables.js` is not readable.** Adding a
+  table to the database must not silently publish it, so the registry is an
+  allow-list rather than a deny-list. Each entry declares its scope one of two
+  ways: `source: 'route'` takes its rows from an API route that already scopes
+  them, so nothing can drift; `source: 'table'` writes the rule out, and each one
+  names the route it was copied from. Prefer `'route'` when a route exists.
+
 Files: `routes/mcp.js` (transport), `services/mcpTools.js` (the tools),
-`services/portalApi.js` (the authenticated read client).
+`services/mcpTables.js` (the table registry and its scoping),
+`services/portalApi.js` (the authenticated read client),
+`services/oauth.js` + `routes/oauth.js` (sign-in).
