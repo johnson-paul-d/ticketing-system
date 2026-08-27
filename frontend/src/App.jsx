@@ -16,6 +16,7 @@ const Kanban             = lazy(() => import("./pages/Kanban"));
 const TicketCalendar     = lazy(() => import("./pages/TicketCalendar"));
 const AdminPanel         = lazy(() => import("./pages/AdminPanel"));
 const ApiKeys            = lazy(() => import("./pages/ApiKeys"));
+const WorkReport         = lazy(() => import("./pages/WorkReport"));
 const PendingApprovals   = lazy(() => import("./pages/PendingApprovals"));
 const Projects           = lazy(() => import("./pages/Projects"));
 const ProjectDetails     = lazy(() => import("./pages/ProjectDetails"));
@@ -195,6 +196,17 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={["Admin"]}>
                 <AdminPanel />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/work-report"
+            element={
+              // Open to every role on purpose: the server scopes a non-admin to
+              // their own record, so this is how anyone downloads their own work.
+              <ProtectedRoute>
+                <WorkReport />
               </ProtectedRoute>
             }
           />

@@ -3,7 +3,7 @@ import {
   Menu, X, LayoutDashboard, Cpu, KanbanSquare, Calendar,
   Shield, BarChart3, LogOut, PlusCircle, ChevronRight, ClipboardCheck, FolderKanban,
   Target, Building2, CalendarCheck, TrendingUp, Gauge, ChevronDown, Receipt, Signature,
-  Wallet, KeyRound
+  Wallet, KeyRound, FileDown
 } from "lucide-react";
 import { useState } from "react";
 import useAuthStore from "../store/authStore";
@@ -52,6 +52,9 @@ export default function MainLayout({ children }) {
   // All reporting pages live under one "Reports" group
   const reportChildren = [
     { label: "Analytics", path: "/admin-analytics", icon: BarChart3 },
+    // Every role: the server narrows a non-admin to their own work, so this is
+    // how anyone downloads a deck of what they did.
+    { label: "Work Report (PPT)", path: "/work-report", icon: FileDown },
     // Every role: the server narrows the report to the viewer's own lines.
     { label: "Expense Report", path: "/expenses/report", icon: Wallet },
     ...(admin

@@ -28,6 +28,7 @@ const verifyRoutes = require('./routes/verify');
 const apiKeyRoutes = require('./routes/apiKeys');
 const openapiRoutes = require('./routes/openapi');
 const mcpRoutes = require('./routes/mcp');
+const workReportRoutes = require('./routes/workReports');
 
 const app = express();
 const server = http.createServer(app);
@@ -170,6 +171,7 @@ app.use('/api/api-keys', apiKeyRoutes);
 // Public by design — an agent platform fetches the schema anonymously, before
 // it has any credential to fetch it with. It carries no data.
 app.use('/api/openapi.json', openapiRoutes);
+app.use('/api/reports', workReportRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/abm', abmRoutes);

@@ -260,7 +260,16 @@
       "PowerShell(Get-Content \"$env:TEMP\\\\tsrv.err\" -Tail 20; Write-Output \"---stdout---\"; Get-Content \"$env:TEMP\\\\tsrv.log\" -Tail 10)",
       "PowerShell(Get-NetTCPConnection -LocalPort 5000 -State Listen -ErrorAction SilentlyContinue | Select-Object LocalAddress,OwningProcess | Format-Table -AutoSize; try { \\(Invoke-WebRequest \"http://localhost:5000/api/test\" -UseBasicParsing -TimeoutSec 5\\).Content } catch { \"localhost failed: $\\($_.Exception.Message\\)\" }; try { \\(Invoke-WebRequest \"http://127.0.0.1:5000/api/test\" -UseBasicParsing -TimeoutSec 5\\).Content } catch { \"127.0.0.1 failed: $\\($_.Exception.Message\\)\" })",
       "PowerShell($p = Get-NetTCPConnection -LocalPort 5000 -State Listen -ErrorAction SilentlyContinue; foreach \\($x in $p\\) { Stop-Process -Id $x.OwningProcess -Force -ErrorAction SilentlyContinue }; Start-Sleep -Seconds 2; cd D:\\\\Ticketing-System\\\\backend; Start-Process node -ArgumentList \"_fakeserver.js\" -RedirectStandardOutput \"$env:TEMP\\\\fsrv.log\" -RedirectStandardError \"$env:TEMP\\\\fsrv.err\" -WindowStyle Hidden; Start-Sleep -Seconds 5; Get-Content \"$env:TEMP\\\\fsrv.log\" -Tail 5)",
-      "PowerShell(cd D:\\\\Ticketing-System; Write-Output \"--- does origin/main have the dropdown filter? ---\"; git show origin/main:frontend/src/pages/ApiKeys.jsx | Select-String -Pattern \"isSuperAdmin|getTeam\" -Context 0,1; Write-Output \"--- local file identical to committed? ---\"; if \\(-not \\(git diff origin/main -- frontend/src/pages/ApiKeys.jsx\\)\\) { \"identical\" } else { \"DIFFERS\" })"
+      "PowerShell(cd D:\\\\Ticketing-System; Write-Output \"--- does origin/main have the dropdown filter? ---\"; git show origin/main:frontend/src/pages/ApiKeys.jsx | Select-String -Pattern \"isSuperAdmin|getTeam\" -Context 0,1; Write-Output \"--- local file identical to committed? ---\"; if \\(-not \\(git diff origin/main -- frontend/src/pages/ApiKeys.jsx\\)\\) { \"identical\" } else { \"DIFFERS\" })",
+      "Bash(node -e \"try{require\\('pptxgenjs'\\);console.log\\('pptxgenjs OK here'\\)}catch\\(e\\){console.log\\('not here: '+e.code\\)}\")",
+      "Bash(node -e \"try{require\\('pptxgenjs'\\);console.log\\('pptxgenjs OK in backend'\\)}catch\\(e\\){console.log\\('not in backend: '+e.code\\)}\")",
+      "Read(//c/Users/mktganalyst/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/0bc17200-b8ee-4f07-a9b9-2e6a9c925146/9df2c2f0-8b46-4a29-a408-20acc8050356/skills/pptx/**)",
+      "Bash(npm root *)",
+      "Bash(node -e \"console.log\\(require.resolve\\('pptxgenjs'\\)\\)\")",
+      "PowerShell(Get-Content \"$env:TEMP\\\\tsrv.err\" -Tail 25; Write-Output \"=== stdout ===\"; Get-Content \"$env:TEMP\\\\tsrv.log\" -Tail 6)",
+      "PowerShell(cd D:\\\\Ticketing-System\\\\backend; $j = Start-Job -ScriptBlock { Set-Location D:\\\\Ticketing-System\\\\backend; node server.js 2>&1 }; Start-Sleep -Seconds 8; Receive-Job $j; Stop-Job $j -ErrorAction SilentlyContinue; Remove-Job $j -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Content \"$env:TEMP\\\\tsrv.log\" -Tail 30 | Select-String -Pattern \"WORK REPORT\" -Context 0,14)",
+      "PowerShell(Get-Content \"$env:TEMP\\\\tsrv.err\" -Tail 30 -ErrorAction SilentlyContinue; Write-Output \"=== stdout tail ===\"; Get-Content \"$env:TEMP\\\\tsrv.log\" -Tail 30)"
     ]
   }
 }
