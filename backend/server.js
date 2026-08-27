@@ -27,6 +27,7 @@ const expenseRoutes = require('./routes/expenses');
 const verifyRoutes = require('./routes/verify');
 const apiKeyRoutes = require('./routes/apiKeys');
 const openapiRoutes = require('./routes/openapi');
+const mcpRoutes = require('./routes/mcp');
 
 const app = express();
 const server = http.createServer(app);
@@ -92,6 +93,20 @@ const corsOptions = (req, callback) => {
     credentials: !origin || allowedOrigins.includes(origin),
   });
 };
+
+// =====================================================
+// MCP, mounted ahead of the CORS check
+// =====================================================
+// Deliberately before app.use(cors(...)), and the only route that skips it.
+//
+// The check above allows a cross-origin request when it carries an API key in
+// the Authorization header. An MCP client is normally server-side and sends no
+// Origin at all, so it would pass — but the fallback that puts the key in the
+// URL carries no Authorization header to recognise, and a browser-based client
+// using it would be refused by an origin rule that is not protecting anything
+// here. /mcp reads no cookies and every call presents a bearer key, so it sets
+// its own permissive headers instead. See routes/mcp.js.
+app.use('/mcp', mcpRoutes);
 
 app.use(cors(corsOptions));
 
