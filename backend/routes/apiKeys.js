@@ -57,8 +57,14 @@ const shape = (row, userById) => {
 // that outlive its own revocation — and there would be no way to be sure that
 // revoking a key had actually ended the access it was granted. Minting is a
 // thing a person does.
+// req.user.agent covers the other kind of machine caller: an MCP client holding
+// an OAuth session minted for the person who signed in. It carries their
+// permissions, so without this check an admin connecting ChatGPT would be
+// handing it the ability to issue itself a key that outlives the connection —
+// and revoking the connection would no longer end the access it granted, which
+// is the whole point of the rule above.
 const humansOnly = (req, res, next) => {
-  if (req.apiKey) {
+  if (req.apiKey || req.user?.agent) {
     return res.status(403).json({
       message: 'API keys cannot manage API keys. Sign in to mint or revoke one.',
     });

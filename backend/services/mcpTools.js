@@ -1004,10 +1004,15 @@ const tools = [
   },
 ];
 
-// The write tools live in their own file because they are a different kind of
+// The write tools live in their own files because they are a different kind of
 // thing: everything above answers a question, everything appended here changes
 // something and needs the connection to have been granted that.
-tools.push(...writes.tools);
+//
+// mcpWrites is the everyday writing; mcpFullAccess is the rest of what a person
+// can do signed in — deleting, the expense lifecycle including approvals, and
+// user accounts. Together the surface is parity with the web app, and the
+// permission boundary is the route handlers rather than anything here.
+tools.push(...writes.tools, ...require('./mcpFullAccess').tools);
 
 const byName = new Map(tools.map((t) => [t.name, t]));
 

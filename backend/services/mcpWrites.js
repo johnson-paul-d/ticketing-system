@@ -391,4 +391,4 @@ const tools = [
   },
 ];
 
-module.exports = { tools, requireWrite };
+module.exports = { tools, requireWrite, given, summarise };

@@ -291,6 +291,13 @@ const portalCredentialFor = (user, { readOnly = true } = {}) =>
       email: user.email,
       role: user.role,
       name: user.name,
+      // Marks the session as belonging to a machine acting for this person
+      // rather than the person at a keyboard. routes/apiKeys.js already refuses
+      // to let an API key mint another API key — "minting is a thing a person
+      // does" — and this is what lets it apply the same rule here. Without it an
+      // MCP client could issue itself a credential that outlives the connection
+      // it was granted through.
+      agent: true,
       ...(readOnly ? { read_only: true } : {}),
     },
     process.env.JWT_SECRET,
