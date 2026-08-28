@@ -26,13 +26,28 @@ const { rateLimit } = require('../utils/rateLimit');
 
 const { publicOrigin, resourceUrl } = oauth;
 
+// This router is mounted with app.use(oauthRoutes) — no path prefix — because
+// its routes are defined against the origin root rather than under a prefix the
+// app chose. That means anything registered here with router.use() runs for
+// EVERY request in the application, not just the OAuth ones, so the CORS
+// middleware below has to check the path itself.
+//
+// It previously did not, and the consequences were app-wide: it stamped
+// "Allow-Methods: GET, POST, OPTIONS" onto every response and answered every
+// preflight with 204 before the real CORS layer ran, so every PUT and DELETE in
+// the portal failed the preflight. Changing a ticket's status stopped working.
+const OWNED_PATH = /^\/(oauth\/|\.well-known\/)/;
+
 // Discovery documents are public and fetched from anywhere, including by a
 // browser-based client. Same reasoning as /mcp: nothing here is protected by
 // origin, so an origin rule would only break honest callers.
 router.use((req, res, next) => {
+  if (!OWNED_PATH.test(req.path)) return next();
+
   res.set('Access-Control-Allow-Origin', '*');
   res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.set('Vary', 'Origin');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
