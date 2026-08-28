@@ -48,7 +48,7 @@ const authServerMetadata = (req) => {
     authorization_endpoint: `${origin}/oauth/authorize`,
     token_endpoint: `${origin}/oauth/token`,
     registration_endpoint: `${origin}/oauth/register`,
-    scopes_supported: [oauth.SCOPE],
+    scopes_supported: oauth.SCOPES_SUPPORTED,
     response_types_supported: ['code'],
     grant_types_supported: ['authorization_code', 'refresh_token'],
     // PKCE is not optional here. Every client of this server is public — there
@@ -62,7 +62,7 @@ const authServerMetadata = (req) => {
 const protectedResourceMetadata = (req) => ({
   resource: resourceUrl(req),
   authorization_servers: [publicOrigin(req)],
-  scopes_supported: [oauth.SCOPE],
+  scopes_supported: oauth.SCOPES_SUPPORTED,
   bearer_methods_supported: ['header'],
 });
 
@@ -110,7 +110,7 @@ router.post(
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
       token_endpoint_auth_method: 'none',
-      scope: oauth.SCOPE,
+      scope: oauth.SCOPES_SUPPORTED.join(' '),
     });
   }
 );
@@ -127,7 +127,7 @@ const escapeHtml = (value) =>
 // Anything reaching this page came off a query string, so all of it is escaped
 // on the way in. The client name in particular is whatever the client called
 // itself at registration.
-const loginPage = ({ clientName, requestToken, error, email }) => `<!doctype html>
+const loginPage = ({ clientName, requestToken, error, email, canWrite }) => `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -156,13 +156,22 @@ const loginPage = ({ clientName, requestToken, error, email }) => `<!doctype htm
   .error { background:#fdecec; border:1px solid #f5c2c2; color:#8a1f1f; font-size:13px;
            padding:10px 12px; border-radius:8px; margin:0 0 16px; }
   .note { margin:20px 0 0; font-size:12px; color:#6b6b6b; line-height:1.5; text-align:center; }
+  .warn { background:#fbf3e6; border:1px solid #e8d5ae; color:#6b4e13; font-size:13px;
+          padding:11px 12px; border-radius:8px; margin:0 0 18px; line-height:1.5; }
 </style>
 </head>
 <body>
   <div class="card">
     <h1>Sieger Ticketing</h1>
     <p class="sub"><strong>${escapeHtml(clientName)}</strong> is asking to read your tickets,
-      projects and expenses. It will see exactly what you see, and cannot change anything.</p>
+      projects and expenses. It will see exactly what you see${canWrite ? '' : ', and cannot change anything'}.</p>
+    ${
+      canWrite
+        ? `<div class="warn"><strong>It can also make changes.</strong> Raising tickets, editing them,
+             logging time and approving work — all as you, and all recorded under your name. It cannot
+             delete anything, and it cannot approve expense claims.</div>`
+        : ''
+    }
     ${error ? `<div class="error">${escapeHtml(error)}</div>` : ''}
     <form method="post" action="/oauth/authorize" autocomplete="on">
       <input type="hidden" name="request" value="${escapeHtml(requestToken)}">
@@ -173,7 +182,7 @@ const loginPage = ({ clientName, requestToken, error, email }) => `<!doctype htm
       <input id="password" name="password" type="password" required autocomplete="current-password">
       <button type="submit">Sign in and allow</button>
     </form>
-    <p class="note">Read-only access. Your password is never shared with the app you are connecting.</p>
+    <p class="note">Your password is never shared with the app you are connecting.</p>
   </div>
 </body>
 </html>`;
@@ -227,10 +236,15 @@ const readAuthorizeParams = (req) => {
     return fail('invalid_request', 'code_challenge is required');
   }
 
-  const scope = String(q.scope || oauth.SCOPE);
-  if (scope && !scope.split(/\s+/).every((s) => s === oauth.SCOPE)) {
-    return fail('invalid_scope', `The only scope offered is ${oauth.SCOPE}`);
+  // A client that names its scopes gets exactly those. One that names none —
+  // which is most of them — gets both, and the sign-in page then says plainly
+  // that writing is included. The consent is what the person is shown and
+  // agrees to, not a parameter they never see.
+  const requested = String(q.scope || '').trim();
+  if (requested && !requested.split(/\s+/).every((x) => oauth.SCOPES_SUPPORTED.includes(x))) {
+    return fail('invalid_scope', `Scopes offered: ${oauth.SCOPES_SUPPORTED.join(', ')}`);
   }
+  const scope = requested || oauth.SCOPES_SUPPORTED.join(' ');
 
   return {
     ok: {
@@ -239,6 +253,7 @@ const readAuthorizeParams = (req) => {
       redirectUri,
       codeChallenge,
       state,
+      scope,
       resource: String(q.resource || '') || null,
     },
   };
@@ -261,6 +276,7 @@ router.get('/oauth/authorize', (req, res) => {
   res.type('html').send(
     loginPage({
       clientName,
+      canWrite: oauth.canWriteWith(rest.scope),
       requestToken: oauth.signRequest({ ...rest, clientName }),
     })
   );
@@ -288,6 +304,7 @@ router.post(
       res.status(401).type('html').send(
         loginPage({
           clientName: request.clientName,
+          canWrite: oauth.canWriteWith(request.scope),
           requestToken: oauth.signRequest(request),
           error: message,
           email,
@@ -322,6 +339,7 @@ router.post(
       clientId: request.clientId,
       redirectUri: request.redirectUri,
       codeChallenge: request.codeChallenge,
+      scope: request.scope,
       resource: request.resource,
     });
 
@@ -386,6 +404,7 @@ router.post(
         oauth.issueTokens({
           user,
           clientId: grant.clientId,
+          scope: grant.scope,
           resource: grant.resource || resourceUrl(req),
         })
       );
@@ -420,6 +439,9 @@ router.post(
         oauth.issueTokens({
           user,
           clientId: claims.cid,
+          // Whatever was granted originally, never more. A refresh token issued
+          // before scopes existed carries none and renews as read-only.
+          scope: claims.scope,
           resource: claims.aud || resourceUrl(req),
         })
       );

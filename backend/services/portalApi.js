@@ -126,4 +126,57 @@ const get = async (credential, path, query) => {
   return body;
 };
 
-module.exports = { get, clearCache, PortalError, BASE };
+/**
+ * POST/PUT/PATCH/DELETE a path on the portal API as whoever the credential
+ * belongs to. Never cached, and it empties the read cache on the way out.
+ *
+ * That last part matters more than it looks: a tool that creates a ticket and a
+ * tool that lists them are twenty seconds apart at most, and without this the
+ * list would answer from a snapshot taken before the write. The model would then
+ * report that its own change had not happened.
+ */
+const mutate = async (credential, method, path, body) => {
+  const url = buildUrl(path);
+
+  let res;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: {
+        Authorization: `Bearer ${credential}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch (err) {
+    throw new PortalError(
+      504,
+      err?.name === 'TimeoutError'
+        ? `The ticketing API did not answer ${method} ${path} within ${TIMEOUT_MS / 1000}s`
+        : `Could not reach the ticketing API: ${err?.message || err}`
+    );
+  }
+
+  const text = await res.text();
+  let parsed;
+  try {
+    parsed = text ? JSON.parse(text) : null;
+  } catch {
+    throw new PortalError(res.status, `The ticketing API returned a non-JSON response for ${path}`);
+  }
+
+  // Emptied whether or not the write succeeded: a 500 from a route that had
+  // already written half of what it meant to would otherwise leave the cache
+  // confidently wrong.
+  clearCache();
+
+  if (!res.ok) {
+    throw new PortalError(res.status, parsed?.message || `${method} ${path} failed with ${res.status}`);
+  }
+
+  return parsed;
+};
+
+module.exports = { get, mutate, clearCache, PortalError, BASE };

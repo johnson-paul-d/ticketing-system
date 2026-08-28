@@ -61,6 +61,12 @@ const INSTRUCTIONS = [
   'leave and permission requests, the ABM CRM, LinkedIn and Google Ads analytics — and query_table',
   'reads it. Those rows are scoped the same way, so a refusal there is a real answer, not a fault',
   'to retry.',
+  '',
+  'Writing: create_ticket, update_ticket, assign_ticket, log_time, approve_ticket, reject_ticket,',
+  'create_project and update_project change real records, as the person connected and under their',
+  'name. Everything else is a read. Nothing here can delete, approve an expense claim, or touch a',
+  'user account. Call whoami to see whether this connection may write at all — if it may not, that',
+  'is a setting on the connection, not something to work around.',
 ].join('\n');
 
 // A tool result that large is unusable in the client anyway, and truncating
@@ -179,7 +185,16 @@ const authenticate = async (req, res) => {
 
     if (resolved.error) return unauthorized(req, res, 'invalid_token', resolved.error);
 
-    return { credential, user: resolved.user, key: resolved.key };
+    // Whoever minted the key decided this when they ticked, or did not tick,
+    // read-only in the admin panel. middleware/auth.js refuses a read-only key
+    // anything that is not a GET regardless, so this only decides whether the
+    // write tools are offered at all rather than failing halfway through one.
+    return {
+      credential,
+      user: resolved.user,
+      key: resolved.key,
+      canWrite: resolved.key.readOnly !== true,
+    };
   }
 
   if (oauth.looksLikeOAuthToken(credential)) {
@@ -198,10 +213,15 @@ const authenticate = async (req, res) => {
     // rather than an OAuth one. This mints a short-lived, read-only session for
     // the person who signed in — so the reads carry their permissions and
     // nothing more. See services/oauth.js.
+    // Whether this connection may write was decided by the person on the
+    // sign-in page and is carried in the token's scope. The session minted for
+    // the portal call matches it, so a read-only connection holds a credential
+    // that cannot write even if a write tool were somehow reached.
     return {
-      credential: oauth.cachedPortalCredential(resolved.user),
+      credential: oauth.cachedPortalCredential(resolved.user, { readOnly: !resolved.canWrite }),
       user: resolved.user,
-      key: { id: null, name: 'OAuth sign-in', readOnly: true },
+      key: { id: null, name: 'OAuth sign-in', readOnly: !resolved.canWrite },
+      canWrite: resolved.canWrite === true,
     };
   }
 

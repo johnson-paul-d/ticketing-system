@@ -46,7 +46,16 @@ const REFRESH_TTL_SECONDS = 30 * 24 * 60 * 60;
 const CODE_TTL_MS = 60 * 1000;
 const REQUEST_TTL_SECONDS = 10 * 60;
 
+// Two scopes, because writing is a different thing to consent to than reading.
+// A connection that can only read is the default everywhere: if a client asks
+// for nothing, or an old token predates this and carries no scope at all, it
+// gets read. Writing has to be asked for and shown on the sign-in page.
 const SCOPE = 'mcp:read';
+const WRITE_SCOPE = 'mcp:write';
+const SCOPES_SUPPORTED = [SCOPE, WRITE_SCOPE];
+
+const grants = (scope, wanted) => String(scope || '').split(/\s+/).includes(wanted);
+const canWriteWith = (scope) => grants(scope, WRITE_SCOPE);
 
 // ---------------------------------------------------------------
 // Client registration, without a client table
@@ -174,19 +183,23 @@ const verifyPkce = (verifier, challenge) => {
 // `aud` is the MCP endpoint itself. The MCP spec asks for it because a token
 // minted for this server should be useless if it is replayed against a
 // different one that happens to trust the same issuer.
-const issueTokens = ({ user, clientId, resource }) => {
+const issueTokens = ({ user, clientId, resource, scope }) => {
   const claims = { sub: user.id, email: user.email, name: user.name, role: user.role };
+  // The refresh token carries the scope too, so renewing cannot quietly widen
+  // what was granted — and a refresh token issued before scopes existed renews
+  // as read-only rather than picking up write it was never consented to.
+  const granted = canWriteWith(scope) ? `${SCOPE} ${WRITE_SCOPE}` : SCOPE;
 
   return {
-    access_token: jwt.sign({ ...claims, typ: 'mcp_at', scope: SCOPE, aud: resource, cid: clientId }, KEYS.access, {
+    access_token: jwt.sign({ ...claims, typ: 'mcp_at', scope: granted, aud: resource, cid: clientId }, KEYS.access, {
       expiresIn: ACCESS_TTL_SECONDS,
     }),
-    refresh_token: jwt.sign({ sub: user.id, typ: 'mcp_rt', aud: resource, cid: clientId }, KEYS.refresh, {
+    refresh_token: jwt.sign({ sub: user.id, typ: 'mcp_rt', scope: granted, aud: resource, cid: clientId }, KEYS.refresh, {
       expiresIn: REFRESH_TTL_SECONDS,
     }),
     token_type: 'Bearer',
     expires_in: ACCESS_TTL_SECONDS,
-    scope: SCOPE,
+    scope: granted,
   };
 };
 
@@ -244,6 +257,7 @@ const verifyAccessToken = async (token) => {
   return {
     user: { id: user.id, name: user.name, email: user.email, role: user.role },
     scope: claims.scope,
+    canWrite: canWriteWith(claims.scope),
   };
 };
 
@@ -267,9 +281,18 @@ const verifyRefreshToken = (token) => {
 // read_only is enforced in middleware/auth.js. Without that it would be a label,
 // and this function would be handing out full write capability to satisfy a
 // read.
-const portalCredentialFor = (user) =>
+const portalCredentialFor = (user, { readOnly = true } = {}) =>
   jwt.sign(
-    { id: user.id, email: user.email, role: user.role, name: user.name, read_only: true },
+    // read_only is omitted rather than set false for a write session, so the
+    // flag only ever appears when it is doing something. middleware/auth.js
+    // enforces it wherever it appears.
+    {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      name: user.name,
+      ...(readOnly ? { read_only: true } : {}),
+    },
     process.env.JWT_SECRET,
     { expiresIn: '2m' }
   );
@@ -285,12 +308,16 @@ setInterval(() => {
   for (const [id, entry] of credentialCache) if (entry.expiresAt < now) credentialCache.delete(id);
 }, 60 * 1000).unref();
 
-const cachedPortalCredential = (user) => {
-  const hit = credentialCache.get(user.id);
+const cachedPortalCredential = (user, { readOnly = true } = {}) => {
+  // Keyed by mode as well as person: handing a read-only connection a cached
+  // write credential because someone else signed in with write would undo the
+  // whole point of the flag.
+  const key = `${user.id}:${readOnly ? 'r' : 'rw'}`;
+  const hit = credentialCache.get(key);
   if (hit && hit.expiresAt > Date.now()) return hit.token;
 
-  const token = portalCredentialFor(user);
-  credentialCache.set(user.id, { expiresAt: Date.now() + PORTAL_CREDENTIAL_TTL_MS, token });
+  const token = portalCredentialFor(user, { readOnly });
+  credentialCache.set(key, { expiresAt: Date.now() + PORTAL_CREDENTIAL_TTL_MS, token });
   return token;
 };
 
@@ -313,6 +340,9 @@ const resourceUrl = (req) => `${publicOrigin(req)}/mcp`;
 
 module.exports = {
   SCOPE,
+  WRITE_SCOPE,
+  SCOPES_SUPPORTED,
+  canWriteWith,
   ACCESS_TTL_SECONDS,
   publicOrigin,
   resourceUrl,

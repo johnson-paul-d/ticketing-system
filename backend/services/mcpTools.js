@@ -23,6 +23,7 @@
 
 const portal = require('./portalApi');
 const tables = require('./mcpTables');
+const writes = require('./mcpWrites');
 const { todayIST } = require('../utils/time');
 
 const APP_URL = (process.env.FRONTEND_URL || 'https://mktg-ticketing-system.vercel.app').replace(
@@ -276,11 +277,13 @@ const tools = [
         ? { name: ctx.user.name, email: ctx.user.email, role: ctx.user.role }
         : 'unknown',
       key_name: ctx.key?.name || null,
-      read_only: ctx.key?.readOnly !== false,
+      can_write: ctx.canWrite === true,
       today: todayIST(),
-      note:
-        'This connection is read-only. Nothing here creates, edits, approves or deletes anything ' +
-        'in the portal.',
+      note: ctx.canWrite
+        ? 'This connection can raise and change tickets, log time, and approve or reject work — ' +
+          'all recorded as the person above. It cannot delete anything, approve expense claims, ' +
+          'or manage user accounts.'
+        : 'This connection is read-only. Nothing here changes anything in the portal.',
     }),
   },
 
@@ -1001,15 +1004,26 @@ const tools = [
   },
 ];
 
+// The write tools live in their own file because they are a different kind of
+// thing: everything above answers a question, everything appended here changes
+// something and needs the connection to have been granted that.
+tools.push(...writes.tools);
+
 const byName = new Map(tools.map((t) => [t.name, t]));
 
 // What tools/list returns: the handler is ours, the rest is the wire format.
+//
+// The annotations matter more than they look. A client reads readOnlyHint to
+// decide whether a call needs confirming with the person first, so a write tool
+// that failed to declare itself would be run silently. Everything above is a
+// read and says so by omission; only mcpWrites.js sets them explicitly.
 const listTools = () =>
-  tools.map(({ name, title, description, inputSchema }) => ({
+  tools.map(({ name, title, description, inputSchema, annotations }) => ({
     name,
     title,
     description,
     inputSchema,
+    annotations: annotations || { readOnlyHint: true },
   }));
 
 module.exports = { tools, byName, listTools };

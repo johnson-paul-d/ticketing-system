@@ -87,9 +87,23 @@ Revoking the key in the admin panel cuts the connector off within thirty seconds
 
 ## What it can do
 
-Read. Nothing else. Every tool is a GET against this app's own API, carrying the
-caller's key, so an agent reaches exactly what that key reaches and cannot create,
-edit, approve or delete anything.
+22 tools: 14 that read and 8 that write. Every one of them goes through this
+app's own API carrying the caller's credential, so a connection reaches exactly
+what that person reaches — the same permission checks, the same notification
+emails, the same realtime updates, the same timeline entries.
+
+**Writing has to be granted.** An API key writes only if it was minted with
+read-only unticked. An OAuth connection writes only if the person was shown the
+"it can also make changes" notice on the sign-in page and agreed to it; a client
+that asks only for `mcp:read` gets a connection that cannot write at all. Where
+it was not granted, the write tools refuse before calling anything, and
+`middleware/auth.js` refuses the underlying request anyway.
+
+**Three things no connection can do, at any permission level:** delete anything,
+approve an expense claim, or manage user accounts. There is no tool for them.
+Deleting a ticket destroys a record of someone's work with no undo; an expense
+approval is money, and is signed into an `approval_hash` tied to the receipt
+files. Both remain in the web app for exactly the people who could always do them.
 
 | Tool | For |
 | --- | --- |
@@ -106,6 +120,10 @@ edit, approve or delete anything.
 | `describe_tables` | What else is readable, and why anything is not |
 | `query_table` | Read any of those tables directly — filters, sort, paging |
 | `search` / `fetch` | Free-text across everything, then pull one record |
+| `create_ticket` · `update_ticket` · `assign_ticket` | Raise and change work |
+| `log_time` | Record time against a ticket |
+| `approve_ticket` · `reject_ticket` | Clear or refuse work waiting on approval |
+| `create_project` · `update_project` | Manage projects |
 
 `query_table` covers the rest of the database: time entries, notifications, leave
 and permission requests, the ABM CRM, and the LinkedIn and Google Ads analytics —
@@ -164,11 +182,18 @@ Nothing is required. Two optional variables:
   session valid on every write route in the app. `services/oauth.js` derives four
   separate keys, and a token signed for one job fails verification for any other.
   There is a test for this; keep it.
-- **An OAuth read borrows a read-only session.** The tools call this app's own
-  routes, which want a login-style token, so `portalCredentialFor` mints one for
-  the signed-in person marked `read_only` and valid two minutes.
+- **An OAuth connection borrows a two-minute session.** The tools call this app's
+  own routes, which want a login-style token, so `portalCredentialFor` mints one
+  for the signed-in person — marked `read_only` unless write was granted.
   `middleware/auth.js` enforces that flag. Remove the enforcement and the flag
   becomes a label on a token that can write.
+- **Write tools live in `services/mcpWrites.js`, and declare themselves.**
+  `tools/list` reports `annotations.readOnlyHint`, which is what a client reads to
+  decide whether to confirm a call with the person first — a write tool that
+  failed to declare it would be run silently. Reads get `readOnlyHint: true` by
+  default in `listTools`, so only write tools set annotations explicitly.
+- **Adding a delete or an expense-approval tool is a decision, not a gap.** Both
+  were left out on purpose; the reasoning is at the top of `mcpWrites.js`.
 - The tool descriptions are written for a model, not a developer. They are the
   only instructions it gets, so the non-obvious rules live in them — that a
   finished project is late rather than overdue, that expense lines are approved
