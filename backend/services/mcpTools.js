@@ -67,10 +67,22 @@ const snippet = (text, max = 220) => {
   return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 };
 
+// The column is duration_minutes. This read e.minutes, which is not on the row,
+// so every total it produced was zero — silently, because summing undefined
+// behind `|| 0` guards is a perfectly valid way to arrive at nought.
+//
+// No fallback to e.minutes. A fallback here would have kept the bug alive: the
+// tests used the same wrong name in their fixtures, and anything accepting both
+// spellings would have gone on agreeing with them.
+const entryMinutes = (e) => num(e.duration_minutes);
+
 const loggedMinutes = (t) => {
   const entries = Array.isArray(t.time_entries) ? t.time_entries : null;
-  if (entries) return entries.reduce((sum, e) => sum + num(e.minutes), 0);
-  return num(t.time_spent_minutes || t.consumed_minutes);
+  // Only trust the sum when there are entries to sum. An empty array is the
+  // normal shape for a ticket whose time was never itemised, and answering 0
+  // there would contradict the running total the app displays.
+  if (entries?.length) return entries.reduce((sum, e) => sum + entryMinutes(e), 0);
+  return num(t.consumed_minutes ?? t.time_spent_minutes);
 };
 
 const ticketUrl = (id) => `${APP_URL}/tickets/${id}`;
@@ -109,9 +121,17 @@ const ticketDetail = (t) => ({
   is_recurring: t.is_recurring === true,
   created_at: t.created_at,
   updated_at: t.updated_at,
+  // consumed_minutes is the ticket's own running total, maintained by the
+  // time-entry routes. It is carried alongside the sum of the entries because
+  // those two can disagree — the routes update it with a read-modify-write and
+  // say so — and a disagreement is worth seeing rather than smoothing over.
+  consumed_minutes: num(t.consumed_minutes) || null,
   time_entries: (Array.isArray(t.time_entries) ? t.time_entries : []).map((e) => ({
-    minutes: num(e.minutes),
-    note: e.note || null,
+    duration_minutes: entryMinutes(e),
+    // Who logged it, which is not always who the ticket is assigned to.
+    logged_by: e.user_name || null,
+    work_date: e.work_date || null,
+    notes: e.notes ?? null,
     logged_at: e.created_at,
   })),
 });
@@ -349,7 +369,9 @@ const tools = [
       'Aggregate answer to "how many" and "how long" questions — per person, status, division, ' +
       'category, priority, team or month. Accepts the same filters as list_tickets and returns one ' +
       'row per group with its ticket count, how many are overdue, and minutes budgeted versus ' +
-      'logged. Reach for this before listing tickets in order to count them.',
+      'logged. Reach for this before listing tickets in order to count them. Note that ' +
+      'logged_minutes is time logged *against the tickets in the group*, whoever logged it — for ' +
+      'time spent *by* a person, use query_table on ticket_time_entries and group on logged_by.',
     inputSchema: {
       type: 'object',
       properties: {

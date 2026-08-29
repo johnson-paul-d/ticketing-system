@@ -60,8 +60,10 @@ const TICKET = {
         properties: {
           id: str('Entry id.'),
           ticket_id: str('Ticket the entry belongs to.'),
-          minutes: num('Minutes logged.'),
-          note: str('What was done.'),
+          duration_minutes: num('Minutes logged.'),
+          work_date: str('The day the work was done.', { format: 'date' }),
+          user_name: str('Who logged it. Not always the ticket assignee.'),
+          notes: str('What was done.'),
           created_at: str('When it was logged.', { format: 'date-time' }),
         },
       },

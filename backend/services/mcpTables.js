@@ -87,9 +87,11 @@ const TABLES = {
 
   ticket_time_entries: {
     description:
-      'Individual logged work sessions: which ticket, how many minutes, the note, and when. ' +
-      'Enriched with the ticket title and assignee so time can be totalled per person without a ' +
-      'second lookup.',
+      'Individual logged work sessions. Column names match the table: duration_minutes is the ' +
+      'length, work_date the day it was worked, notes what was done. Enriched with the parent ' +
+      "ticket's title, team and division. To total time per person, group on logged_by — the " +
+      'person who logged the session — not on assigned_to_name, which is whoever the ticket sits ' +
+      'with and is often someone else.',
     source: 'route',
     access: allowed,
     // Taken from the tickets the caller can see, which is precisely the rule the
@@ -97,17 +99,26 @@ const TABLES = {
     rows: async (ctx) => {
       const tickets = await portal.get(ctx.credential, '/tickets');
       return (Array.isArray(tickets) ? tickets : []).flatMap((t) =>
+        // The columns are duration_minutes, notes and work_date. An earlier
+        // version read minutes and note, which are not on the row, so every
+        // session came back as zero minutes with no note.
         (Array.isArray(t.time_entries) ? t.time_entries : []).map((e) => ({
           id: e.id,
           ticket_id: t.id,
           ticket_title: t.title,
           ticket_status: t.status,
+          // Two different people, and the distinction matters for any question
+          // about who spent the time.
+          logged_by: e.user_name ?? null,
           assigned_to_name: t.assigned_to_name,
           team: t.team,
           division: t.division,
           category: t.category,
-          minutes: Number(e.minutes) || 0,
-          note: e.note ?? null,
+          duration_minutes: Number(e.duration_minutes) || 0,
+          work_date: e.work_date ?? null,
+          notes: e.notes ?? null,
+          start_time: e.start_time ?? null,
+          end_time: e.end_time ?? null,
           created_at: e.created_at,
         }))
       );
