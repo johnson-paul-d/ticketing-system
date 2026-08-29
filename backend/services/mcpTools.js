@@ -279,11 +279,17 @@ const tools = [
       key_name: ctx.key?.name || null,
       can_write: ctx.canWrite === true,
       today: todayIST(),
+      // Says what this connection can do, not what the tool list contains: a
+      // model that reads "it cannot delete" here will not try, however many
+      // delete tools it can see.
       note: ctx.canWrite
-        ? 'This connection can raise and change tickets, log time, and approve or reject work — ' +
-          'all recorded as the person above. It cannot delete anything, approve expense claims, ' +
-          'or manage user accounts.'
-        : 'This connection is read-only. Nothing here changes anything in the portal.',
+        ? 'This connection can do whatever the person above can do signed in — raise and change ' +
+          'tickets, log time, approve work, file and decide expense claims, and manage accounts if ' +
+          'they are an admin. Each is recorded under their name. Where a tool refuses, that is ' +
+          'their permission level answering, not this connection.'
+        : 'This connection is read-only and every write tool will refuse. To change that: if it ' +
+          'signed in with OAuth, reconnect and allow changes when the sign-in page asks; if it ' +
+          'uses an API key, that key was minted with read-only ticked and a new one is needed.',
     }),
   },
 
