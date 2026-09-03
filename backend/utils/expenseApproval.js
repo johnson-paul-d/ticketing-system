@@ -8,15 +8,35 @@ const { isSuperAdmin, isAdmin, getUserTeam } = require('./roles');
 /**
  * May `user` approve `claim`?
  *
- * Two rules, and the second is the one that matters. A team admin is themselves
- * a member of that team, so "admins approve their own team" would otherwise let
- * them sign off their own reimbursement. Nobody approves their own claim,
- * whatever their role — an admin's claim escalates to a Super Admin, and a
- * Super Admin's claim needs a different Super Admin.
+ * Two rules: you must be an admin, and the claim must be on your team. A Super
+ * Admin spans every team.
+ *
+ * There used to be a third — nobody approves their own claim, an admin's
+ * escalating to a Super Admin — and its removal was a deliberate decision by the
+ * business rather than an oversight. It was removed for two reasons, and the
+ * second is the one that actually mattered.
+ *
+ * The rule only ever looked at the claim's claimant, and anyone on a team may
+ * add a line to a teammate's claim (see canEditClaim). So an admin could add a
+ * bill to someone else's claim and approve it, because they were not the
+ * claimant — the control read as segregation of duties while leaving that route
+ * open, and expense_lines records no author, so nothing showed who had added
+ * the line. A rule that stops the honest case and not the quiet one is worse
+ * than no rule, because it is trusted.
+ *
+ * And the escalation it forced did not exist in practice: an admin's own claim
+ * waited on a Super Admin who may be one person, or the same person.
+ *
+ * What carries the weight instead is the record, not the gate. Every approval
+ * stores approved_by, approved_by_name, approved_by_role and approved_at, and is
+ * covered by an approval hash printed over the approver's signature — so an
+ * admin approving their own reimbursement is permitted, attributable, and
+ * plainly visible as such on the claim and in the expense report. If separation
+ * is wanted back, put it here and record who adds each line, or the same gap
+ * reopens through a teammate's claim.
  */
 const canApproveClaim = (user, claim) => {
   if (!user || !claim) return false;
-  if (claim.claimant_id === user.id) return false;
   if (isSuperAdmin(user)) return true;
   if (!isAdmin(user)) return false;
   return claim.team === getUserTeam(user);
@@ -24,9 +44,6 @@ const canApproveClaim = (user, claim) => {
 
 // Explains a refusal, so the client can say something better than "denied".
 const approvalRefusalReason = (user, claim) => {
-  if (claim.claimant_id === user.id) {
-    return 'You cannot approve your own claim. It has to be approved by a Super Admin.';
-  }
   if (!isAdmin(user)) return 'Only an admin can approve expense claims';
   if (!isSuperAdmin(user) && claim.team !== getUserTeam(user)) {
     return 'You can only approve claims from your own team';
