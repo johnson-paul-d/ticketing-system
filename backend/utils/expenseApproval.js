@@ -88,18 +88,54 @@ const AMBIGUOUS = /[01IOU]/g;
 const verifyCodeFrom = (hash) =>
   hash.toUpperCase().replace(AMBIGUOUS, '').slice(0, 10);
 
+// =====================================================
+// Payment
+// =====================================================
+// Approval says the money is owed. Payment says it has gone out. They are
+// separate events with separate records, and the gap between them — approved
+// but not yet paid — is the number finance actually chases.
+//
+// paid_at is the single source of truth. It is null until the money moves, and
+// absent entirely until expenses-paid-migration.sql has been run, which reads
+// the same way: unpaid.
+const isLinePaid = (line) => Boolean(line?.paid_at);
+
+// Only an approved line can be paid. A pending one has not been agreed to and a
+// rejected one never will be, so neither can be sitting in the payment run.
+const isLinePayable = (line) => line?.approval_status === 'Approved' && !isLinePaid(line);
+
+// The status a person should see on a line: Paid outranks Approved, because it
+// is the later fact and the one they are looking for. approval_status keeps its
+// own value underneath — this derives a label, it does not overwrite anything.
+const lineStatus = (line) =>
+  isLinePaid(line) ? 'Paid' : line?.approval_status || 'Pending';
+
 // A claim's status is whatever its lines add up to. Derived rather than stored
 // as a separate decision, so the envelope can never disagree with its contents.
+//
+// Paid sits above Approved for the same reason it does on a line, and needs
+// every line settled: one unpaid line among nine paid ones still leaves money
+// owed on this claim, and calling that Paid would hide exactly the thing the
+// status is for.
 const rollupStatus = (lines) => {
   if (!lines.length) return 'Submitted';
-  const approved = lines.filter((l) => l.approval_status === 'Approved').length;
+  const approved = lines.filter((l) => l.approval_status === 'Approved');
   const rejected = lines.filter((l) => l.approval_status === 'Rejected').length;
 
-  if (approved === lines.length) return 'Approved';
+  const decided = approved.length + rejected;
+  // Rejected lines are never paid and never will be, so they do not hold a
+  // claim back from Paid — otherwise a claim with one refused bill could never
+  // settle. What matters is that everything owed has been paid, and that
+  // something was owed in the first place.
+  if (decided === lines.length && approved.length > 0 && approved.every(isLinePaid)) {
+    return 'Paid';
+  }
+
+  if (approved.length === lines.length) return 'Approved';
   if (rejected === lines.length) return 'Rejected';
-  if (approved + rejected === lines.length) return 'Partially Approved';
+  if (decided === lines.length) return 'Partially Approved';
   // Something is still undecided.
-  return approved || rejected ? 'Partially Approved' : 'Submitted';
+  return approved.length || rejected ? 'Partially Approved' : 'Submitted';
 };
 
 module.exports = {
@@ -109,4 +145,7 @@ module.exports = {
   lineApprovalHash,
   verifyCodeFrom,
   rollupStatus,
+  isLinePaid,
+  isLinePayable,
+  lineStatus,
 };

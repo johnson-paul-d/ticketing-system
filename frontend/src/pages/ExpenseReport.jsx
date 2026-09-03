@@ -7,6 +7,8 @@ import {
   XCircle,
   Clock,
   Layers,
+  BadgeIndianRupee,
+  Hourglass,
   FilterX,
   Download,
   PieChart,
@@ -61,10 +63,18 @@ const lineRef = (line) =>
 const sum = (rows, key) => rows.reduce((s, r) => s + (Number(r[key]) || 0), 0);
 
 const STATUS_CHIP = {
+  // Paid is its own colour rather than a shade of Approved: the whole point of
+  // the status is that you can tell at a glance which approved money has
+  // actually gone out.
+  Paid: "bg-sky-50 text-sky-700 border-sky-200",
   Approved: "bg-emerald-50 text-emerald-700 border-emerald-200",
   Rejected: "bg-red-50 text-red-700 border-red-200",
   Pending: "bg-gray-100 text-gray-600 border-gray-200",
 };
+
+// The label a line shows. The API sends `status` with payment already folded in;
+// approval_status is the fallback for a response from before that existed.
+const statusOf = (line) => line.status || line.approval_status || "Pending";
 
 // Wrap only when needed, and double any embedded quote — otherwise a description
 // containing a comma would split into extra columns in a spreadsheet.
@@ -73,12 +83,21 @@ const csvCell = (value) => {
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
+// Every money card carries the same two facts: the figure with GST as the
+// headline, and the same money before GST underneath. Which one a reader wants
+// depends on whether they are reconciling a bank statement or a budget.
+const exGst = (bucket, currency) =>
+  `${formatMoney(bucket.net, currency)} ex-GST · ${bucket.count} ${
+    bucket.count === 1 ? "expense" : "expenses"
+  }`;
+
 function KpiCard({ icon: Icon, label, value, sub, tone }) {
   const tones = {
     good: "text-emerald-600 bg-emerald-50",
     bad: "text-red-600 bg-red-50",
     warn: "text-amber-600 bg-amber-50",
     neutral: "text-[#9b2423] bg-[#9b2423]/10",
+    paid: "text-sky-600 bg-sky-50",
   };
   return (
     <div className="bg-white rounded-2xl shadow-sm p-4 sm:p-5 flex items-start gap-3">
@@ -165,7 +184,12 @@ export default function ExpenseReport() {
     () =>
       lines.filter((l) => {
         if (fMonth && monthKey(l.expense_date) !== fMonth) return false;
-        if (fStatus !== "All" && (l.approval_status || "Pending") !== fStatus) return false;
+        // Unpaid is not a status a line carries — it is approved-and-not-yet-paid,
+        // which is the question finance actually asks — so it is matched here
+        // rather than added to the status vocabulary.
+        if (fStatus === "Unpaid") {
+          if (l.approval_status !== "Approved" || l.paid) return false;
+        } else if (fStatus !== "All" && statusOf(l) !== fStatus) return false;
         if (fCategory && l.category !== fCategory) return false;
         if (fPerson && (l.claimant_name || "—") !== fPerson) return false;
         if (fDivision === NO_DIVISION) {
@@ -189,15 +213,26 @@ export default function ExpenseReport() {
   // The API's `totals` cover the whole fetched range; the cards have to track
   // the filters, so they are recomputed from the visible rows.
   const kpis = useMemo(() => {
-    const of = (status) => filtered.filter((l) => (l.approval_status || "Pending") === status);
-    const approved = of("Approved");
-    const pending = of("Pending");
-    const rejected = of("Rejected");
+    // Three figures per bucket, because "the total" means two different numbers
+    // to two different people: the spend before tax, and what actually left the
+    // account. Both are shown rather than one being chosen for the reader.
+    const figures = (rows) => ({
+      count: rows.length,
+      net: sum(rows, "amount"),
+      tax: sum(rows, "tax_amount"),
+      gross: sum(rows, "total"),
+    });
+
+    // Approved covers everything agreed to be owed. paid and outstanding are
+    // subsets of it, not siblings — adding them to approved would double-count.
+    const approvedRows = filtered.filter((l) => l.approval_status === "Approved");
     return {
-      approved: { count: approved.length, amount: sum(approved, "total") },
-      pending: { count: pending.length, amount: sum(pending, "total") },
-      rejected: { count: rejected.length, amount: sum(rejected, "total") },
-      all: { count: filtered.length, amount: sum(filtered, "total") },
+      approved: figures(approvedRows),
+      paid: figures(approvedRows.filter((l) => l.paid)),
+      outstanding: figures(approvedRows.filter((l) => !l.paid)),
+      pending: figures(filtered.filter((l) => (l.approval_status || "Pending") === "Pending")),
+      rejected: figures(filtered.filter((l) => l.approval_status === "Rejected")),
+      all: figures(filtered),
     };
   }, [filtered]);
 
@@ -231,7 +266,8 @@ export default function ExpenseReport() {
   const exportCsv = () => {
     const header = [
       "Date", "Reference", "Claim", "Claimant", "Division", "Team", "Category", "Description",
-      "Currency", "Amount", "Tax", "Total", "Status", "Approved By", "Approved At", "Reason",
+      "Currency", "Amount", "Tax", "Total", "Status", "Paid At", "Paid By",
+      "Approved By", "Approved At", "Reason",
     ];
     const body = detail.map((l) => [
       String(l.expense_date || "").slice(0, 10),
@@ -246,7 +282,9 @@ export default function ExpenseReport() {
       Number(l.amount || 0).toFixed(2),
       Number(l.tax_amount || 0).toFixed(2),
       Number(l.total || 0).toFixed(2),
-      l.approval_status || "Pending",
+      statusOf(l),
+      l.paid_at || "",
+      l.paid_by_name || "",
       l.approved_by_name,
       String(l.approved_at || "").slice(0, 10),
       l.rejection_reason,
@@ -315,6 +353,8 @@ export default function ExpenseReport() {
             <select value={fStatus} onChange={(e) => setFStatus(e.target.value)}
               className="bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs outline-none text-gray-600">
               <option value="All">All statuses</option>
+              <option value="Paid">Paid only</option>
+              <option value="Unpaid">Approved, not yet paid</option>
               <option value="Approved">Approved only</option>
               <option value="Pending">Pending only</option>
               <option value="Rejected">Rejected only</option>
@@ -345,37 +385,53 @@ export default function ExpenseReport() {
           </div>
 
           {/* KPIs */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-2">
+          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4 mb-2">
             <KpiCard
               icon={CheckCircle2}
               label="Approved"
-              value={formatMoney(kpis.approved.amount, currency)}
-              sub={`${kpis.approved.count} ${kpis.approved.count === 1 ? "expense" : "expenses"}`}
+              value={formatMoney(kpis.approved.gross, currency)}
+              sub={exGst(kpis.approved, currency)}
               tone="good"
+            />
+            <KpiCard
+              icon={BadgeIndianRupee}
+              label="Paid"
+              value={formatMoney(kpis.paid.gross, currency)}
+              sub={exGst(kpis.paid, currency)}
+              tone="paid"
+            />
+            <KpiCard
+              icon={Hourglass}
+              label="Still owed"
+              value={formatMoney(kpis.outstanding.gross, currency)}
+              sub={exGst(kpis.outstanding, currency)}
+              tone="warn"
             />
             <KpiCard
               icon={Clock}
               label="Pending"
-              value={formatMoney(kpis.pending.amount, currency)}
-              sub={`${kpis.pending.count} ${kpis.pending.count === 1 ? "expense" : "expenses"}`}
+              value={formatMoney(kpis.pending.gross, currency)}
+              sub={exGst(kpis.pending, currency)}
               tone="warn"
             />
             <KpiCard
               icon={XCircle}
               label="Rejected"
-              value={formatMoney(kpis.rejected.amount, currency)}
-              sub={`${kpis.rejected.count} ${kpis.rejected.count === 1 ? "expense" : "expenses"}`}
+              value={formatMoney(kpis.rejected.gross, currency)}
+              sub={exGst(kpis.rejected, currency)}
               tone="bad"
             />
             <KpiCard
               icon={Layers}
-              label="Line items"
-              value={kpis.all.count}
-              sub={`${formatMoney(kpis.all.amount, currency)} claimed in total`}
+              label="Claimed in total"
+              value={formatMoney(kpis.all.gross, currency)}
+              sub={exGst(kpis.all, currency)}
               tone="neutral"
             />
           </div>
           <p className="text-[11px] text-gray-400 mb-6">
+            Each figure is inclusive of GST, with the amount before GST beneath it.
+            Paid and still owed are the two halves of Approved, so they are not added to it.
             Totals are per expense line — a single claim can be part approved.
             {currencies.length > 1 && ` Mixed currencies (${currencies.join(", ")}) are summed as ${currency}.`}
           </p>
@@ -402,7 +458,7 @@ export default function ExpenseReport() {
                             {formatMoney(c.total, currency)}
                           </span>
                           <span className="text-gray-400 ml-1">
-                            ({kpis.all.amount ? Math.round((c.total / kpis.all.amount) * 100) : 0}%)
+                            ({kpis.all.gross ? Math.round((c.total / kpis.all.gross) * 100) : 0}%)
                           </span>
                         </span>
                       </div>
@@ -473,7 +529,7 @@ export default function ExpenseReport() {
                           {formatMoney(l.total, l.currency)}
                         </td>
                         <td className="px-3 py-3">
-                          <StatusChip status={l.approval_status} reason={l.rejection_reason} />
+                          <StatusChip status={statusOf(l)} reason={l.rejection_reason} />
                         </td>
                         <td className="px-5 py-3 text-xs text-gray-500 whitespace-nowrap">
                           {l.approved_by_name || "—"}
@@ -498,7 +554,7 @@ export default function ExpenseReport() {
                         <h2 className="font-bold text-sm">{l.category || "—"}</h2>
                         <p className="text-[11px] text-gray-400 mt-0.5">{lineRef(l)}</p>
                       </div>
-                      <StatusChip status={l.approval_status} reason={l.rejection_reason} />
+                      <StatusChip status={statusOf(l)} reason={l.rejection_reason} />
                     </div>
 
                     {l.description && (

@@ -19,6 +19,8 @@ import {
   Download,
   Clock,
   Users,
+  BadgeIndianRupee,
+  Undo2,
 } from "lucide-react";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
@@ -42,6 +44,9 @@ const statusChip = {
 // Approval happens per line, so the claim status is only a rollup of the lines
 // beneath it — the row's own chip is the authoritative state.
 const lineChip = {
+  // Paid gets its own colour rather than a shade of Approved: the point of the
+  // status is telling at a glance which approved money has actually gone out.
+  Paid: "bg-sky-50 text-sky-700 border-sky-200",
   Approved: "bg-emerald-50 text-emerald-700 border-emerald-200",
   Rejected: "bg-red-50 text-red-700 border-red-200",
   Pending: "bg-gray-100 text-gray-600 border-gray-200",
@@ -710,6 +715,11 @@ export default function ExpenseDetails() {
   );
 
   const approvableCount = claim?.approvable_count ?? approvableLines.length;
+  // The server's own count of what is approved and still owed. Falls back to
+  // counting locally so the button behaves before a refetch lands.
+  const payableCount =
+    claim?.payable_count ??
+    lines.filter((l) => l.approval_status === "Approved" && !l.paid).length;
 
   const approvableTotal = useMemo(
     () =>
@@ -1064,6 +1074,39 @@ export default function ExpenseDetails() {
     }
   };
 
+  // Recording that the money went out, and reversing that when it was recorded
+  // by mistake. Both re-fetch rather than patching state, because marking a line
+  // paid can also settle the whole claim and change the header status.
+  const setLinePaid = async (lineId, paid) => {
+    setLineBusy(`${paid ? "pay" : "unpay"}:${lineId}`);
+    setError("");
+    setNotice("");
+    try {
+      await api.post(`/expenses/${id}/lines/${lineId}/${paid ? "pay" : "unpay"}`);
+      await fetchClaim({ syncForm: false });
+      setNotice(paid ? "Marked paid" : "Payment reversed");
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to update the payment");
+    } finally {
+      setLineBusy("");
+    }
+  };
+
+  const payAll = async () => {
+    setBusyAction("pay-all");
+    setError("");
+    setNotice("");
+    try {
+      const res = await api.post(`/expenses/${id}/pay-all`);
+      await fetchClaim({ syncForm: false });
+      setNotice(res.data?.message || "Marked paid");
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to mark the claim paid");
+    } finally {
+      setBusyAction("");
+    }
+  };
+
   const openRejectLine = (line) => {
     setRejectLineId(line.id);
     setRejectReason("");
@@ -1412,6 +1455,23 @@ export default function ExpenseDetails() {
                     </button>
                   )}
 
+                  {/* The shape a payment run actually takes: everything approved
+                      and still owed on this claim, settled together. */}
+                  {canApprove && payableCount > 0 && (
+                    <button
+                      onClick={payAll}
+                      disabled={Boolean(busyAction) || Boolean(lineBusy)}
+                      className="inline-flex items-center gap-2 bg-sky-600 hover:bg-sky-700 disabled:opacity-60 text-white font-semibold text-sm px-5 py-3 rounded-xl transition"
+                    >
+                      {busyAction === "pay-all" ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <BadgeIndianRupee size={16} />
+                      )}
+                      Mark all paid ({payableCount})
+                    </button>
+                  )}
+
                   {rollup.Approved > 0 && (
                     <button
                       onClick={downloadPdf}
@@ -1578,7 +1638,13 @@ export default function ExpenseDetails() {
               )}
 
               {lines.map((line, index) => {
-                const lineState = line.approval_status || "Pending";
+                // Two different questions, and conflating them was tempting:
+                // lineState is the label a person reads, with payment folded in;
+                // approvalState is the decision underneath, which is what the
+                // approve, reject and edit affordances actually depend on.
+                const approvalState = line.approval_status || "Pending";
+                const lineState = line.status || approvalState;
+                const linePaid = line.paid === true;
                 // Editing, deleting and receipt changes are the LINE's own
                 // right, not the claim's: only an approved line is frozen, and
                 // a rejected one is editable again so the claimant can correct
@@ -1589,7 +1655,7 @@ export default function ExpenseDetails() {
                 // Both approving a line and sending a rejected one back are
                 // refused server-side without a bill (RECEIPT_REQUIRED), so say
                 // so before either is attempted.
-                const needsReceipt = lineState !== "Approved" && !hasReceipt;
+                const needsReceipt = approvalState !== "Approved" && !hasReceipt;
 
                 return editingLineId === line.id ? (
                   <LineForm
@@ -1605,7 +1671,7 @@ export default function ExpenseDetails() {
                     submitLabel="Save Line"
                     submitIcon={Save}
                     note={
-                      lineState === "Rejected"
+                      approvalState === "Rejected"
                         ? "This line was sent back — save the correction, then send it back for approval."
                         : null
                     }
@@ -1616,9 +1682,11 @@ export default function ExpenseDetails() {
                     className={`border-t border-l-4 transition ${
                       missingReceipt
                         ? "bg-red-50/70 border-l-red-400"
-                        : lineState === "Approved"
+                        : linePaid
+                        ? "border-l-sky-400"
+                        : approvalState === "Approved"
                         ? "border-l-emerald-400"
-                        : lineState === "Rejected"
+                        : approvalState === "Rejected"
                         ? "bg-red-50/30 border-l-red-300"
                         : needsReceipt
                         ? "bg-amber-50/40 border-l-amber-400"
@@ -1698,9 +1766,11 @@ export default function ExpenseDetails() {
                             lineChip[lineState] || lineChip.Pending
                           }`}
                         >
-                          {lineState === "Approved" ? (
+                          {linePaid ? (
+                            <BadgeIndianRupee size={12} />
+                          ) : approvalState === "Approved" ? (
                             <CheckCircle2 size={12} />
-                          ) : lineState === "Rejected" ? (
+                          ) : approvalState === "Rejected" ? (
                             <XCircle size={12} />
                           ) : (
                             <Clock size={12} />
@@ -1712,7 +1782,15 @@ export default function ExpenseDetails() {
                             : lineState}
                         </span>
 
-                        {lineState === "Approved" && (
+                        {/* Paid does not replace the approval line beneath it —
+                            who approved the money is still the audit answer. */}
+                        {linePaid && (
+                          <span className="text-xs text-sky-700">
+                            Paid by {line.paid_by_name || "—"} · {fmtDateTime(line.paid_at)}
+                          </span>
+                        )}
+
+                        {approvalState === "Approved" && (
                           <span className="text-xs text-gray-500">
                             {line.approved_by_name || "—"}
                             {line.approved_by_role ? ` · ${line.approved_by_role}` : ""} ·{" "}
@@ -1730,7 +1808,7 @@ export default function ExpenseDetails() {
                         )}
 
                         <div className="flex flex-wrap gap-2 sm:ml-auto">
-                          {canApprove && lineState === "Pending" && (
+                          {canApprove && approvalState === "Pending" && (
                             <>
                               <button
                                 type="button"
@@ -1754,6 +1832,40 @@ export default function ExpenseDetails() {
                                 <XCircle size={13} /> Reject
                               </button>
                             </>
+                          )}
+
+                          {/* can_pay and can_unpay are the server's answer, so a
+                              viewer who may not decide lines sees neither. */}
+                          {line.can_pay && (
+                            <button
+                              type="button"
+                              onClick={() => setLinePaid(line.id, true)}
+                              disabled={Boolean(lineBusy)}
+                              className="inline-flex items-center gap-1.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-60 text-white font-semibold text-xs px-3 py-2 rounded-xl transition"
+                            >
+                              {lineBusy === `pay:${line.id}` ? (
+                                <Loader2 size={13} className="animate-spin" />
+                              ) : (
+                                <BadgeIndianRupee size={13} />
+                              )}
+                              Mark paid
+                            </button>
+                          )}
+
+                          {line.can_unpay && (
+                            <button
+                              type="button"
+                              onClick={() => setLinePaid(line.id, false)}
+                              disabled={Boolean(lineBusy)}
+                              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-60"
+                            >
+                              {lineBusy === `unpay:${line.id}` ? (
+                                <Loader2 size={13} className="animate-spin" />
+                              ) : (
+                                <Undo2 size={13} />
+                              )}
+                              Undo payment
+                            </button>
                           )}
 
                           {lineState === "Approved" && (

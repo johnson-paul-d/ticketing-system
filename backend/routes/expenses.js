@@ -18,6 +18,9 @@ const {
   lineApprovalHash,
   rollupStatus,
   verifyCodeFrom,
+  isLinePaid,
+  isLinePayable,
+  lineStatus,
 } = require('../utils/expenseApproval');
 
 router.use(auth);
@@ -159,24 +162,59 @@ const fetchLinesForClaims = async (claimIds, { from, to } = {}) => {
   return out;
 };
 
-const emptyTotals = () => ({
-  approved: { count: 0, amount: 0 },
-  pending: { count: 0, amount: 0 },
-  rejected: { count: 0, amount: 0 },
-  all: { count: 0, amount: 0 },
-});
+// =====================================================
+// Totals
+// =====================================================
+// Every bucket carries three figures, because "the total" means two different
+// numbers to two different people in the same room:
+//
+//   net    the bills before tax — what the spend actually was
+//   tax    the GST on top
+//   gross  net + tax — what was paid out, and what a claimant is owed
+//
+// `amount` stays as an alias of gross. It is what every existing caller reads,
+// and renaming it would have broken the report page and the MCP tools for the
+// sake of tidiness.
+//
+// paid and unpaid are SUBSETS OF approved, not siblings of it. Approved says
+// the money is owed; paid says it has gone. Adding paid to approved would
+// double-count, and it is unpaid — approved but still owed — that is the
+// number worth looking at.
+const BUCKETS = ['approved', 'paid', 'unpaid', 'pending', 'rejected', 'all'];
+
+const emptyBucket = () => ({ count: 0, net: 0, tax: 0, gross: 0, amount: 0 });
+
+const emptyTotals = () => Object.fromEntries(BUCKETS.map((b) => [b, emptyBucket()]));
 
 const totalsFor = (rows) => {
   const t = emptyTotals();
+
+  const add = (bucket, r) => {
+    const net = Number(r.amount) || 0;
+    const tax = Number(r.tax_amount) || 0;
+    t[bucket].count += 1;
+    t[bucket].net += net;
+    t[bucket].tax += tax;
+    t[bucket].gross += net + tax;
+  };
+
   for (const r of rows) {
     const bucket = r.approval_status === 'Approved' ? 'approved'
       : r.approval_status === 'Rejected' ? 'rejected' : 'pending';
-    t[bucket].count += 1;
-    t[bucket].amount += r.total;
-    t.all.count += 1;
-    t.all.amount += r.total;
+    add(bucket, r);
+    // Only an approved line can be in either payment bucket. A pending or
+    // rejected one is in neither — it is not owed, so it cannot be outstanding.
+    if (bucket === 'approved') add(isLinePaid(r) ? 'paid' : 'unpaid', r);
+    add('all', r);
   }
-  for (const k of Object.keys(t)) t[k].amount = Math.round(t[k].amount * 100) / 100;
+
+  const round = (v) => Math.round(v * 100) / 100;
+  for (const k of BUCKETS) {
+    t[k].net = round(t[k].net);
+    t[k].tax = round(t[k].tax);
+    t[k].gross = round(t[k].gross);
+    t[k].amount = t[k].gross;
+  }
   return t;
 };
 
@@ -350,6 +388,13 @@ router.get('/report', async (req, res) => {
         tax_amount: Number(l.tax_amount || 0),
         total: Number(l.amount || 0) + Number(l.tax_amount || 0),
         approval_status: l.approval_status || 'Pending',
+        // The label, with payment taking precedence over approval because it is
+        // the later fact. approval_status is kept beside it so a report can
+        // still ask "was this ever approved" of a paid line.
+        status: lineStatus(l),
+        paid: isLinePaid(l),
+        paid_at: l.paid_at || null,
+        paid_by_name: l.paid_by_name || null,
         approved_by_name: l.approved_by_name,
         approved_at: l.approved_at,
         rejection_reason: l.rejection_reason,
@@ -491,6 +536,9 @@ router.get('/:id', async (req, res) => {
     const lines = await fetchLines(claim.id);
     const receipts = await fetchReceipts(claim.id);
     const owned = canEditClaim(req.user, claim);
+    // Whoever may decide a line may also record that it was paid — the same
+    // finance role, and there is nobody else it could belong to.
+    const decider = claim.status !== 'Draft' && canApproveClaim(req.user, claim);
     const withReceipt = new Set(receipts.map((r) => r.line_id).filter(Boolean));
 
     res.json({
@@ -499,11 +547,17 @@ router.get('/:id', async (req, res) => {
       // approved line is frozen while the one added beside it yesterday is not.
       lines: lines.map((l) => ({
         ...l,
+        // The label to show. approval_status is still there underneath — this
+        // does not replace it, it says which of the two facts is the later one.
+        status: lineStatus(l),
+        paid: isLinePaid(l),
         can_edit: owned && isLineEditable(l),
         has_receipt: withReceipt.has(l.id),
         // A rejected line goes back for approval once it has been fixed and
         // still carries a bill.
         can_resubmit: owned && isLineRejected(l) && withReceipt.has(l.id),
+        can_pay: decider && isLinePayable(l),
+        can_unpay: decider && isLinePaid(l),
       })),
       receipts,
       // Anyone on the team may add another expense — a claim is never closed,
@@ -517,11 +571,13 @@ router.get('/:id', async (req, res) => {
       can_delete: canDeleteClaim(req.user, claim) && claimIsUndecided(lines),
       // Whether this viewer may decide lines at all. Which lines are still open
       // is answered per line by its own approval_status.
-      can_approve: claim.status !== 'Draft' && canApproveClaim(req.user, claim),
+      can_approve: decider,
       // How many lines a single "approve everything" would actually take.
       approvable_count: lines.filter(
         (l) => isLineEditable(l) && withReceipt.has(l.id)
       ).length,
+      // And how many a single "mark paid" would settle: approved, still owed.
+      payable_count: lines.filter(isLinePayable).length,
     });
   } catch (err) {
     console.error('EXPENSE READ ERROR:', err);
@@ -1500,6 +1556,195 @@ router.post('/:id/lines/:lineId/reject', async (req, res) => {
   } catch (err) {
     console.error('EXPENSE LINE REJECT ERROR:', err);
     res.status(500).json({ message: 'Failed to reject line item' });
+  }
+});
+
+// =====================================================
+// PAYMENT
+// =====================================================
+// Recording that the money went out. A separate act from approving it, done by
+// the same people — an admin over the claim's team — because it is the same
+// finance role, and there is nobody else it could sensibly belong to.
+//
+// Only an approved line can be paid. Paying a pending line would be paying
+// something nobody agreed to, and a rejected one something that was refused.
+
+// expenses-paid-migration.sql may not have run. Rather than refuse the whole
+// feature, the columns are treated as optional in exactly the way
+// approved_by_designation already is: try, and on "no such column" say so
+// clearly instead of failing with a Postgres error nobody can act on.
+let hasPaidColumns = true;
+
+const paidMigrationRequired = (res) =>
+  res.status(501).json({
+    message: 'Marking expenses paid is not enabled yet — run database/expenses-paid-migration.sql',
+    code: 'PAID_MIGRATION_REQUIRED',
+  });
+
+const setPaid = async (req, res, { paid }) => {
+  const claim = await loadClaim(req, res);
+  if (!claim) return;
+
+  if (!canApproveClaim(req.user, claim)) {
+    return res.status(403).json({ message: approvalRefusalReason(req.user, claim) });
+  }
+
+  const { data: line } = await supabase
+    .from('expense_lines')
+    .select('*')
+    .eq('id', req.params.lineId)
+    .single();
+
+  // The parent is checked too — a line id from another claim must not be
+  // reachable through this claim's URL.
+  if (!line || line.claim_id !== claim.id) {
+    return res.status(404).json({ message: 'Line item not found' });
+  }
+
+  if (paid) {
+    if (line.approval_status !== 'Approved') {
+      return res.status(400).json({
+        message:
+          line.approval_status === 'Rejected'
+            ? 'That line was rejected, so there is nothing to pay'
+            : 'That line has not been approved yet',
+      });
+    }
+    if (isLinePaid(line)) {
+      return res.status(400).json({ message: 'That line is already marked paid' });
+    }
+  } else if (!isLinePaid(line)) {
+    return res.status(400).json({ message: 'That line is not marked paid' });
+  }
+
+  const patch = paid
+    ? { paid_at: getISTTime(), paid_by: req.user.id, paid_by_name: req.user.name }
+    : { paid_at: null, paid_by: null, paid_by_name: null };
+
+  const { data: updated, error } = await supabase
+    .from('expense_lines')
+    .update(patch)
+    .eq('id', line.id)
+    .select()
+    .single();
+
+  if (error) {
+    if (isMissingColumn(error, 'paid_at')) {
+      hasPaidColumns = false;
+      return paidMigrationRequired(res);
+    }
+    throw error;
+  }
+
+  // The claim's status is derived from its lines, so it has to be re-rolled
+  // whenever one of them changes — otherwise the header goes on saying Approved
+  // after the last outstanding line has been settled.
+  const after = await syncClaimStatus(
+    claim,
+    await fetchLines(claim.id),
+    req.user.name,
+    paid
+      ? `Line ${updated.line_no ?? ''} marked paid`.replace(/\s+/g, ' ').trim()
+      : `Payment reversed on line ${updated.line_no ?? ''}`.replace(/\s+/g, ' ').trim()
+  );
+
+  res.json({
+    line: { ...updated, status: lineStatus(updated) },
+    claim_status: after?.status,
+    message: paid ? 'Marked paid' : 'Payment reversed',
+  });
+};
+
+router.post('/:id/lines/:lineId/pay', async (req, res) => {
+  try {
+    if (!hasPaidColumns) return paidMigrationRequired(res);
+    await setPaid(req, res, { paid: true });
+  } catch (err) {
+    if (isMissingSchema(err)) return migrationResponse(res);
+    console.error('EXPENSE PAY ERROR:', err);
+    res.status(500).json({ message: 'Failed to mark the line paid' });
+  }
+});
+
+// Reversing a payment recorded by mistake. Deliberately available: without it
+// the only fix for a mistyped click is a database edit, and the alternative
+// people reach for is deleting and re-raising the bill, which loses the
+// approval and the signed document with it.
+router.post('/:id/lines/:lineId/unpay', async (req, res) => {
+  try {
+    if (!hasPaidColumns) return paidMigrationRequired(res);
+    await setPaid(req, res, { paid: false });
+  } catch (err) {
+    if (isMissingSchema(err)) return migrationResponse(res);
+    console.error('EXPENSE UNPAY ERROR:', err);
+    res.status(500).json({ message: 'Failed to reverse the payment' });
+  }
+});
+
+// Everything approved and outstanding on this claim, in one go — the shape a
+// payment run actually takes. Lines it cannot pay are reported rather than
+// silently skipped, the same way approve-all does it.
+router.post('/:id/pay-all', async (req, res) => {
+  try {
+    if (!hasPaidColumns) return paidMigrationRequired(res);
+
+    const claim = await loadClaim(req, res);
+    if (!claim) return;
+
+    if (!canApproveClaim(req.user, claim)) {
+      return res.status(403).json({ message: approvalRefusalReason(req.user, claim) });
+    }
+
+    const lines = await fetchLines(claim.id);
+    const payable = lines.filter(isLinePayable);
+
+    if (!payable.length) {
+      const alreadyPaid = lines.filter(isLinePaid).length;
+      return res.status(400).json({
+        message: alreadyPaid
+          ? 'Everything approved on this claim is already paid'
+          : 'Nothing on this claim is approved and waiting to be paid',
+      });
+    }
+
+    const now = getISTTime();
+    const { error } = await supabase
+      .from('expense_lines')
+      .update({ paid_at: now, paid_by: req.user.id, paid_by_name: req.user.name })
+      .in('id', payable.map((l) => l.id))
+      // Guards the gap between reading and writing: a line approved-and-unpaid
+      // a moment ago may have been paid by someone else since.
+      .is('paid_at', null);
+
+    if (error) {
+      if (isMissingColumn(error, 'paid_at')) {
+        hasPaidColumns = false;
+        return paidMigrationRequired(res);
+      }
+      throw error;
+    }
+
+    const after = await fetchLines(claim.id);
+    const claimAfter = await syncClaimStatus(
+      claim,
+      after,
+      req.user.name,
+      `Marked ${payable.length} line${payable.length === 1 ? '' : 's'} paid`
+    );
+    const skipped = lines.length - payable.length;
+
+    res.json({
+      paid: payable.length,
+      skipped,
+      status: claimAfter?.status,
+      message:
+        `Marked ${payable.length} line${payable.length === 1 ? '' : 's'} paid` +
+        (skipped ? `, leaving ${skipped} not approved or already paid` : ''),
+    });
+  } catch (err) {
+    if (isMissingSchema(err)) return migrationResponse(res);
+    console.error('EXPENSE PAY-ALL ERROR:', err);
+    res.status(500).json({ message: 'Failed to mark the claim paid' });
   }
 });
 

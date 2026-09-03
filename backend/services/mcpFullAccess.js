@@ -361,6 +361,55 @@ const tools = [
     reply: (r, a) => ({ claim_id: a.id, result: r, message: `Ran approval across claim ${a.id}.` }),
   }),
 
+  // Payment is a separate act from approval: approving says the money is owed,
+  // paying says it has gone out. Only an approved bill can be paid.
+  simple({
+    name: 'mark_expense_line_paid',
+    title: 'Record that a bill was paid',
+    description:
+      'Records that the money for one approved bill has actually gone out, against your name and ' +
+      'the time. Only an approved bill can be paid — a pending one has not been agreed to and a ' +
+      'rejected one never will be. This does not move any money; it records that it moved.',
+    annotations: changes,
+    schema: {
+      claim_id: { type: 'string', description: 'The claim id.' },
+      line_id: { type: 'string', description: 'The line id.' },
+    },
+    required: ['claim_id', 'line_id'],
+    call: (a) => ({ method: 'POST', path: `/expenses/${id(a.claim_id)}/lines/${id(a.line_id)}/pay` }),
+    reply: (r, a) => ({ paid: a.line_id, claim_status: r?.claim_status, message: `Marked line ${a.line_id} paid.` }),
+  }),
+
+  simple({
+    name: 'unmark_expense_line_paid',
+    title: 'Reverse a payment recorded by mistake',
+    description:
+      'Takes a bill back to approved-but-unpaid. For a payment recorded in error — it does not ' +
+      'reverse an actual transfer, and the approval underneath is untouched.',
+    annotations: changes,
+    schema: {
+      claim_id: { type: 'string', description: 'The claim id.' },
+      line_id: { type: 'string', description: 'The line id.' },
+    },
+    required: ['claim_id', 'line_id'],
+    call: (a) => ({ method: 'POST', path: `/expenses/${id(a.claim_id)}/lines/${id(a.line_id)}/unpay` }),
+    reply: (_r, a) => ({ unpaid: a.line_id, message: `Line ${a.line_id} is back to unpaid.` }),
+  }),
+
+  simple({
+    name: 'mark_expense_claim_paid',
+    title: 'Record a whole claim as paid',
+    description:
+      'Marks every approved-and-still-owed bill on a claim as paid, which is the shape a payment ' +
+      'run takes. Bills it cannot pay — not approved, or already paid — are reported back rather ' +
+      'than silently skipped. The claim reads Paid once everything owed on it has settled.',
+    annotations: changes,
+    schema: { id: { type: 'string', description: 'The claim id.' } },
+    required: ['id'],
+    call: (a) => ({ method: 'POST', path: `/expenses/${id(a.id)}/pay-all` }),
+    reply: (r, a) => ({ claim_id: a.id, paid: r?.paid, skipped: r?.skipped, status: r?.status, message: r?.message }),
+  }),
+
   simple({
     name: 'resubmit_expense_line',
     title: 'Resubmit a refused bill',

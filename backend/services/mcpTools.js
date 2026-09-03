@@ -541,8 +541,10 @@ const tools = [
     description:
       'The right tool for any question about money. Reads one row per individual bill — not per ' +
       'claim — and returns totals split by approval status plus a breakdown by whatever you group ' +
-      'on. Amounts are net plus tax. Each bill is approved or refused on its own, so a claim can be ' +
-      'part approved: `approved` is the only total that represents committed spend.',
+      'on. Each bucket carries net (before GST), tax, and gross (net + tax), because both figures ' +
+      'get asked for. Each bill is approved or refused on its own, so a claim can be part ' +
+      'approved. `paid` and `unpaid` are subsets of `approved`, not separate from it — `unpaid` is ' +
+      'approved money that has not gone out yet, which is what is still owed.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -550,12 +552,19 @@ const tools = [
         to: { type: 'string', description: 'Only bills spent on or before this date (YYYY-MM-DD).' },
         group_by: {
           type: 'string',
-          enum: ['category', 'division', 'claimant', 'month', 'approval_status', 'team', 'none'],
+          enum: ['category', 'division', 'claimant', 'month', 'approval_status', 'status', 'team', 'none'],
           description: 'How to break the spend down. Defaults to category.',
         },
         approval_status: {
           type: 'string',
           description: 'Narrow to Pending, Approved or Rejected bills only.',
+        },
+        payment: {
+          type: 'string',
+          enum: ['paid', 'unpaid', 'any'],
+          description:
+            '"unpaid" is approved but not yet paid — what is still owed. Only an approved bill is ' +
+            'either, so this narrows to approved on its own.',
         },
         category: { type: 'string', description: 'Expense category, or part of one.' },
         division: { type: 'string', description: 'ASTOR, CPS, TMD or All User.' },
@@ -581,6 +590,9 @@ const tools = [
       const lines = (Array.isArray(report?.lines) ? report.lines : []).filter(
         (l) =>
           exact(l.approval_status, args.approval_status) &&
+          (lc(args.payment) === 'paid' ? l.paid === true
+            : lc(args.payment) === 'unpaid' ? (l.approval_status === 'Approved' && !l.paid)
+            : true) &&
           loose(l.category, args.category) &&
           exact(l.division, args.division) &&
           loose(l.claimant_name, args.claimant)
@@ -601,6 +613,9 @@ const tools = [
         claimant: (l) => l.claimant_name,
         month: (l) => (l.expense_date ? String(l.expense_date).slice(0, 7) : 'No date'),
         approval_status: (l) => l.approval_status,
+        // The label with payment folded in — grouping on this separates paid
+        // from still-owed, which grouping on approval_status cannot.
+        status: (l) => l.status || l.approval_status,
         team: (l) => l.team,
       }[groupBy];
 
@@ -613,10 +628,18 @@ const tools = [
 
       if (keyOf) {
         out.grouped_by = groupBy;
+        // Both figures per group, for the same reason the totals carry both.
+        const netOf = new Map();
+        for (const l of lines) {
+          const k = keyOf(l) || 'Unspecified';
+          netOf.set(k, (netOf.get(k) || 0) + num(l.amount));
+        }
         out.groups = groupCounts(lines, keyOf, (l) => l.total).map((g) => ({
           group: g.key,
           bills: g.count,
           total: round2(g.value),
+          net: round2(netOf.get(g.key) || 0),
+          tax: round2(g.value - (netOf.get(g.key) || 0)),
         }));
       }
 
@@ -635,6 +658,10 @@ const tools = [
           tax_amount: round2(l.tax_amount),
           total: round2(l.total),
           approval_status: l.approval_status,
+          status: l.status || l.approval_status,
+          paid: l.paid === true,
+          paid_at: l.paid_at || null,
+          paid_by_name: l.paid_by_name || null,
           url: claimUrl(l.claim_id),
         }));
         if (sorted.length > limit) {
