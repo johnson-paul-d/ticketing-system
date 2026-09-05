@@ -54,6 +54,7 @@ export default function TicketCalendar() {
   const [loading, setLoading] = useState(true);
   const [currentView, setCurrentView] = useState("month");
   const [selectedUser, setSelectedUser] = useState("All");
+  const [selectedCategory, setSelectedCategory] = useState("All");
 
   // =====================================================
   // FETCH
@@ -211,6 +212,34 @@ export default function TicketCalendar() {
   }, [events]);
 
   // =====================================================
+  // CATEGORIES
+  // =====================================================
+  // Built from the tickets actually on the calendar rather than the fixed
+  // team list, so the dropdown never offers a category with nothing behind it,
+  // and Super Admins see both teams' categories side by side.
+
+  const UNCATEGORISED = "Uncategorised";
+
+  const categoryOptions = useMemo(() => {
+    const seen = new Set();
+    let hasUncategorised = false;
+    events.forEach((e) => {
+      if (e.type === "leave" || e.type === "permission") return;
+      const c = e.resource?.category?.trim();
+      if (c) seen.add(c);
+      else hasUncategorised = true;
+    });
+    const sorted = [...seen].sort((a, b) => a.localeCompare(b));
+    return ["All", ...sorted, ...(hasUncategorised ? [UNCATEGORISED] : [])];
+  }, [events]);
+
+  // A category that disappears from the data must not leave the dropdown
+  // pointing at nothing.
+  useEffect(() => {
+    if (!categoryOptions.includes(selectedCategory)) setSelectedCategory("All");
+  }, [categoryOptions, selectedCategory]);
+
+  // =====================================================
   // FILTER
   // =====================================================
 
@@ -218,6 +247,16 @@ export default function TicketCalendar() {
     let filtered = selectedUser === "All"
       ? events
       : events.filter((event) => event.resource?.assignedPerson === selectedUser);
+
+    // Category applies to ticket events only. Leave and permission blocks have
+    // no category and stay visible as context for whichever tickets are shown.
+    if (selectedCategory !== "All") {
+      filtered = filtered.filter((event) => {
+        if (event.type === "leave" || event.type === "permission") return true;
+        const c = event.resource?.category?.trim();
+        return selectedCategory === UNCATEGORISED ? !c : c === selectedCategory;
+      });
+    }
 
     if (currentView === "month") {
       return filtered.filter(
@@ -228,7 +267,7 @@ export default function TicketCalendar() {
     return filtered.filter(
       (e) => e.type === "work_log" || e.type === "permission" || e.type === "leave"
     );
-  }, [events, selectedUser, currentView]);
+  }, [events, selectedUser, selectedCategory, currentView]);
 
   // =====================================================
   // MOVE / RESIZE
@@ -375,7 +414,22 @@ export default function TicketCalendar() {
           <p className="text-gray-500 mt-2">Tickets, workload, leaves & permissions</p>
         </div>
 
-        <div className="mb-6 flex flex-wrap gap-3">
+        <div className="mb-6 flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 bg-white px-3 py-2 rounded-2xl border shadow-sm text-sm">
+            <span className="text-gray-500 font-medium">Category</span>
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="bg-transparent outline-none font-medium cursor-pointer pr-1"
+              aria-label="Filter tickets by category"
+            >
+              {categoryOptions.map((c) => (
+                <option key={c} value={c}>
+                  {c === "All" ? "All categories" : c}
+                </option>
+              ))}
+            </select>
+          </label>
           {uniqueUsers.map((user) => (
             <button
               key={user}

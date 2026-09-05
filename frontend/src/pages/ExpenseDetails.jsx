@@ -1147,6 +1147,36 @@ export default function ExpenseDetails() {
     }
   };
 
+  // The approver's own undo. Reversing puts the line back to Pending so a wrong
+  // figure can be corrected and approved afresh; the printed verification code
+  // for the old approval stops working from that moment, so it asks first.
+  const unapproveLine = async (line) => {
+    const gross = formatMoney(
+      (Number(line.amount) || 0) + (Number(line.tax_amount) || 0),
+      currency
+    );
+    const ok = window.confirm(
+      `Reverse the approval of ${line.category} (${gross})?\n\n` +
+        `The line goes back to Pending so it can be edited, and its verification code ` +
+        `${line.verify_code || ""} will no longer verify. You can approve it again afterwards.`
+    );
+    if (!ok) return;
+    setLineBusy(`unapprove:${line.id}`);
+    setError("");
+    setNotice("");
+    setSkippedLines([]);
+    setSignatureRequired(false);
+    try {
+      await api.post(`/expenses/${id}/lines/${line.id}/unapprove`);
+      await fetchClaim({ syncForm: false });
+      setNotice("Approval reversed. The line is back to Pending and can be edited.");
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to reverse the approval");
+    } finally {
+      setLineBusy("");
+    }
+  };
+
   // A rejection is feedback, not a verdict: the same line goes back to the
   // approvers once it has been corrected, so the reason and the fix stay on one
   // thread instead of spawning a duplicate line.
@@ -1865,6 +1895,25 @@ export default function ExpenseDetails() {
                                 <Undo2 size={13} />
                               )}
                               Undo payment
+                            </button>
+                          )}
+
+                          {/* can_unapprove is the server's answer: an approver,
+                              an approved line, and the money not yet paid out. */}
+                          {line.can_unapprove && (
+                            <button
+                              type="button"
+                              onClick={() => unapproveLine(line)}
+                              disabled={Boolean(lineBusy)}
+                              title="Put this line back to Pending so it can be corrected and approved again"
+                              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-amber-200 bg-white text-xs font-semibold text-amber-700 hover:bg-amber-50 disabled:opacity-60"
+                            >
+                              {lineBusy === `unapprove:${line.id}` ? (
+                                <Loader2 size={13} className="animate-spin" />
+                              ) : (
+                                <Undo2 size={13} />
+                              )}
+                              Reverse approval
                             </button>
                           )}
 

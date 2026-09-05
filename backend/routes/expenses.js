@@ -558,6 +558,10 @@ router.get('/:id', async (req, res) => {
         can_resubmit: owned && isLineRejected(l) && withReceipt.has(l.id),
         can_pay: decider && isLinePayable(l),
         can_unpay: decider && isLinePaid(l),
+        // Approval can be taken back while the money has not gone out, so a
+        // wrong figure (a mistyped tax amount, say) can be corrected and the
+        // line approved again. Once paid, the payment has to be undone first.
+        can_unapprove: decider && l.approval_status === 'Approved' && !isLinePaid(l),
       })),
       receipts,
       // Anyone on the team may add another expense — a claim is never closed,
@@ -1500,6 +1504,115 @@ router.post('/:id/lines/:lineId/resubmit', async (req, res) => {
   } catch (err) {
     console.error('EXPENSE LINE RESUBMIT ERROR:', err);
     res.status(500).json({ message: 'Failed to resubmit line item' });
+  }
+});
+
+// =====================================================
+// REVERSE AN APPROVAL
+// =====================================================
+// An approver's own undo. Approval freezes a line, and the only route around a
+// figure approved in error used to be deleting the line and re-raising it,
+// which threw away its receipts and its place in the numbering. Reversing puts
+// the line back to Pending so the claimant can correct it and it can be
+// approved afresh.
+//
+// The approval record is cleared rather than kept: the hash and verification
+// code attested to figures that are about to change, so a printout carrying
+// that code must stop verifying from this moment. The event itself is kept in
+// the claim timeline, with who reversed it and why.
+//
+// A paid line cannot be reversed. Payment says the money went out against the
+// approved figure; undo the payment first so the two facts stay in order.
+router.post('/:id/lines/:lineId/unapprove', async (req, res) => {
+  try {
+    const claim = await loadClaim(req, res);
+    if (!claim) return;
+
+    if (!canApproveClaim(req.user, claim)) {
+      return res.status(403).json({ message: approvalRefusalReason(req.user, claim) });
+    }
+
+    const { data: line } = await supabase
+      .from('expense_lines')
+      .select('*')
+      .eq('id', req.params.lineId)
+      .single();
+
+    if (!line || line.claim_id !== claim.id) {
+      return res.status(404).json({ message: 'Line item not found' });
+    }
+    if (line.approval_status !== 'Approved') {
+      return res.status(400).json({
+        message: `That line is ${(line.approval_status || 'Pending').toLowerCase()}, so there is no approval to reverse`,
+      });
+    }
+    if (isLinePaid(line)) {
+      return res.status(400).json({
+        message: 'That line has been marked paid. Undo the payment before reversing the approval.',
+        code: 'PAID_LINE',
+      });
+    }
+
+    const reason = String(req.body?.reason || '').trim();
+
+    const basePatch = {
+      approval_status: 'Pending',
+      approved_by: null,
+      approved_by_name: null,
+      approved_by_role: null,
+      approved_at: null,
+      approval_hash: null,
+      verify_code: null,
+      rejection_reason: null,
+    };
+
+    // approved_by_designation arrives with designation-migration.sql; cleared
+    // when present, skipped when the column is not there yet.
+    let updatedLine = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const withDesignation = hasDesignation && attempt === 0;
+      const result = await supabase
+        .from('expense_lines')
+        .update(withDesignation ? { ...basePatch, approved_by_designation: null } : basePatch)
+        .eq('id', line.id)
+        .eq('approval_status', 'Approved')
+        .select()
+        .single();
+
+      if (!result.error) {
+        updatedLine = result.data;
+        break;
+      }
+      if (withDesignation && isMissingColumn(result.error, 'approved_by_designation')) {
+        hasDesignation = false;
+        continue;
+      }
+      throw result.error;
+    }
+
+    if (!updatedLine) {
+      return res.status(409).json({ message: 'That line changed while you were working on it' });
+    }
+
+    const lines = await fetchLines(claim.id);
+    const updatedClaim = await syncClaimStatus(
+      claim,
+      lines,
+      req.user.name,
+      `Approval reversed on line ${line.line_no ?? ''} — ${line.category} ${claim.currency} ${Number(line.amount).toFixed(2)}${reason ? ` (${reason})` : ''}`.replace(/\s+/g, ' ')
+    );
+
+    await notifyUser(
+      claim.claimant_name,
+      'Expense Approval Reversed',
+      `${req.user.name} reversed the approval of ${line.category} (${claim.currency} ${Number(line.amount).toFixed(2)}) on "${claim.title}"${reason ? `: ${reason}` : ''}. The line can be corrected and approved again.`,
+      null
+    );
+
+    res.json({ line: { ...updatedLine, status: lineStatus(updatedLine) }, claim: updatedClaim });
+  } catch (err) {
+    console.error('EXPENSE LINE UNAPPROVE ERROR:', err);
+    res.status(500).json({ message: 'Failed to reverse the approval' });
   }
 });
 
