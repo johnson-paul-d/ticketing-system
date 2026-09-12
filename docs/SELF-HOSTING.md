@@ -190,11 +190,16 @@ psql -U postgres -d mkttickets -c "notify pgrst, 'reload schema';"
 Without that, new columns answer with a PGRST204 "column not found" until the
 service restarts.
 
-**Updating the app.** Pull, install, rebuild the frontend, restart:
+**Updating the app.** One command pulls main, installs dependencies, rebuilds
+the frontend and restarts the service. It stops at the first failure, so a
+broken build never replaces the running one:
 
 ```powershell
-cd D:\mkttickets; git pull; npm install --prefix backend; npm install --prefix frontend; cd backend; npm run build:frontend; pm2 restart mkttickets
+powershell -ExecutionPolicy Bypass -File D:\mkttickets\scripts\deploy.ps1
 ```
+
+It lists any migration scripts that arrived with the update; apply those by
+hand as described below.
 
 **Services that must be running:** `postgresql-x64-18` (the number follows
 the installed version), `postgrest`, the app (`pm2` or NSSM), and
