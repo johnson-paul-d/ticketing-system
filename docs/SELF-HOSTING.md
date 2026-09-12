@@ -205,6 +205,44 @@ hand as described below.
 the installed version), `postgrest`, the app (`pm2` or NSSM), and
 `cloudflared`.
 
+## Automatic deployment
+
+Every push to `main` deploys itself. A GitHub Actions **self-hosted runner**
+on the server waits for pushes and runs `scripts\deploy.ps1`
+(`.github/workflows/deploy.yml`). The runner polls GitHub outbound, so no port
+is opened, and each deploy appears with its log under the repository's
+Actions tab.
+
+**Install the runner once, on the server.** GitHub → repository → Settings →
+Actions → Runners → *New self-hosted runner* → Windows x64. It shows a
+download command and a `config.cmd` command with a fresh token; run them in an
+elevated PowerShell from `D:\actions-runner`. Answer the prompts as follows:
+
+- runner group: default
+- name: the server's name
+- labels: add `mkttickets`
+- work folder: default
+- run as service: **Y**
+- account: the server's local administrator account (the one you sign in
+  with), with its password. Default NETWORK SERVICE cannot restart the app
+  service or write to `D:\mkttickets`.
+
+Then `Start-Service actions.runner.*` if it is not already running, and the
+runner shows as Idle on the Runners page. Push anything to main and watch the
+Actions tab.
+
+**Releasing from the laptop** is one command, run in the repo:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\ship.ps1 "What changed"
+```
+
+It stages everything, refuses anything that looks like a secret, commits,
+pulls, pushes, and the server takes it from there.
+
+**If the runner is ever down**, `deploy.ps1` still works by hand on the
+server, and GitHub queues the run until the runner returns.
+
 ## Development database for laptops
 
 Nothing runs or is stored on a developer's laptop except the code. The laptop

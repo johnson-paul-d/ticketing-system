@@ -1,0 +1,41 @@
+# Deploys every push to main onto the server PC.
+#
+# Runs on a GitHub Actions self-hosted runner installed on the server (see
+# docs/SELF-HOSTING.md, "Automatic deployment"). The runner polls GitHub, so
+# nothing is exposed inbound; it simply executes the same deploy script a
+# person would run by hand. One deploy at a time: a second push while one is
+# in flight waits its turn rather than racing it.
+#
+# Nothing is checked out here on purpose. The live clone at D:\mkttickets is
+# what deploy.ps1 updates, and that is the copy the NSSM service runs from.
+
+name: Deploy to server
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-server
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, windows, mkttickets]
+    timeout-minutes: 15
+    steps:
+      - name: Run deploy script on the server
+        shell: powershell
+        run: |
+          $script = 'D:\mkttickets\scripts\deploy.ps1'
+          if (-not (Test-Path $script)) { throw "Deploy script not found at $script" }
+          & powershell -NoProfile -ExecutionPolicy Bypass -File $script
+          if ($LASTEXITCODE -ne 0) { throw "deploy.ps1 exited with $LASTEXITCODE" }
+
+      - name: Check the portal answers
+        shell: powershell
+        run: |
+          $r = Invoke-RestMethod http://127.0.0.1:8020/api/test -TimeoutSec 30
+          if ($r.message -ne 'Backend works') { throw "Unexpected reply: $($r | ConvertTo-Json -Compress)" }
+          "Portal is up after deploy."
