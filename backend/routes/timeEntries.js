@@ -69,6 +69,41 @@ const formatDuration = (minutes) =>
   `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 
 // =====================================================
+// WALL-CLOCK TIMESTAMPS
+// =====================================================
+// start_time and end_time are `timestamp without time zone` columns holding
+// Indian wall-clock time: 13:00 in the column means 13:00 IST, and the browser
+// (always in IST) reads them back as local time. The client sends exactly that
+// shape, "YYYY-MM-DDTHH:mm:ss" with no zone.
+//
+// These used to be passed through `new Date(x).toISOString()`, which only
+// preserved the wall clock because the server happened to run in UTC. Moved to
+// a machine set to IST, the same line shifted every entry by 5h30 on the way
+// in. So: a zone-less string is stored as it is, and anything carrying a zone
+// (an API caller sending "…Z") is converted to IST wall-clock explicitly.
+// Never depends on the process time zone.
+const IST_OFFSET_MINUTES = 330;
+const pad = (n) => String(n).padStart(2, "0");
+
+const toWallClock = (value) => {
+  if (value instanceof Date) return fromInstant(value);
+  const s = String(value ?? "").trim();
+  const plain = s.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?$/);
+  if (plain) return `${plain[1]}T${plain[2]}:${plain[3]}:${plain[4] || "00"}`;
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return null;
+  return fromInstant(d);
+};
+
+const fromInstant = (d) => {
+  const ist = new Date(d.getTime() + IST_OFFSET_MINUTES * 60000);
+  return (
+    `${ist.getUTCFullYear()}-${pad(ist.getUTCMonth() + 1)}-${pad(ist.getUTCDate())}` +
+    `T${pad(ist.getUTCHours())}:${pad(ist.getUTCMinutes())}:${pad(ist.getUTCSeconds())}`
+  );
+};
+
+// =====================================================
 // CREATE TIME ENTRY
 // =====================================================
 router.post(
@@ -90,6 +125,12 @@ router.post(
         return res.status(400).json({
           message: "Invalid duration",
         });
+      }
+
+      const startStamp = toWallClock(start_time);
+      const endStamp = toWallClock(end_time);
+      if (!startStamp || !endStamp) {
+        return res.status(400).json({ message: "Invalid start or end time" });
       }
 
       // =========================================
@@ -125,8 +166,8 @@ router.post(
           {
             ticket_id,
             work_date,
-            start_time: new Date(start_time).toISOString(),
-            end_time: new Date(end_time).toISOString(),
+            start_time: startStamp,
+            end_time: endStamp,
             duration_minutes: minutes,
             notes,
             user_name: req.user.name,
@@ -294,9 +335,15 @@ router.put(
       // =========================================
       // work_date and notes are sent by the edit form and were previously
       // dropped here, so changing either reported success and saved nothing.
+      const startStamp = toWallClock(start_time);
+      const endStamp = toWallClock(end_time);
+      if (!startStamp || !endStamp) {
+        return res.status(400).json({ error: "Invalid start or end time" });
+      }
+
       const entryUpdate = {
-        start_time: new Date(start_time).toISOString(),
-        end_time: new Date(end_time).toISOString(),
+        start_time: startStamp,
+        end_time: endStamp,
         duration_minutes: minutes,
       };
       if (work_date !== undefined) entryUpdate.work_date = work_date;
