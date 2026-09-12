@@ -297,6 +297,43 @@ point at the server's files and will not open on the laptop; that is expected.
 want the dev database reset to last night's production. Everything in it is
 discarded.
 
+## Caveats found after the first migration (12 Sep 2026)
+
+- **The server runs in Indian time; Render ran in UTC.** Any code that turns a
+  wall-clock string into a `Date` and back silently shifts by 5h30 on this
+  machine. Time entries were the one place that did it (fixed in
+  `routes/timeEntries.js`, which now stores what the browser sends). Nothing
+  else in the backend depends on the process time zone; keep it that way.
+  Timestamps handed to the database are UTC ISO strings, and the database and
+  PostgREST roles are pinned to UTC by the SQL scripts.
+- **There is no table editor any more.** The Google Ads tables used to be
+  loaded through Supabase's CSV import. pgAdmin 4, installed with PostgreSQL,
+  has the same thing: right-click the table → Import/Export Data. Or from
+  PowerShell: `psql -U postgres -d mkttickets -c "\copy google_ads_keyword_analysis from 'C:\path\file.csv' csv header"`.
+  LinkedIn data is refreshed from the dashboard's own Sync button, unchanged.
+- **Three files on the server hold secrets** and default to being readable by
+  every local account: `C:\ProgramData\mkttickets\pgpass.conf`,
+  `D:\postgrest\postgrest.conf` and `D:\mkttickets\backend\.env`. Restrict them
+  to administrators and SYSTEM:
+
+  ```powershell
+  foreach ($f in 'C:\ProgramData\mkttickets\pgpass.conf','D:\postgrest\postgrest.conf','D:\postgrest\postgrest-dev.conf','D:\mkttickets\backend\.env') { icacls $f /inheritance:r /grant:r "Administrators:F" "SYSTEM:F" | Out-Null }
+  ```
+- **Service logs grow without limit.** Let NSSM rotate them:
+
+  ```powershell
+  foreach ($s in 'mkttickets','postgrest','postgrest-dev') { nssm set $s AppRotateFiles 1; nssm set $s AppRotateOnline 1; nssm set $s AppRotateBytes 10485760 }
+  ```
+- **Uploaded files live inside the repo folder** (`backend\data\files`,
+  git-ignored). `deploy.ps1` never runs `git clean`, so they are safe, but a
+  future move to `FILE_STORE_DIR=D:\mkttickets-files` outside the repo is
+  tidier. Move the folder and change the variable in the same step.
+- **Laptop and server must not share `JWT_SECRET`.** A session minted with the
+  server's secret is valid on the live portal. The laptop's `.env` carries its
+  own value so a developer session can never be replayed against production.
+- **A dev refresh disconnects anyone using the dev database** for a few
+  seconds; that is expected.
+
 ## What is different from Supabase
 
 - No 1000-row response cap. The app pages explicitly and does not depend on it.
