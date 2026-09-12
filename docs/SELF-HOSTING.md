@@ -27,10 +27,20 @@ Supabase → your project → **Project Settings → Database**.
 
 ## 1. Install PostgreSQL on the server
 
-Install **PostgreSQL 17** from the EDB installer (postgresql.org/download/windows).
+Install **PostgreSQL 17 or 18** from the EDB installer (postgresql.org/download/windows).
 Note the `postgres` password you set. Tick *Command Line Tools*; they provide
-`psql`, `pg_dump`, `pg_restore`, `createdb`. Add
-`C:\Program Files\PostgreSQL\17\bin` to PATH.
+`psql`, `pg_dump`, `pg_restore`, `createdb`. The installer does not put them
+on PATH. For the current window:
+
+```powershell
+$env:Path += ";" + (Get-ChildItem "C:\Program Files\PostgreSQL\*\bin" | Select-Object -First 1).FullName; psql --version
+```
+
+To avoid a password prompt on every command in that window:
+
+```powershell
+$env:PGPASSWORD = "<the postgres password>"
+```
 
 Create the database and prepare it:
 
@@ -51,8 +61,13 @@ pg_dump "postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.c
 pg_restore -U postgres -d mkttickets --no-owner --no-privileges D:\mkttickets\supabase.dump
 ```
 
-Warnings about extensions or `supabase_` roles are expected and harmless. The
-dump file holds your whole database: keep it, and keep it private.
+One error is expected and harmless: "schema public already exists" (every new
+database has one; the dump tries to create it again). Warnings about
+extensions or `supabase_` roles are likewise fine. The dump file holds your
+whole database: keep it, and keep it private.
+
+If the Supabase password contains `@`, `%`, `#` or `/`, percent-encode it in
+the string (`@` is `%40`, `%` is `%25`).
 
 Then create the roles PostgREST uses:
 
@@ -64,8 +79,13 @@ psql -U postgres -d mkttickets -c "alter role authenticator with password '<long
 ## 3. Install PostgREST
 
 1. Download the Windows zip from github.com/PostgREST/postgrest/releases
-   (`postgrest-v13.x-windows-x64.zip`) and unzip `postgrest.exe` into
-   `D:\postgrest\`.
+   (named like `postgrest-v16.3-windows-x86-64.zip`) and unzip `postgrest.exe`
+   into `D:\postgrest\`. The Windows build needs PostgreSQL's client DLLs
+   beside it, or it exits silently with code -1073741515 (DLL not found):
+
+   ```powershell
+   Copy-Item "C:\Program Files\PostgreSQL\18\bin\*.dll" D:\postgrest\; D:\postgrest\postgrest.exe --version
+   ```
 2. Copy `backend\scripts\db\postgrest.conf.example` there as `postgrest.conf`.
    Put password A into `db-uri` and a random string of at least 32 characters
    into `jwt-secret` (call it secret B).
@@ -76,7 +96,7 @@ psql -U postgres -d mkttickets -c "alter role authenticator with password '<long
 ```powershell
 nssm install postgrest D:\postgrest\postgrest.exe D:\postgrest\postgrest.conf
 nssm set postgrest AppDirectory D:\postgrest
-nssm set postgrest DependOnService postgresql-x64-17
+nssm set postgrest DependOnService postgresql-x64-18
 nssm start postgrest
 ```
 
@@ -176,8 +196,9 @@ service restarts.
 cd D:\mkttickets; git pull; npm install --prefix backend; npm install --prefix frontend; cd backend; npm run build:frontend; pm2 restart mkttickets
 ```
 
-**Services that must be running:** `postgresql-x64-17`, `postgrest`, the app
-(`pm2` or NSSM), and `cloudflared`.
+**Services that must be running:** `postgresql-x64-18` (the number follows
+the installed version), `postgrest`, the app (`pm2` or NSSM), and
+`cloudflared`.
 
 ## What is different from Supabase
 
