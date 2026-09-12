@@ -1,0 +1,29 @@
+# PostgREST configuration for the self-hosted ticketing database.
+# Copy to postgrest.conf next to postgrest.exe and fill in the two secrets.
+#
+# Docs: https://docs.postgrest.org/en/stable/references/configuration.html
+
+# The login role from 02-postgrest-roles.sql and the password you set for it.
+db-uri = "postgres://authenticator:CHANGE_ME_authenticator_password@127.0.0.1:5432/mkttickets"
+
+db-schemas = "public"
+db-anon-role = "anon"
+
+# At least 32 characters. The same value goes into mint-service-jwt.js to
+# produce POSTGREST_JWT for the app. Anyone holding this secret can mint a
+# token for any role, so treat it like the database password.
+jwt-secret = "CHANGE_ME_a_random_secret_of_at_least_32_characters"
+
+# Loopback only: the app runs on this machine and nothing else should reach
+# the tables directly. The Cloudflare Tunnel points at the app, never here.
+server-host = "127.0.0.1"
+server-port = 3001
+
+db-pool = 10
+
+# Supabase caps responses at 1000 rows; the app pages explicitly and works
+# either way. Left unset here on purpose.
+# db-max-rows = 1000
+
+# Lets `notify pgrst, 'reload schema'` refresh the cache after a migration.
+db-channel-enabled = true

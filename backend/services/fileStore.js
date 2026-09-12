@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const driveStore = require('./driveStore');
+const localStore = require('./localStore');
 
 // =====================================================
 // File store — the interface the expense module codes against
@@ -18,7 +19,7 @@ const driveStore = require('./driveStore');
 
 const notImplemented = (method) => () => {
   throw new Error(
-    `fileStore: the 'supabase' backing store is not implemented (${method}) — set FILE_STORE=drive`
+    `fileStore: the 'supabase' backing store is not implemented (${method}) — set FILE_STORE=drive or FILE_STORE=local`
   );
 };
 
@@ -37,6 +38,9 @@ const supabaseStore = {
 
 const STORES = {
   drive: driveStore,
+  // Files on this machine's disk, for a self-hosted deployment. See
+  // services/localStore.js and scripts/migrate-files-to-local.js.
+  local: localStore,
   supabase: supabaseStore,
 };
 

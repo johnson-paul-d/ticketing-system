@@ -4,7 +4,14 @@ require('dotenv').config();
 // This runs before any local module is loaded: config/supabase.js builds its
 // client at require time and throws a bare "supabaseUrl is required" when the
 // .env is missing, which is a far less useful message than this one.
-for (const key of ['JWT_SECRET', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']) {
+//
+// The database is one of two things: hosted Supabase, or a self-hosted
+// PostgREST (POSTGREST_URL). Either pair is enough; see config/supabase.js.
+const selfHostedDb = Boolean(process.env.POSTGREST_URL);
+const required = selfHostedDb
+  ? ['JWT_SECRET', 'POSTGREST_URL', 'POSTGREST_JWT']
+  : ['JWT_SECRET', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'];
+for (const key of required) {
   if (!process.env[key]) {
     console.error(`FATAL: ${key} is not set. Refusing to start.`);
     console.error('Is backend/.env present? Copy backend/.env.example and fill in the values.');
@@ -333,5 +340,13 @@ process.on('uncaughtException', (err) => {
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  // Which database and file store this process is on, so a cutover can be
+  // confirmed from the log rather than by guessing from behaviour.
+  console.log(
+    selfHostedDb
+      ? `Database: self-hosted PostgREST at ${process.env.POSTGREST_URL}`
+      : `Database: Supabase at ${process.env.SUPABASE_URL}`
+  );
+  console.log(`File store: ${(process.env.FILE_STORE || 'drive').toLowerCase()}`);
   startRecurrenceScheduler(io);
 });
