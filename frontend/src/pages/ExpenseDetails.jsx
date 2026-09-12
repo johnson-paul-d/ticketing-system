@@ -655,6 +655,9 @@ export default function ExpenseDetails() {
   // can_approve answers "may this viewer decide lines on this claim" — the
   // per-line gate is the line's own approval_status.
   const canApprove = claim?.can_approve === true;
+  // can_pay is wider: anyone who can see the claim may record that a line was
+  // paid, whether or not they may decide it.
+  const canPay = claim?.can_pay === true;
   const sentBack =
     Boolean(claim?.rejection_reason) &&
     (claim?.status === "Draft" || claim?.status === "Rejected");
@@ -1487,7 +1490,7 @@ export default function ExpenseDetails() {
 
                   {/* The shape a payment run actually takes: everything approved
                       and still owed on this claim, settled together. */}
-                  {canApprove && payableCount > 0 && (
+                  {canPay && payableCount > 0 && (
                     <button
                       onClick={payAll}
                       disabled={Boolean(busyAction) || Boolean(lineBusy)}

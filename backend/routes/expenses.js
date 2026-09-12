@@ -536,9 +536,11 @@ router.get('/:id', async (req, res) => {
     const lines = await fetchLines(claim.id);
     const receipts = await fetchReceipts(claim.id);
     const owned = canEditClaim(req.user, claim);
-    // Whoever may decide a line may also record that it was paid — the same
-    // finance role, and there is nobody else it could belong to.
     const decider = claim.status !== 'Draft' && canApproveClaim(req.user, claim);
+    // Recording a payment is open to everyone who can see the claim, not only
+    // the approvers: whoever actually settles the bill may not be the person
+    // who signed it off. Deciding a line stays with the approvers.
+    const payer = claim.status !== 'Draft' && canAccessClaim(req.user, claim);
     const withReceipt = new Set(receipts.map((r) => r.line_id).filter(Boolean));
 
     res.json({
@@ -556,8 +558,8 @@ router.get('/:id', async (req, res) => {
         // A rejected line goes back for approval once it has been fixed and
         // still carries a bill.
         can_resubmit: owned && isLineRejected(l) && withReceipt.has(l.id),
-        can_pay: decider && isLinePayable(l),
-        can_unpay: decider && isLinePaid(l),
+        can_pay: payer && isLinePayable(l),
+        can_unpay: payer && isLinePaid(l),
         // Approval can be taken back while the money has not gone out, so a
         // wrong figure (a mistyped tax amount, say) can be corrected and the
         // line approved again. Once paid, the payment has to be undone first.
@@ -576,6 +578,8 @@ router.get('/:id', async (req, res) => {
       // Whether this viewer may decide lines at all. Which lines are still open
       // is answered per line by its own approval_status.
       can_approve: decider,
+      // Whether this viewer may record payments — wider than can_approve.
+      can_pay: payer,
       // How many lines a single "approve everything" would actually take.
       approvable_count: lines.filter(
         (l) => isLineEditable(l) && withReceipt.has(l.id)
@@ -1675,9 +1679,11 @@ router.post('/:id/lines/:lineId/reject', async (req, res) => {
 // =====================================================
 // PAYMENT
 // =====================================================
-// Recording that the money went out. A separate act from approving it, done by
-// the same people — an admin over the claim's team — because it is the same
-// finance role, and there is nobody else it could sensibly belong to.
+// Recording that the money went out. A separate act from approving it, and
+// open to anyone who can see the claim rather than only its approvers: the
+// person who actually settles a bill is often not the manager who signed it
+// off, and making them ask an admin to click "paid" on their behalf only
+// delayed the record. The team boundary (canAccessClaim) still applies.
 //
 // Only an approved line can be paid. Paying a pending line would be paying
 // something nobody agreed to, and a rejected one something that was refused.
@@ -1695,11 +1701,12 @@ const paidMigrationRequired = (res) =>
   });
 
 const setPaid = async (req, res, { paid }) => {
+  // loadClaim has already applied canAccessClaim, which is the whole gate here.
   const claim = await loadClaim(req, res);
   if (!claim) return;
 
-  if (!canApproveClaim(req.user, claim)) {
-    return res.status(403).json({ message: approvalRefusalReason(req.user, claim) });
+  if (claim.status === 'Draft') {
+    return res.status(400).json({ message: 'This claim has not been submitted yet' });
   }
 
   const { data: line } = await supabase
@@ -1801,11 +1808,12 @@ router.post('/:id/pay-all', async (req, res) => {
   try {
     if (!hasPaidColumns) return paidMigrationRequired(res);
 
+    // Same gate as setPaid: anyone who can see the claim may record payments.
     const claim = await loadClaim(req, res);
     if (!claim) return;
 
-    if (!canApproveClaim(req.user, claim)) {
-      return res.status(403).json({ message: approvalRefusalReason(req.user, claim) });
+    if (claim.status === 'Draft') {
+      return res.status(400).json({ message: 'This claim has not been submitted yet' });
     }
 
     const lines = await fetchLines(claim.id);
