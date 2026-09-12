@@ -1,0 +1,4 @@
+# Cloudflare Pages: single-page app fallback. Every path is served by
+# index.html and React Router picks the page. Mirrors the rewrite in
+# vercel.json, which Cloudflare does not read.
+/*  /index.html  200

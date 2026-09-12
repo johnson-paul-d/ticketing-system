@@ -1,4 +1,17 @@
 require('dotenv').config();
+
+// Fail fast rather than booting an app whose auth silently accepts nothing.
+// This runs before any local module is loaded: config/supabase.js builds its
+// client at require time and throws a bare "supabaseUrl is required" when the
+// .env is missing, which is a far less useful message than this one.
+for (const key of ['JWT_SECRET', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']) {
+  if (!process.env[key]) {
+    console.error(`FATAL: ${key} is not set. Refusing to start.`);
+    console.error('Is backend/.env present? Copy backend/.env.example and fill in the values.');
+    process.exit(1);
+  }
+}
+
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -8,14 +21,6 @@ const jwt = require('jsonwebtoken');
 const { TEAM, isAdmin, isSuperAdmin, getUserTeam } = require('./utils/roles');
 const { teamRoom, userRoom } = require('./utils/realtime');
 const { looksLikeApiKey } = require('./utils/apiKeys');
-
-// Fail fast rather than booting an app whose auth silently accepts nothing.
-for (const key of ['JWT_SECRET', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']) {
-  if (!process.env[key]) {
-    console.error(`FATAL: ${key} is not set. Refusing to start.`);
-    process.exit(1);
-  }
-}
 
 const authRoutes = require('./routes/auth');
 const ticketRoutes = require('./routes/tickets');
@@ -42,6 +47,12 @@ const salesforceRoutes = require("./routes/salesforce");
 const googleAdsRoutes  = require("./routes/googleAds");
 const linkedinRoutes   = require("./routes/linkedin");
 
+// Behind a reverse proxy or a Cloudflare Tunnel every connection arrives from
+// localhost. Trusting the first proxy hop makes req.protocol and req.ip read
+// the X-Forwarded-* headers the proxy sets, which the OAuth discovery
+// documents (publicOrigin) and the rate limiter rely on.
+app.set('trust proxy', 1);
+
 app.use(express.json());
 
 // NOTE: express.text() used to be mounted globally so the Salesforce webhook
@@ -51,12 +62,27 @@ app.use(express.json());
 
 app.use(express.urlencoded({ extended: true }));
 
-// Allowed origins – add your Vercel frontend URL 
+// Browser origins allowed to call the API with a session token.
+//
+// FRONTEND_URL is the primary app address (also used for links in emails).
+// ALLOWED_ORIGINS is an optional comma-separated list for the extras a
+// migration needs — the old Vercel address and the new Cloudflare one both
+// staying live while DNS moves, or a *.pages.dev preview URL.
+const extraOrigins = String(process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((o) => o.trim().replace(/\/+$/, ''))
+  .filter(Boolean);
+
 const allowedOrigins = [
-  process.env.FRONTEND_URL,
-  'https://mktg-ticketing-system.vercel.app',
-  'http://localhost:3000', // local development
-].filter(Boolean);
+  ...new Set(
+    [
+      process.env.FRONTEND_URL && process.env.FRONTEND_URL.replace(/\/+$/, ''),
+      ...extraOrigins,
+      'https://mktg-ticketing-system.vercel.app',
+      'http://localhost:3000', // local development
+    ].filter(Boolean)
+  ),
+];
 
 
 
@@ -77,12 +103,24 @@ const carriesApiKey = (req) => {
   return req.method === 'OPTIONS' && /authorization/i.test(asked);
 };
 
+// The address this very request was made to. When the server serves the
+// frontend itself (single-origin deployment, see the FRONTEND block below) the
+// app's own requests carry this as their Origin — a <script type="module"> is
+// fetched with one even on the same site — and refusing it would block the
+// app from loading its own code. Trusting it is safe by definition: an Origin
+// equal to the request's own host is the same-origin case CORS exists to let
+// through. Behind the tunnel req.protocol and host come from the forwarded
+// headers, courtesy of trust proxy above.
+const selfOrigin = (req) => `${req.protocol}://${req.get('host')}`;
+
+const isFirstParty = (req, origin) =>
+  !origin || origin === selfOrigin(req) || allowedOrigins.includes(origin);
+
 const corsOptions = (req, callback) => {
   const origin = req.headers.origin;
   const allowed =
     // No origin at all: curl, a server-side script, a mobile app.
-    !origin ||
-    allowedOrigins.includes(origin) ||
+    isFirstParty(req, origin) ||
     carriesApiKey(req);
 
   callback(allowed ? null : new Error('Not allowed by CORS'), {
@@ -92,7 +130,7 @@ const corsOptions = (req, callback) => {
     // Only the first-party app relies on cookie-style credentials. Echoing an
     // arbitrary origin with credentials:true is the one combination browsers
     // refuse outright, so it is not claimed for key callers.
-    credentials: !origin || allowedOrigins.includes(origin),
+    credentials: isFirstParty(req, origin),
   });
 };
 
@@ -121,7 +159,11 @@ app.use(cors(corsOptions));
 
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins,
+    // Socket.IO's cors hook sees only the Origin string, not the request, so
+    // the same-origin rule above cannot be applied here. FRONTEND_URL covers
+    // the deployed single-origin case; the local port covers checking a
+    // production build on this machine.
+    origin: [...allowedOrigins, `http://localhost:${process.env.PORT || 5000}`],
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
   },
 });
@@ -200,6 +242,53 @@ app.use(
   permissionRoutes
 );
 const { startRecurrenceScheduler } = require('./services/recurrenceScheduler');
+
+// =====================================================
+// FRONTEND (single-origin deployment)
+// =====================================================
+// When the frontend has been built (frontend/dist exists, or STATIC_DIR points
+// at a build), this server serves it too, so one port carries the whole app.
+// That is what a Cloudflare Tunnel or any single-hostname deployment wants:
+// no second host, no CORS between app and API, and the socket on the same
+// origin. Build the frontend with VITE_API_URL=/api for this mode.
+//
+// Skipped entirely when there is no build, so local development with Vite on
+// port 3000 and the split Vercel/Render deployment are unaffected.
+const path = require('path');
+const fs = require('fs');
+const STATIC_DIR = path.resolve(
+  process.env.STATIC_DIR || path.join(__dirname, '..', 'frontend', 'dist')
+);
+
+if (fs.existsSync(path.join(STATIC_DIR, 'index.html'))) {
+  app.use(
+    express.static(STATIC_DIR, {
+      index: false,
+      setHeaders: (res, filePath) => {
+        // Same rules as vercel.json / public/_headers: the service worker must
+        // never be cached or a deploy leaves users on the old build, while
+        // hashed assets are immutable by construction.
+        if (/[\\/](sw|workbox-[^\\/]+)\.js$/.test(filePath)) {
+          res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+        } else if (/[\\/]assets[\\/]/.test(filePath)) {
+          res.set('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+      },
+    })
+  );
+
+  // Everything that is not an API, MCP or OAuth path is a client route: hand
+  // it index.html and let React Router pick the page. Only GET and HEAD, so a
+  // mistyped POST still gets the JSON 404 below rather than an HTML page.
+  const APP_PATH = /^(?!\/api(?:\/|$)|\/mcp(?:\/|$)|\/oauth\/|\/\.well-known\/).*/;
+  app.get(APP_PATH, (req, res, next) => {
+    if (!req.accepts('html')) return next();
+    res.set('Cache-Control', 'no-cache');
+    res.sendFile(path.join(STATIC_DIR, 'index.html'));
+  });
+
+  console.log(`Serving frontend from ${STATIC_DIR}`);
+}
 
 // =====================================================
 // ERROR HANDLING

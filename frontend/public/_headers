@@ -1,0 +1,18 @@
+# Cloudflare Pages response headers. Mirrors the headers block in vercel.json.
+#
+# The service worker and its workbox runtime must never be cached: a stale
+# sw.js would keep serving an old build after a deploy, which is exactly what
+# skipWaiting/clientsClaim in vite.config.js exist to prevent.
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+  Content-Type: application/javascript
+
+/workbox-*.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/manifest.webmanifest
+  Content-Type: application/manifest+json
+
+# Hashed build assets are immutable by construction.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

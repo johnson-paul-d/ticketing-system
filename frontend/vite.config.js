@@ -1,8 +1,31 @@
-import { defineConfig } from 'vite'
+/* eslint-env node */
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-export default defineConfig({
+// The service worker's API cache has to match whichever backend this build is
+// pointed at, so the pattern is built from VITE_API_URL rather than a fixed
+// host. Falls back to the Render address for a build with no env at all.
+//
+// A relative VITE_API_URL ("/api") means the API is on the page's own origin.
+// Workbox matches a same-origin request when the pattern matches anywhere in
+// the URL, but a cross-origin one only when it matches from the start, so a
+// bare "/api/" pattern reaches exactly the same-origin API and nothing else.
+const apiCachePattern = (mode) => {
+  const env = loadEnv(mode, process.cwd(), 'VITE_')
+  const api = env.VITE_API_URL || process.env.VITE_API_URL || 'https://ticketing-backend-6azk.onrender.com/api'
+  if (api.startsWith('/')) return /\/api\/.*/i
+  let origin
+  try {
+    origin = new URL(api).origin
+  } catch {
+    origin = 'https://ticketing-backend-6azk.onrender.com'
+  }
+  const escaped = origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`^${escaped}/api/.*`, 'i')
+}
+
+export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
     VitePWA({
@@ -45,7 +68,7 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/ticketing-backend-6azk\.onrender\.com\/api\/.*/i,
+            urlPattern: apiCachePattern(mode),
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-cache',
@@ -61,4 +84,4 @@ export default defineConfig({
     port: 3000,
     strictPort: true,
   },
-})
+}))

@@ -3,8 +3,22 @@ import { io } from "socket.io-client";
 const PROD_SOCKET_URL = 'https://ticketing-backend-6azk.onrender.com';
 const DEV_SOCKET_URL = 'http://localhost:5000';
 
+// The socket lives on the same server as the API, so one VITE_API_URL is
+// enough to find both: strip the path and keep the origin. A relative value
+// ("/api", the single-origin deployment) resolves to the page's own origin.
+// VITE_SOCKET_URL still wins when the two are ever split.
+const originOf = (url) => {
+  if (!url) return null;
+  try {
+    return new URL(url, window.location.origin).origin;
+  } catch {
+    return null;
+  }
+};
+
 const SOCKET_URL =
   import.meta.env.VITE_SOCKET_URL ||
+  originOf(import.meta.env.VITE_API_URL) ||
   (import.meta.env.PROD ? PROD_SOCKET_URL : DEV_SOCKET_URL);
 
 // The server rejects any handshake without a JWT, so the socket stays closed
