@@ -1,6 +1,8 @@
 import { io } from "socket.io-client";
 
-const PROD_SOCKET_URL = 'https://ticketing-backend-6azk.onrender.com';
+// With no configuration at all: production is same-origin (the backend serves
+// this frontend), development talks to the API on port 5000.
+const PROD_SOCKET_URL = window.location.origin;
 const DEV_SOCKET_URL = 'http://localhost:5000';
 
 // The socket lives on the same server as the API, so one VITE_API_URL is

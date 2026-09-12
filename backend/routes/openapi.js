@@ -19,7 +19,7 @@ const router = express.Router();
 // reveal. No data passes through it.
 
 const SERVER_URL =
-  process.env.PUBLIC_API_URL || 'https://ticketing-backend-6azk.onrender.com/api';
+  process.env.PUBLIC_API_URL || 'https://mkttickets.siegerspintech.com/api';
 
 const str = (description, extra = {}) => ({ type: 'string', description, ...extra });
 const num = (description) => ({ type: 'number', description });

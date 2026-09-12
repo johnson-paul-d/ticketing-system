@@ -8,7 +8,7 @@ import { BadgeCheck, ShieldAlert, Loader2 } from "lucide-react";
 // reached from a printed claim by auditors, banks and vendors who have no
 // account here, so it talks to the API directly.
 const API_BASE =
-  import.meta.env.VITE_API_URL || "https://ticketing-backend-6azk.onrender.com/api";
+  import.meta.env.VITE_API_URL || "/api";
 
 const CURRENCY_SYMBOL = { INR: "₹", USD: "$", EUR: "€", GBP: "£" };
 

@@ -5,7 +5,8 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // The service worker's API cache has to match whichever backend this build is
 // pointed at, so the pattern is built from VITE_API_URL rather than a fixed
-// host. Falls back to the Render address for a build with no env at all.
+// host. With no value at all the API is same-origin ("/api"), which is how
+// production is served.
 //
 // A relative VITE_API_URL ("/api") means the API is on the page's own origin.
 // Workbox matches a same-origin request when the pattern matches anywhere in
@@ -13,13 +14,13 @@ import { VitePWA } from 'vite-plugin-pwa'
 // bare "/api/" pattern reaches exactly the same-origin API and nothing else.
 const apiCachePattern = (mode) => {
   const env = loadEnv(mode, process.cwd(), 'VITE_')
-  const api = env.VITE_API_URL || process.env.VITE_API_URL || 'https://ticketing-backend-6azk.onrender.com/api'
+  const api = env.VITE_API_URL || process.env.VITE_API_URL || '/api'
   if (api.startsWith('/')) return /\/api\/.*/i
   let origin
   try {
     origin = new URL(api).origin
   } catch {
-    origin = 'https://ticketing-backend-6azk.onrender.com'
+    return /\/api\/.*/i
   }
   const escaped = origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   return new RegExp(`^${escaped}/api/.*`, 'i')

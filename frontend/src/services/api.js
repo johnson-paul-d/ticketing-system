@@ -2,9 +2,10 @@ import axios from 'axios';
 import { disconnectSocket } from './socket';
 
 const api = axios.create({
-  baseURL:
-    import.meta.env.VITE_API_URL ||
-    'https://ticketing-backend-6azk.onrender.com/api',
+  // Default to the page's own origin: the backend serves this frontend in
+  // production, so /api is right there. Development sets VITE_API_URL
+  // explicitly (see .claude/launch.json and .env.example).
+  baseURL: import.meta.env.VITE_API_URL || '/api',
 });
 
 api.interceptors.request.use((config) => {

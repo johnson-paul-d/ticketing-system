@@ -85,8 +85,7 @@ const allowedOrigins = [
     [
       process.env.FRONTEND_URL && process.env.FRONTEND_URL.replace(/\/+$/, ''),
       ...extraOrigins,
-      'https://mktg-ticketing-system.vercel.app',
-      'http://localhost:3000', // local development
+      'http://localhost:3000', // local development: Vite on 3000, API on 5000
     ].filter(Boolean)
   ),
 ];

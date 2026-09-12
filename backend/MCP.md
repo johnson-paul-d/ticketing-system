@@ -4,7 +4,7 @@ An MCP endpoint that lets ChatGPT — or Claude, or any other MCP client — rea
 ticketing portal directly, instead of being handed exports.
 
 ```
-POST https://ticketing-backend-6azk.onrender.com/mcp
+POST https://mkttickets.siegerspintech.com/mcp
 Authorization: Bearer <OAuth token, or an stk_ API key>
 ```
 
@@ -23,7 +23,7 @@ shared workspace connector, something running unattended.
 Add the connector with just the URL and no credential:
 
 ```
-https://ticketing-backend-6azk.onrender.com/mcp
+https://mkttickets.siegerspintech.com/mcp
 ```
 
 The client reads the 401, discovers the authorization server, registers itself,
@@ -52,7 +52,7 @@ secret to set, and no new database table — see the notes at the bottom for why
    list; without it ChatGPT will only use the connector for search-style
    retrieval.
 
-   - **URL:** `https://ticketing-backend-6azk.onrender.com/mcp`
+   - **URL:** `https://mkttickets.siegerspintech.com/mcp`
    - **Authentication:** the API-key / access-token option, with the `stk_…` key
      pasted in. It is sent as `Authorization: Bearer …`, which is what this
      server expects.
@@ -61,7 +61,7 @@ secret to set, and no new database table — see the notes at the bottom for why
    instead:
 
    ```
-   https://ticketing-backend-6azk.onrender.com/mcp/k/stk_…
+   https://mkttickets.siegerspintech.com/mcp/k/stk_…
    ```
 
    This works identically, but the key then sits in every proxy log and browser
@@ -75,8 +75,8 @@ secret to set, and no new database table — see the notes at the bottom for why
    Add `/sse`:
 
    ```
-   https://ticketing-backend-6azk.onrender.com/mcp/sse
-   https://ticketing-backend-6azk.onrender.com/mcp/k/stk_…/sse
+   https://mkttickets.siegerspintech.com/mcp/sse
+   https://mkttickets.siegerspintech.com/mcp/k/stk_…/sse
    ```
 
    Both transports are served, with the same tools behind them. Modern clients
@@ -172,7 +172,7 @@ Nothing is required. Two optional variables:
 | Variable | Default | Why change it |
 | --- | --- | --- |
 | `MCP_API_BASE` | `http://127.0.0.1:$PORT/api` | Point the tools at a different API instance. The default keeps the call on the loopback, since the API is in this same process. |
-| `FRONTEND_URL` | the Vercel app | Deep links in tool results (`/tickets/123`) are built from it. |
+| `FRONTEND_URL` | the portal address | Deep links in tool results (`/tickets/123`) are built from it. |
 
 ## Notes for anyone changing this
 

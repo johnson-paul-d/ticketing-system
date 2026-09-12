@@ -26,7 +26,7 @@ const tables = require('./mcpTables');
 const writes = require('./mcpWrites');
 const { todayIST } = require('../utils/time');
 
-const APP_URL = (process.env.FRONTEND_URL || 'https://mktg-ticketing-system.vercel.app').replace(
+const APP_URL = (process.env.FRONTEND_URL || 'https://mkttickets.siegerspintech.com').replace(
   /\/$/,
   ''
 );
