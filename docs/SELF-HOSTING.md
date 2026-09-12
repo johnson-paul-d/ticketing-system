@@ -205,6 +205,60 @@ hand as described below.
 the installed version), `postgrest`, the app (`pm2` or NSSM), and
 `cloudflared`.
 
+## Development database for laptops
+
+Nothing runs or is stored on a developer's laptop except the code. The laptop
+runs the app locally, but its database is a **second database on the server**,
+`mkttickets_dev`, rebuilt from the nightly backup on demand. A second PostgREST
+serves it on port 3002 on a private network address, and the laptop's
+`backend/.env` points there. Production stays on 127.0.0.1:3001 and cannot be
+reached from anywhere else.
+
+**Once, on the server.** Pick the address the laptop will use: the server's
+Tailscale address if both machines are on Tailscale (works from anywhere), or
+its office LAN address (works in the office only). Then:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File D:\mkttickets\backend\scripts\db\refresh-dev.ps1
+```
+
+```powershell
+Set-Content -Path D:\postgrest\postgrest-dev.conf -Encoding ascii -Value @('db-uri = "postgres://authenticator:<password A>@127.0.0.1:5432/mkttickets_dev"', 'db-schemas = "public"', 'db-anon-role = "anon"', 'jwt-secret = "<a different secret of 32+ characters, secret C>"', 'server-host = "<the chosen address>"', 'server-port = 3002', 'db-pool = 5', 'db-channel-enabled = true')
+```
+
+```powershell
+nssm install postgrest-dev D:\postgrest\postgrest.exe D:\postgrest\postgrest-dev.conf; nssm set postgrest-dev AppDirectory D:\postgrest; nssm set postgrest-dev DependOnService postgresql-x64-18; nssm start postgrest-dev
+```
+
+If the chosen address is on the office LAN, allow the port through Windows
+Firewall for that network only:
+
+```powershell
+New-NetFirewallRule -DisplayName "PostgREST dev 3002" -Direction Inbound -Protocol TCP -LocalPort 3002 -Profile Private -Action Allow
+```
+
+Mint the laptop's token from secret C, not from the production secret:
+
+```powershell
+cd D:\mkttickets\backend; node scripts\db\mint-service-jwt.js "<secret C>"
+```
+
+**On the laptop**, in `backend/.env`:
+
+```
+POSTGREST_URL=http://<the chosen address>:3002
+POSTGREST_JWT=<the dev token>
+FILE_STORE=local
+```
+
+Uploads made during development land on the laptop's own disk under
+`backend/data/files`, which is git-ignored. Receipts restored from the backup
+point at the server's files and will not open on the laptop; that is expected.
+
+**Refreshing dev data.** Re-run `refresh-dev.ps1` on the server whenever you
+want the dev database reset to last night's production. Everything in it is
+discarded.
+
 ## What is different from Supabase
 
 - No 1000-row response cap. The app pages explicitly and does not depend on it.
