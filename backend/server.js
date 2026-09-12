@@ -218,7 +218,30 @@ io.on('connection', (socket) => {
 app.set('io', io);
 
 // Test route
-app.get('/api/test', (req, res) => res.json({ message: 'Backend works' }));
+// Health check, and the one place a deploy can be verified from outside: it
+// reports the commit the running process was started from. Read once at
+// startup; a missing git (or a copy of the tree that is not a clone) just
+// leaves the field out rather than failing the route.
+const runningCommit = (() => {
+  try {
+    return require('child_process')
+      // safe.directory=* so a clone owned by another Windows account (git's
+      // "dubious ownership" refusal) still answers; this only reads HEAD.
+      .execSync('git -c safe.directory=* rev-parse --short HEAD', {
+        cwd: __dirname,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      })
+      .toString()
+      .trim() || undefined;
+  } catch {
+    return undefined;
+  }
+})();
+const startedAt = new Date().toISOString();
+
+app.get('/api/test', (req, res) =>
+  res.json({ message: 'Backend works', commit: runningCommit, started_at: startedAt })
+);
 
 // Routes
 app.use('/api/auth', authRoutes);
