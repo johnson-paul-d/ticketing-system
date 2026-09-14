@@ -60,6 +60,11 @@ const linkedinRoutes   = require("./routes/linkedin");
 // documents (publicOrigin) and the rate limiter rely on.
 app.set('trust proxy', 1);
 
+// The Google Sheets sync posts a few thousand rows at a time, far past the
+// 100 kB default. Only that path gets the larger limit; mounted before the
+// general parser, which then sees the body already read and leaves it alone.
+app.use("/api/google-ads/import", express.json({ limit: "20mb" }));
+
 app.use(express.json());
 
 // NOTE: express.text() used to be mounted globally so the Salesforce webhook

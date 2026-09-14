@@ -244,4 +244,116 @@ router.get("/keywords", async (req, res) => {
   }
 });
 
+// =====================================================
+// IMPORT (Google Sheets → database)
+// =====================================================
+// The Google Ads figures arrive from a Google Sheet through an Apps Script
+// (scripts/google-apps-script/google-ads-sync.gs). It used to write straight
+// to Supabase's REST endpoint; the self-hosted database is not reachable from
+// Google's servers, and should not be, so the script posts here instead and
+// this route does the same upsert on its behalf.
+//
+// Authentication is the portal's own: an API key acting as an admin, minted
+// with read-only unticked. `auth` has already refused read-only keys for POST
+// and requireAccess has already applied the Google Ads gate, so by here the
+// caller is someone who could see this data in the portal anyway.
+//
+// Each table has a unique constraint matching its natural key, so an upsert
+// updates the row for that campaign/keyword and date rather than adding a
+// second one — which is what makes re-running the sheet sync safe, and what
+// lets Google's retroactive conversion attribution overwrite earlier figures.
+
+const IMPORTS = {
+  "campaign-analysis": {
+    table: "google_ads_campaign_analysis",
+    onConflict: "account_id,campaign,report_date",
+    text: ["account_id", "account_name", "campaign", "status", "channel_type", "report_date"],
+    numeric: ["clicks", "impressions", "ctr", "avg_cpc", "cost", "conversions", "cost_per_conversion", "conversion_rate"],
+    required: ["account_id", "campaign", "report_date"],
+  },
+  "keyword-analysis": {
+    table: "google_ads_keyword_analysis",
+    onConflict: "account_id,campaign,ad_group,keyword,report_date",
+    text: ["account_id", "account_name", "campaign", "ad_group", "keyword", "match_type", "report_date"],
+    numeric: ["campaign_budget", "clicks", "impressions", "ctr", "avg_cpc", "cost", "conversions", "cost_per_conversion"],
+    required: ["account_id", "campaign", "ad_group", "keyword", "report_date"],
+  },
+};
+
+const isIsoDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ""));
+
+// Keeps only the columns the table has, as the types it expects. Anything
+// else in the payload is dropped rather than reaching the database.
+const shapeRow = (spec, raw) => {
+  const row = {};
+  for (const k of spec.text) row[k] = raw[k] == null ? "" : String(raw[k]).trim();
+  for (const k of spec.numeric) {
+    const n = Number(raw[k]);
+    row[k] = Number.isFinite(n) ? n : 0;
+  }
+  return row;
+};
+
+const MAX_ROWS = 5000;
+const CHUNK = 500;
+
+router.post("/import/:kind", async (req, res) => {
+  const spec = IMPORTS[req.params.kind];
+  if (!spec) {
+    return res.status(404).json({ message: `Unknown import "${req.params.kind}"` });
+  }
+
+  const rows = Array.isArray(req.body) ? req.body : req.body?.rows;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return res.status(400).json({ message: "Send a JSON array of rows (or { rows: [...] })" });
+  }
+  if (rows.length > MAX_ROWS) {
+    return res.status(413).json({ message: `Send at most ${MAX_ROWS} rows per request` });
+  }
+
+  const shaped = [];
+  const rejected = [];
+  // The sheet can hold the same key twice (a repeated export); only the last
+  // occurrence is kept, since a single upsert statement cannot touch one row
+  // twice ("ON CONFLICT DO UPDATE command cannot affect row a second time").
+  const byKey = new Map();
+  rows.forEach((raw, i) => {
+    const row = shapeRow(spec, raw || {});
+    const missing = spec.required.filter((k) => !row[k]);
+    if (missing.length || !isIsoDate(row.report_date)) {
+      rejected.push({ index: i, reason: missing.length ? `missing ${missing.join(", ")}` : "report_date must be YYYY-MM-DD" });
+      return;
+    }
+    byKey.set(spec.onConflict.split(",").map((k) => row[k]).join("|"), row);
+  });
+  shaped.push(...byKey.values());
+
+  let upserted = 0;
+  try {
+    for (let i = 0; i < shaped.length; i += CHUNK) {
+      const chunk = shaped.slice(i, i + CHUNK);
+      const { error } = await supabase
+        .from(spec.table)
+        .upsert(chunk, { onConflict: spec.onConflict, ignoreDuplicates: false });
+      if (error) throw error;
+      upserted += chunk.length;
+    }
+  } catch (err) {
+    console.error(`GOOGLE ADS IMPORT (${spec.table}) ERROR after ${upserted} rows:`, err);
+    return res.status(500).json({
+      message: `Import failed after ${upserted} rows: ${err.message || err.code || "database error"}`,
+      upserted,
+      rejected,
+    });
+  }
+
+  res.json({
+    table: spec.table,
+    received: rows.length,
+    upserted,
+    deduplicated: rows.length - rejected.length - shaped.length,
+    rejected,
+  });
+});
+
 module.exports = router;

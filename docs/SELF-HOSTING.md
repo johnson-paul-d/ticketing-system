@@ -306,11 +306,15 @@ discarded.
   else in the backend depends on the process time zone; keep it that way.
   Timestamps handed to the database are UTC ISO strings, and the database and
   PostgREST roles are pinned to UTC by the SQL scripts.
-- **There is no table editor any more.** The Google Ads tables used to be
-  loaded through Supabase's CSV import. pgAdmin 4, installed with PostgreSQL,
-  has the same thing: right-click the table → Import/Export Data. Or from
-  PowerShell: `psql -U postgres -d mkttickets -c "\copy google_ads_keyword_analysis from 'C:\path\file.csv' csv header"`.
-  LinkedIn data is refreshed from the dashboard's own Sync button, unchanged.
+- **Google Ads data comes from a Google Sheet.** The Apps Script in
+  `scripts/google-apps-script/google-ads-sync.gs` posts the sheet's rows to
+  `POST /api/google-ads/import/campaign-analysis` and `.../keyword-analysis`,
+  authenticated with a portal API key (admin, read-only unticked) stored as
+  the script property `PORTAL_API_KEY`. It used to write to Supabase's REST
+  endpoint directly; the self-hosted PostgREST is deliberately unreachable
+  from the internet. For a one-off CSV load, pgAdmin 4 (installed with
+  PostgreSQL) has Import/Export on each table. LinkedIn data is refreshed from
+  the dashboard's own Sync button, unchanged.
 - **Three files on the server hold secrets** and default to being readable by
   every local account: `C:\ProgramData\mkttickets\pgpass.conf`,
   `D:\postgrest\postgrest.conf` and `D:\mkttickets\backend\.env`. Restrict them
