@@ -311,9 +311,11 @@ discarded.
   `POST /api/google-ads/import/campaign-analysis` and `.../keyword-analysis`,
   authenticated with a portal API key (admin, read-only unticked) stored as
   the script property `PORTAL_API_KEY`. It is incremental: fingerprints of
-  sent rows live in two hidden tabs of the sheet, and each hourly run
-  (installed by `installTriggers`) sends only new or changed rows;
-  `resyncAll` clears that history. It used to write to Supabase's REST
+  sent rows live in a small separate spreadsheet the script creates
+  ("Google Ads sync state", id kept in the script properties), and each
+  hourly run (installed by `installTriggers`) sends only new or changed rows;
+  `resyncAll` clears that history. The exports workbook itself is near
+  Google's 10-million-cell cap, which is why the history is not kept there. It used to write to Supabase's REST
   endpoint directly; the self-hosted PostgREST is deliberately unreachable
   from the internet. For a one-off CSV load, pgAdmin 4 (installed with
   PostgreSQL) has Import/Export on each table. LinkedIn data is refreshed from

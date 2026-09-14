@@ -5,12 +5,17 @@
 // "Campaign_analysis" and "Keyword_analysis" tabs and upserts them into the
 // portal's database through the portal API.
 //
-// INCREMENTAL: the script remembers a fingerprint of every row it has sent,
-// in two hidden tabs of this spreadsheet (_sync_campaign, _sync_keyword). A
-// run sends only rows that are new or whose figures changed since they were
+// INCREMENTAL: the script remembers a fingerprint of every row it has sent.
+// A run sends only rows that are new or whose figures changed since they were
 // last sent — Google's retroactive conversion attribution changes a row's
 // fingerprint, so those corrections go through on their own. The first run,
 // or a run after "resyncAll", sends everything.
+//
+// The history lives in a separate, small spreadsheet the script creates for
+// itself ("Google Ads sync state") and remembers by id in the script
+// properties. It is NOT kept in this workbook: the exports here already sit
+// near Google's 10-million-cell limit, and the first attempt to add a hidden
+// history tab failed for exactly that reason.
 //
 // AUTOMATIC: run "installTriggers" once from the editor. It schedules both
 // syncs to run every hour and removes any older triggers for them, so running
@@ -107,9 +112,9 @@ function syncAll() {
 // Forgets the history so the next run sends every row again. Use after the
 // database was restored from a backup, or if the portal's figures look stale.
 function resyncAll() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const store = stateSpreadsheet_();
   Object.values(KINDS).forEach((k) => {
-    const s = ss.getSheetByName(k.stateSheet);
+    const s = store.getSheetByName(k.stateSheet);
     if (s) s.clearContents();
   });
   Logger.log("Sync history cleared. The next run sends every row.");
@@ -220,13 +225,51 @@ function syncKind_(name) {
 }
 
 // ---------------------------------------------------------------
-// History tabs
+// History store (a separate spreadsheet)
 // ---------------------------------------------------------------
+
+const STATE_ID_PROPERTY = "SYNC_STATE_SPREADSHEET_ID";
+
+// The spreadsheet that holds the history, created on first use and owned by
+// whoever ran the script then. Its id is kept in the script properties, so it
+// is found again from any trigger. Two columns per tab: key, fingerprint.
+function stateSpreadsheet_() {
+  const props = PropertiesService.getScriptProperties();
+  const id = props.getProperty(STATE_ID_PROPERTY);
+  if (id) {
+    try {
+      return SpreadsheetApp.openById(id);
+    } catch (e) {
+      Logger.log(`History spreadsheet ${id} is not reachable (${e.message}); creating a new one. Every row will be sent once more.`);
+    }
+  }
+  const created = SpreadsheetApp.create("Google Ads sync state (do not edit)");
+  props.setProperty(STATE_ID_PROPERTY, created.getId());
+  Logger.log(`Created history spreadsheet: ${created.getUrl()}`);
+  return created;
+}
 
 function readState_(ss, kind) {
   const map = new Map();
-  const sheet = ss.getSheetByName(kind.stateSheet);
-  if (!sheet || sheet.getLastRow() === 0) return map;
+  const store = stateSpreadsheet_();
+  let sheet = store.getSheetByName(kind.stateSheet);
+
+  // First run after moving the history out of the main workbook: carry over
+  // anything the earlier version managed to save in a hidden tab there, then
+  // drop that tab so the big workbook stops paying for those cells.
+  if (!sheet) {
+    const legacy = ss.getSheetByName(kind.stateSheet);
+    if (legacy && legacy.getLastRow() > 0) {
+      legacy.getRange(1, 1, legacy.getLastRow(), 2).getValues().forEach((r) => {
+        if (r[0]) map.set(String(r[0]), String(r[1]));
+      });
+      Logger.log(`${kind.stateSheet}: carried ${map.size} history rows over from the main workbook.`);
+    }
+    if (legacy) ss.deleteSheet(legacy);
+    return map;
+  }
+
+  if (sheet.getLastRow() === 0) return map;
   sheet.getRange(1, 1, sheet.getLastRow(), 2).getValues().forEach((r) => {
     if (r[0]) map.set(String(r[0]), String(r[1]));
   });
@@ -234,13 +277,28 @@ function readState_(ss, kind) {
 }
 
 function writeState_(ss, kind, map) {
-  let sheet = ss.getSheetByName(kind.stateSheet);
+  const store = stateSpreadsheet_();
+  let sheet = store.getSheetByName(kind.stateSheet);
   if (!sheet) {
-    sheet = ss.insertSheet(kind.stateSheet);
-    sheet.hideSheet();
+    sheet = store.insertSheet(kind.stateSheet);
+    // A fresh tab is 1000 x 26 cells; keep only what is used so the store
+    // stays tiny however many tabs it grows.
+    if (sheet.getMaxColumns() > 2) sheet.deleteColumns(3, sheet.getMaxColumns() - 2);
   }
+  // The first spreadsheet ever created carries a default "Sheet1"; drop it
+  // once a real tab exists so nobody wonders what it is for.
+  const stray = store.getSheetByName("Sheet1");
+  if (stray && store.getSheets().length > 1) store.deleteSheet(stray);
+
   const rows = [];
   map.forEach((fp, key) => rows.push([key, fp]));
+
+  // Size the grid to the data: setValues cannot write past the last row.
+  const need = Math.max(rows.length, 1);
+  const have = sheet.getMaxRows();
+  if (have < need) sheet.insertRowsAfter(have, need - have);
+  else if (have > need) sheet.deleteRows(need + 1, have - need);
+
   sheet.clearContents();
   if (rows.length) sheet.getRange(1, 1, rows.length, 2).setValues(rows);
 }
