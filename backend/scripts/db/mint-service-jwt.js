@@ -12,17 +12,26 @@
 // a token that expired silently at 3am would take the portal down with it.
 // Rotate it by changing jwt-secret in postgrest.conf and minting again.
 
+//
+// An optional second argument names a different database role, for a PostgREST
+// that serves another database with narrower rights:
+//
+//   node scripts/db/mint-service-jwt.js "<secret>" sf_reader
+//
+// (the read-only role over the Salesforce mirror; see docs/SELF-HOSTING.md).
+
 const jwt = require('jsonwebtoken');
 
 const secret = process.argv[2] || process.env.POSTGREST_JWT_SECRET;
+const role = process.argv[3] || 'service_role';
 
-if (!secret || secret.length < 32) {
-  console.error('Usage: node scripts/db/mint-service-jwt.js "<jwt-secret of at least 32 characters>"');
+if (!secret || secret.length < 32 || !/^[a-z_][a-z0-9_]*$/.test(role)) {
+  console.error('Usage: node scripts/db/mint-service-jwt.js "<jwt-secret of at least 32 characters>" [role]');
   process.exit(1);
 }
 
 const token = jwt.sign(
-  { role: 'service_role', iss: 'mkttickets', iat: Math.floor(Date.now() / 1000) },
+  { role, iss: 'mkttickets', iat: Math.floor(Date.now() / 1000) },
   secret,
   { algorithm: 'HS256' }
 );
