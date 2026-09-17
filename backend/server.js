@@ -255,6 +255,8 @@ app.use('/api/api-keys', apiKeyRoutes);
 // Public by design — an agent platform fetches the schema anonymously, before
 // it has any credential to fetch it with. It carries no data.
 app.use('/api/openapi.json', openapiRoutes);
+// Mounted ahead of the general reports router so its paths are matched first.
+app.use('/api/reports/mrm', require('./routes/mrm'));
 app.use('/api/reports', workReportRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/projects', projectRoutes);
@@ -375,5 +377,7 @@ server.listen(PORT, () => {
       : `Database: Supabase at ${process.env.SUPABASE_URL}`
   );
   console.log(`File store: ${(process.env.FILE_STORE || 'drive').toLowerCase()}`);
+  console.log(`Salesforce mirror: ${process.env.SALESFORCE_DB_URL || 'not configured'}`);
+  require('./services/linkedinScheduler').startLinkedInScheduler(PORT);
   startRecurrenceScheduler(io);
 });

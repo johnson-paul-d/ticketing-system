@@ -3,13 +3,13 @@ import {
   Menu, X, LayoutDashboard, Cpu, KanbanSquare, Calendar,
   Shield, BarChart3, LogOut, PlusCircle, ChevronRight, ClipboardCheck, FolderKanban,
   Target, Building2, CalendarCheck, TrendingUp, Gauge, ChevronDown, Receipt, Signature,
-  Wallet, KeyRound, FileDown
+  Wallet, KeyRound, FileDown, Presentation
 } from "lucide-react";
 import { useState } from "react";
 import useAuthStore from "../store/authStore";
 import NotificationBell from "../components/NotificationBell";
 import { canAccessAbm } from "../constants/abm";
-import { isAdmin, canAccessGoogleAds, canAccessLinkedIn, teamBrand } from "../constants/roles";
+import { isAdmin, isServiceTeam, canAccessGoogleAds, canAccessLinkedIn, teamBrand } from "../constants/roles";
 
 function LinkedInIcon({ size = 16 }) {
   return (
@@ -62,6 +62,10 @@ export default function MainLayout({ children }) {
           { label: "Completion Report", path: "/completion-report", icon: TrendingUp },
           { label: "Open Tickets Report", path: "/open-tickets-report", icon: Gauge },
         ]
+      : []),
+    // Marketing admins: the monthly management review deck.
+    ...(admin && !isServiceTeam(user)
+      ? [{ label: "MRM Report (PPT)", path: "/mrm-report", icon: Presentation }]
       : []),
   ];
 

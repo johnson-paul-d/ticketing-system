@@ -5,7 +5,7 @@ import Login from "./pages/login";
 import ProtectedRoute from "./components/ProtectedRoute";
 import useAuthStore from "./store/authStore";
 import { canAccessAbm } from "./constants/abm";
-import { canAccessGoogleAds, canAccessLinkedIn } from "./constants/roles";
+import { canAccessGoogleAds, canAccessLinkedIn, isAdmin, isServiceTeam } from "./constants/roles";
 
 const Dashboard          = lazy(() => import("./pages/Dashboard"));
 const Tickets            = lazy(() => import("./pages/Tickets"));
@@ -17,6 +17,7 @@ const TicketCalendar     = lazy(() => import("./pages/TicketCalendar"));
 const AdminPanel         = lazy(() => import("./pages/AdminPanel"));
 const ApiKeys            = lazy(() => import("./pages/ApiKeys"));
 const WorkReport         = lazy(() => import("./pages/WorkReport"));
+const MrmReport          = lazy(() => import("./pages/MrmReport"));
 const PendingApprovals   = lazy(() => import("./pages/PendingApprovals"));
 const Projects           = lazy(() => import("./pages/Projects"));
 const ProjectDetails     = lazy(() => import("./pages/ProjectDetails"));
@@ -207,6 +208,17 @@ function App() {
               // their own record, so this is how anyone downloads their own work.
               <ProtectedRoute>
                 <WorkReport />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/mrm-report"
+            element={
+              // Marketing admins only, and the server enforces the same rule:
+              // the deck carries Salesforce pipeline and per-salesperson figures.
+              <ProtectedRoute allow={(u) => isAdmin(u) && !isServiceTeam(u)}>
+                <MrmReport />
               </ProtectedRoute>
             }
           />

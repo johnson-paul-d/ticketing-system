@@ -297,6 +297,55 @@ point at the server's files and will not open on the laptop; that is expected.
 want the dev database reset to last night's production. Everything in it is
 discarded.
 
+## MRM report (monthly management review deck)
+
+Reports → **MRM Report (PPT)**, Marketing admins only. The server builds the
+deck the team used to assemble by hand: pick the month, check the figures on
+the page, download the `.pptx`.
+
+**Where each slide's data comes from**
+
+| Slide | Source |
+|---|---|
+| ABP targets | Wording and targets from the inputs; SQLs, pipeline, closed-won and followers filled in from the computed figures |
+| MQL comparison | Salesforce mirror: leads with source Google AdWords or Website, division Sieger Parking; conversions by converted date; pipeline = amount of opportunities from those sources by created month. Ad spend = the "Sieger Parking" Google Ads account |
+| Site branding | Portal project matching "Site Branding": one task per site, in due-date order |
+| Exhibition tracker | Inputs list the events; leads = Salesforce leads with source Trade Show created in the event window; spend = as entered, else approved expense claims matched by title |
+| Exhibition lead status | The same leads by Salesforce owner; visits = visit plans with a check-in |
+| LinkedIn | Portal LinkedIn sync, month-end follower count minus the previous month's |
+| Inaugurations, collaterals, agents | Inputs |
+| Export opportunities | Salesforce: open Sieger Parking opportunities in a foreign currency, past Qualification; blanks filled from the inputs |
+
+**Presented figures are kept.** Salesforce keeps moving after a month closes
+(leads get re-tagged, merged, dropped), so a recount of an old month drifts
+from what the meeting saw. Months listed under the `history` input are shown
+exactly as presented; the page shows the live recount beside them. After each
+review, add that month's figures to `history` so they stay fixed.
+
+**Setup on the server, once**
+
+1. The read-only Salesforce PostgREST (`postgrest-sf` on 127.0.0.1:3003) and
+   its `sf_reader` token, as set up on 17 Sep 2026: role `sf_reader` with
+   SELECT only on `salesforce_db_v2`, token minted with
+   `node scripts\db\mint-service-jwt.js "<secret>" sf_reader`.
+2. In `backend\.env`:
+
+   ```
+   SALESFORCE_DB_URL=http://127.0.0.1:3003
+   SALESFORCE_DB_JWT=<the sf_reader token>
+   LINKEDIN_AUTO_SYNC=on
+   ```
+3. The inputs table, on the live database and on the dev copy:
+
+   ```powershell
+   psql -U postgres -d mkttickets -f D:\mkttickets\backend\database\mrm-migration.sql; psql -U postgres -d mkttickets -c "notify pgrst, 'reload schema';"
+   psql -U postgres -d mkttickets_dev -f D:\mkttickets\backend\database\mrm-migration.sql; psql -U postgres -d mkttickets_dev -c "notify pgrst, 'reload schema';"
+   ```
+4. Restart the app: `nssm restart mkttickets`.
+
+`LINKEDIN_AUTO_SYNC=on` refreshes LinkedIn analytics once a day, so the
+month-end follower count exists without anyone pressing Sync.
+
 ## Caveats found after the first migration (12 Sep 2026)
 
 - **The server runs in Indian time; Render ran in UTC.** Any code that turns a
