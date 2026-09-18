@@ -171,7 +171,7 @@ const renderMrm = async (model) => {
     s.addText(`MRM – ${model.meta.monthName.toUpperCase()} ${model.meta.year}`, {
       x: 1, y: 3.95, w: W - 2, h: 0.5, fontFace: FONT, fontSize: 20, color: 'E4D9D9', align: 'center', isTextBox: true, margin: 0,
     });
-    s.addText(`${model.meta.division}  ·  ${model.meta.fiscalYear}`, {
+    s.addText(`Marketing  ·  ${model.meta.fiscalYear}`, {
       x: 1, y: 4.5, w: W - 2, h: 0.36, fontFace: FONT, fontSize: 12, color: 'B79A9A', align: 'center', isTextBox: true, margin: 0,
     });
     s.addNotes(
@@ -182,104 +182,150 @@ const renderMrm = async (model) => {
   }
 
   // =====================================================
-  // 2. ABP targets
+  // 2. Marketing qualified pipeline – overview
   // =====================================================
+  const fyTitle = model.meta.fiscalYear.replace('FY', 'FY 20').replace('-', '–');
+  const money = (v, unit = '') => (v == null ? '—' : `${Number(v).toLocaleString('en-IN', { maximumFractionDigits: 2 })}${unit}`);
+  const FUNNEL_HEAD = ['Spend (₹ L)', 'Leads', 'Converted', 'Opps', 'Quotes', 'Pipeline (₹ Cr)', 'Pipeline per ₹1 L spend (₹ Cr)'];
+  const funnelCells = (c) => [money(c.spendLakh), c.leads, c.converted, c.opps, c.quotes, money(c.pipelineCr), c.efficiency == null ? '—' : money(c.efficiency)];
   {
-    const s = chrome(`${model.meta.fiscalYear.replace('FY', 'FY 20').replace('-', '–')} – ABP Marketing Targets | ${model.meta.monthName} Review`);
-    const mon = model.meta.monthName.toUpperCase();
-    table(s, {
-      y: TOP + 0.1,
-      head: ['Area', 'FY TARGET', `YTD TARGET\n(${model.meta.ytdLabel})`, 'YTD ACHIEVED', `${mon} TARGET`, `${mon} ACHIEVED`],
-      colW: [1.75, 2.75, 2.2, 2.45, 1.64, 1.64],
-      rows: model.abp.rows.map((r) => [
-        { text: r.area, bold: true, color: BAR },
-        r.fyTarget, r.ytdTarget, { text: r.ytdAchieved, bold: true }, r.monthTarget, { text: r.monthAchieved, bold: true },
-      ]),
-      fontSize: 9.5, rowH: 1.02,
-    });
+    const f = model.funnel;
+    const s = chrome('Marketing Qualified Pipeline – Overview', `Spend → leads → converted → opportunities → quotes → pipeline (open quotes), by division · ${fyTitle}`);
+    const colW = [2.6, 1.35, 1.1, 1.2, 1.0, 1.0, 1.65, 2.53];
+    const block = (title, y, pick) => {
+      s.addText(title, { x: M, y, w: W - M * 2, h: 0.28, fontFace: FONT, fontSize: 11, bold: true, color: BAR, isTextBox: true, margin: 0 });
+      const rows = f.divisions.map((d) => [{ text: d.label, align: 'left', bold: true }, ...funnelCells(pick(d.marketingTotal))]);
+      rows.push(['Marketing sources – all divisions', ...funnelCells(pick(f.overall.marketing))]);
+      rows.push([{ text: 'Including sales-created', align: 'left', color: MUTED }, ...funnelCells(pick(f.overall.total)).map((t) => ({ text: t, color: MUTED }))]);
+      table(s, { y: y + 0.3, head: ['Division', ...FUNNEL_HEAD], colW, rows, fontSize: 9.5, rowH: 0.34, boldLast: false });
+    };
+    block(`${model.meta.monthName.toUpperCase()} ${model.meta.year}`, TOP + 0.05, (x) => x.month);
+    block(`FISCAL YEAR TO DATE (${model.meta.ytdLabel})`, TOP + 0.05 + 0.3 + 0.34 * (f.divisions.length + 3) + 0.25, (x) => x.ytd);
+    footnote(s, `Marketing sources: ${f.sources.filter((x) => x.key !== 'other').map((x) => x.label).join(', ')}. Pipeline: open quotes on opportunities created in the period. Spend: Google Ads for Ads; other sources as entered. Sales-created rows are opportunities with no marketing source.`);
   }
 
   // =====================================================
-  // 3. MQL comparison and performance
+  // 3–5. One slide per division: sources, month and YTD, with a trend
   // =====================================================
-  {
-    const s = chrome('MQL Comparison and Performance', `Inbound leads: ${'Google AdWords and Website'} · ${model.meta.division}`);
-    const cw = (W - M * 2 - 0.3) / 2;
-    const ch = (H - TOP - 0.75) / 2;
-    lineChart(s, 'Total Leads Monthly Trend', model.mql.leads, { x: M, y: TOP + 0.12, w: cw, h: ch });
-    lineChart(s, 'Converted Leads Monthly Trend', model.mql.convertedLeads, { x: M + cw + 0.3, y: TOP + 0.12, w: cw, h: ch });
-    lineChart(s, 'Pipeline Trend – Values in Million', model.mql.pipelineMn, { x: M, y: TOP + 0.12 + ch + 0.1, w: cw, h: ch });
-    lineChart(s, 'Ad Spend – ₹ Lakh', model.mql.adSpendLakh, { x: M + cw + 0.3, y: TOP + 0.12 + ch + 0.1, w: cw, h: ch, unit: 'money' });
-    footnote(s, 'Past months are shown as presented at the time; the current month is read live from Salesforce and Google Ads.');
-  }
-
-  // =====================================================
-  // 4. Site branding
-  // =====================================================
-  {
-    const sb = model.siteBranding;
-    const pct = sb.total ? Math.round((sb.completed / sb.total) * 100) : 0;
-    const s = chrome('Site Branding', 'Completed & ongoing installations across customer locations, in due-date order');
-    tile(s, { x: M, y: TOP + 0.15, w: 2.0, value: sb.total, label: 'Total projects' });
-    tile(s, { x: M, y: TOP + 1.3, w: 2.0, value: `${sb.completed}/${sb.total}`, label: `Completed (${pct}%)`, accent: true });
-
-    // Every cell is clipped to one line: a wrapped row is taller than rowH and
-    // PowerPoint then pushes the table off the bottom of the slide.
-    const clip = (t, n) => (String(t || '').length > n ? `${String(t).slice(0, n - 1)}…` : String(t || ''));
-    const PER_COL = 18;
-    const shown = sb.rows.slice(0, PER_COL * 2);
-    const cols = [shown.slice(0, PER_COL), shown.slice(PER_COL)];
-    const tx = M + 2.2;
-    const tw = (W - M - tx - 0.2) / 2;
-    cols.forEach((rows, i) => {
-      if (!rows.length) return;
-      table(s, {
-        x: tx + i * (tw + 0.2), y: TOP + 0.15, w: tw,
-        head: ['Customer', 'System', 'Progress'],
-        colW: [tw * 0.4, tw * 0.3, tw * 0.3],
-        rows: rows.map((r) => [
-          { text: clip(r.customer, 30), align: 'left' },
-          { text: r.system ? `● ${clip(r.system, 22)}` : '—', align: 'left' },
-          { text: r.progress, color: r.done ? GOOD : r.overdue ? BAD : WARN, bold: r.done || r.overdue },
-        ]),
-        fontSize: 8, rowH: 0.285,
-      });
+  for (const d of model.funnel.divisions) {
+    const s = chrome(`Marketing Qualified Pipeline – ${d.label}`, `Per source: ${model.meta.monthName} and fiscal year to date (${model.meta.ytdLabel})`);
+    const mon = model.meta.monthName.slice(0, 3).toUpperCase();
+    const groups = ['Spend (₹ L)', 'Leads', 'Converted', 'Opps', 'Quotes', 'Pipeline (₹ Cr)', 'Cr per ₹1 L'];
+    const cw = (W - M * 2 - 2.3) / (groups.length * 2);
+    const colW = [2.3, ...Array(groups.length * 2).fill(cw)];
+    const hdr = (text, opts = {}) => ({
+      text,
+      options: { fill: { color: HEAD }, color: WHITE, bold: true, align: 'center', valign: 'middle', fontFace: FONT, fontSize: 8.5, ...opts },
     });
-    if (sb.rows.length > shown.length) {
-      footnote(s, `Showing the first ${shown.length} of ${sb.total} sites by date. The rest are planned later; full list in the portal project "${sb.project}".`);
+    const head1 = [hdr('Source', { rowspan: 2, align: 'left' }), ...groups.map((g) => hdr(g, { colspan: 2 }))];
+    const head2 = groups.flatMap(() => [hdr(mon, { fill: { color: '6E1515' } }), hdr('YTD', { fill: { color: '6E1515' } })]);
+    const pair = (c) => {
+      const m = funnelCells(c.month);
+      const y = funnelCells(c.ytd);
+      return m.flatMap((v, i) => [v, y[i]]);
+    };
+    const body = [];
+    const rowOf = (label, cells, opts = {}) => {
+      const fill = opts.total ? 'EADCDC' : body.length % 2 === 0 ? BAND : BAND_ALT;
+      body.push([
+        { text: label, options: { fill: { color: fill }, color: opts.color || INK, bold: Boolean(opts.bold), align: 'left', valign: 'middle', fontFace: FONT, fontSize: 8.5 } },
+        ...cells.map((v, i) => ({
+          text: dash(v),
+          options: { fill: { color: fill }, color: opts.color || (i % 2 === 0 ? INK : MUTED), bold: Boolean(opts.bold), align: 'center', valign: 'middle', fontFace: FONT, fontSize: 8.5 },
+        })),
+      ]);
+    };
+    d.sources.filter((x) => x.marketing).forEach((x) => rowOf(x.label, pair(x)));
+    rowOf('Marketing sources', pair(d.marketingTotal), { bold: true, total: true });
+    const other = d.sources.find((x) => !x.marketing);
+    if (other) rowOf(other.label, pair(other), { color: MUTED });
+    rowOf('Division total', pair(d.total), { bold: true, total: true });
+    s.addTable([head1, head2, ...body], { x: M, y: TOP + 0.1, w: W - M * 2, colW, border: { type: 'solid', color: RULE, pt: 0.75 }, rowH: 0.3, margin: 0.04, autoPage: false });
+
+    const chartY = TOP + 0.1 + 0.3 * (body.length + 2) + 0.25;
+    const chartH = H - chartY - 0.5;
+    if (chartH > 1.4) {
+      const cwid = (W - M * 2 - 0.3) / 2;
+      const ser = (name, values) => ({ categories: d.trend.categories, current: { name, values }, previous: null, target: null });
+      lineChart(s, `${d.label} – marketing leads by month`, ser('Leads', d.trend.leads), { x: M, y: chartY, w: cwid, h: chartH });
+      lineChart(s, `${d.label} – converted by month`, ser('Converted', d.trend.converted), { x: M + cwid + 0.3, y: chartY, w: cwid, h: chartH });
     }
+    footnote(s, 'Left figure in each pair is the month, right (grey) is fiscal year to date. Pipeline: open quotes on opportunities created in the period, at Salesforce currency rates.');
   }
 
   // =====================================================
-  // 5. Exhibition & event tracker
+  // 6. Targeted ABM account conversion
+  // =====================================================
+  {
+    const a = model.abm;
+    const s = chrome('Targeted ABM Account Conversion', 'Accounts identified · status · quotation · action required');
+    const tw = (W - M * 2 - 0.3 * 2) / 3;
+    [
+      { value: a.totals.accounts, label: 'Accounts identified' },
+      { value: a.totals.quoted, label: 'With a quotation', accent: true },
+      { value: a.totals.quotationLakh ? `₹${money(a.totals.quotationLakh)} L` : '—', label: 'Open quotation value' },
+    ].forEach((t, i) => tile(s, { x: M + i * (tw + 0.3), y: TOP + 0.1, w: tw, h: 0.85, ...t }));
+    const rows = a.rows.map((r) => [
+      { text: r.account, align: 'left', bold: true }, r.division, r.owner,
+      { text: r.status, color: statusColor(r.status), bold: true },
+      r.openOpps == null ? '—' : r.openOpps, { text: r.stage, align: 'left' },
+      r.quotationLakh != null ? `${money(r.quotationLakh)} L${r.quotationSource === 'salesforce' ? '' : ' *'}` : '—',
+      { text: r.action, align: 'left' },
+    ]);
+    table(s, {
+      y: TOP + 1.15,
+      head: ['Account', 'Division', 'Owner', 'Status', 'Open opps', 'Stage', 'Quotation', 'Action required'],
+      colW: [2.6, 0.9, 1.3, 1.2, 0.8, 1.5, 1.1, 3.03],
+      rows: rows.length ? rows : [['No ABM accounts entered yet – add them under "ABM accounts" on the MRM page', '', '', '', '', '', '', '']],
+      fontSize: 9, rowH: 0.34,
+    });
+    footnote(s, 'Open opps, stage and quotation are read from Salesforce by account name. * quotation typed in on the MRM page.');
+  }
+
+  // =====================================================
+  // 7. Expo plan and actuals
   // =====================================================
   {
     const ex = model.exhibitions;
-    const s = chrome(`Exhibition & Event Tracker – ${model.meta.fiscalYear.replace('FY', 'FY 20').replace('-', '–')}`, 'Exhibition-wise spend and lead conversion tracker');
+    const s = chrome(`Expo Plan & Actuals – ${fyTitle}`, 'Exhibition-wise spend, leads and conversion · strategic new exhibitions identified');
     const rows = ex.rows.map((r) => [
       { text: r.name, align: 'left' },
       { text: r.status, color: statusColor(r.status), bold: true },
-      r.spendLakh != null ? `${r.spendLakh} Lakh` : '—',
+      r.budgetLakh != null ? `${r.budgetLakh} L` : '—',
+      r.spendLakh != null ? `${r.spendLakh} L` : '—',
       dash(r.leads), dash(r.converted),
-      r.opportunityAmountLakh ? `${r.opportunityAmountLakh} Lakh` : '—',
+      r.opportunityAmountLakh ? `${r.opportunityAmountLakh} L` : '—',
       { text: r.remarks, align: 'left' },
     ]);
-    rows.push(['TOTAL', '', `${ex.totals.spendLakh} Lakh`, ex.totals.leads, ex.totals.converted, '', '']);
+    rows.push(['TOTAL', '', '', `${ex.totals.spendLakh} L`, ex.totals.leads, ex.totals.converted, '', '']);
+    const rowH = ex.rows.length > 9 ? 0.28 : 0.33;
     table(s, {
-      y: TOP + 0.2,
-      head: ['Exhibition Name', 'Status', 'Expected Spend', 'No. of Leads', 'Converted', 'Opportunity Amount', 'Remarks'],
-      colW: [3.35, 0.95, 1.35, 1.05, 1.0, 1.45, 3.28],
-      rows, fontSize: 9.5, rowH: 0.4, boldLast: true,
+      y: TOP + 0.1,
+      head: ['Exhibition', 'Status', 'Budget', 'Spend', 'Leads', 'Converted', 'Opp amount', 'Remarks'],
+      colW: [3.1, 0.9, 0.9, 0.9, 0.8, 0.95, 1.1, 3.78],
+      rows, fontSize: 9, rowH, boldLast: true,
     });
+    const ny = TOP + 0.1 + rowH * (rows.length + 1) + 0.3;
+    if (ny < H - 1.4) {
+      s.addText('STRATEGIC NEW EXHIBITIONS IDENTIFIED', { x: M, y: ny, w: W - M * 2, h: 0.28, fontFace: FONT, fontSize: 11, bold: true, color: BAR, isTextBox: true, margin: 0 });
+      const ne = (ex.newExpos || []).map((r) => [{ text: r.name, align: 'left', bold: true }, r.city, r.month, { text: r.rationale, align: 'left' }, { text: r.status, color: statusColor(r.status), bold: true }]);
+      table(s, {
+        y: ny + 0.3,
+        head: ['Exhibition', 'City', 'When', 'Why it matters', 'Status'],
+        colW: [3.1, 1.6, 1.3, 5.23, 1.2],
+        rows: ne.length ? ne : [['None identified this month', '', '', '', '']],
+        fontSize: 9, rowH: 0.3, headFill: HEAD_GREEN,
+      });
+    }
     footnote(s, 'Leads and conversions: Salesforce leads with source Trade Show, created during the event window. Spend: as entered, or from approved expense claims.');
   }
 
   // =====================================================
-  // 6. Exhibition lead status by salesperson
+  // 8. Exhibition lead status by salesperson
   // =====================================================
   {
     const ex = model.exhibitions;
-    const s = chrome(`Exhibition Lead Status – ${model.meta.fiscalYear.replace('FY', 'FY 20').replace('-', '–')}`);
+    const s = chrome(`Exhibition Lead Status – ${fyTitle}`);
     const z = (v) => (v ? v : '');
     const rows = ex.byOwner.map((o) => [{ text: o.user, align: 'left' }, o.assigned, z(o.converted), z(o.open), z(o.dropped), z(o.visits)]);
     if (ex.byOwnerTotal) {
@@ -298,12 +344,12 @@ const renderMrm = async (model) => {
   }
 
   // =====================================================
-  // 7. LinkedIn
+  // 9. Brand visibility – LinkedIn
   // =====================================================
   {
     const li = model.linkedin;
     const pages = li.pages && li.pages.length ? li.pages : [li];
-    const s = chrome('LinkedIn Performance', `${model.meta.monthName} ${model.meta.year} LinkedIn followers – target vs actual, per page`);
+    const s = chrome('Brand Visibility – LinkedIn', `${model.meta.monthName} ${model.meta.year} LinkedIn followers – target vs actual, per page`);
     const leftW = 7.4;
     table(s, {
       x: M, y: TOP + 0.2, w: leftW,
@@ -319,7 +365,6 @@ const renderMrm = async (model) => {
       ]),
       fontSize: 10.5, rowH: 0.4,
     });
-    // One chart per page, side by side under the table.
     const chartY = TOP + 0.35 + 0.4 * (pages.length + 1) + 0.2;
     const chartH = H - chartY - 0.55;
     const cw = (leftW - 0.2 * (pages.length - 1)) / pages.length;
@@ -343,82 +388,78 @@ const renderMrm = async (model) => {
   }
 
   // =====================================================
-  // 8. Project inauguration plan
+  // 10. Brand visibility – engagement activities and SEO
   // =====================================================
   {
-    const ina = model.inaugurations;
-    const s = chrome(`Project Inauguration Plan – ${model.meta.fiscalYear.replace('FY', 'FY 20').replace('-', '–')}`);
-    const tw = (W - M * 2 - 0.3 * 3) / 4;
+    const en = model.engagement;
+    const seo = model.seo;
+    const s = chrome('Brand Visibility – Engagement & SEO', `Customer engagement activities plan vs actual · targeted keywords and Google rank · ${model.meta.monthName} ${model.meta.year}`);
+    const half = (W - M * 2 - 0.4) / 2;
+    const tw = (half - 0.2 * 2) / 3;
+    // Left: engagement
+    s.addText('CUSTOMER ENGAGEMENT ACTIVITIES', { x: M, y: TOP + 0.05, w: half, h: 0.28, fontFace: FONT, fontSize: 11, bold: true, color: BAR, isTextBox: true, margin: 0 });
     [
-      { value: ina.target, label: 'Target' },
-      { value: ina.completed, label: 'Completed', accent: true },
-      { value: ina.ongoing, label: 'Ongoing' },
-      { value: `${ina.overallPct}%`, label: 'Overall progress' },
-    ].forEach((t, i) => tile(s, { x: M + i * (tw + 0.3), y: TOP + 0.15, w: tw, ...t }));
+      { value: en.plan, label: 'Planned this month' },
+      { value: en.actual, label: 'Completed', accent: true },
+      { value: `${en.ytdActual}/${en.ytdPlan}`, label: 'YTD done / planned' },
+    ].forEach((t, i) => tile(s, { x: M + i * (tw + 0.2), y: TOP + 0.38, w: tw, h: 0.8, ...t }));
+    const enRows = en.rows.slice(0, 11).map((r) => [
+      { text: r.title.length > 42 ? `${r.title.slice(0, 41)}…` : r.title, align: 'left' }, r.division, prettyDate(r.due),
+      { text: r.status, color: statusColor(r.status), bold: true },
+    ]);
     table(s, {
-      y: TOP + 1.45,
-      head: ['Event', 'Status', 'Progress', 'Next Action'],
-      colW: [4.4, 1.5, 1.5, 5.03],
-      rows: ina.items.map((i) => [
-        { text: i.event, align: 'left', bold: true },
-        { text: i.status, color: statusColor(i.status), bold: true },
-        `${Number(i.progress) || 0}%`,
-        { text: i.nextAction, align: 'left' },
-      ]),
-      fontSize: 10.5, rowH: 0.42,
+      x: M, y: TOP + 1.35, w: half,
+      head: ['Activity', 'Division', 'Due', 'Status'],
+      colW: [half * 0.52, half * 0.14, half * 0.17, half * 0.17],
+      rows: enRows.length ? enRows : [[`No tickets in categories ${en.categories.join(', ')} for this month`, '', '', '']],
+      fontSize: 8.5, rowH: 0.28,
     });
+    // Right: SEO
+    const rx = M + half + 0.4;
+    s.addText('SEO RESULTS & KEYWORD RANKING', { x: rx, y: TOP + 0.05, w: half, h: 0.28, fontFace: FONT, fontSize: 11, bold: true, color: BAR, isTextBox: true, margin: 0 });
+    [
+      { value: seo.targeted, label: 'Targeted keywords' },
+      { value: seo.top10, label: 'In Google top 10', accent: true },
+      { value: seo.avgRank == null ? '—' : seo.avgRank, label: 'Average rank' },
+    ].forEach((t, i) => tile(s, { x: rx + i * (tw + 0.2), y: TOP + 0.38, w: tw, h: 0.8, ...t }));
+    const arrow = (c) => (c == null ? '—' : c > 0 ? { text: `▲ ${c}`, color: GOOD, bold: true } : c < 0 ? { text: `▼ ${Math.abs(c)}`, color: BAD, bold: true } : '=');
+    const seoRows = seo.rows.slice(0, 11).map((r) => [{ text: r.keyword, align: 'left' }, r.division, dash(r.rank), dash(r.prevRank), arrow(r.change)]);
+    table(s, {
+      x: rx, y: TOP + 1.35, w: half,
+      head: ['Keyword', 'Division', 'Rank', 'Prev month', 'Change'],
+      colW: [half * 0.44, half * 0.14, half * 0.13, half * 0.15, half * 0.14],
+      rows: seoRows.length ? seoRows : [['No keywords entered yet – add them under "SEO keywords" on the MRM page', '', '', '', '']],
+      fontSize: 8.5, rowH: 0.28,
+    });
+    footnote(s, `Engagement: portal tickets in categories ${en.categories.join(', ')}; plan = due in the month, actual = completed in the month. SEO ranks are entered monthly.${seo.notes ? ` ${seo.notes}` : ''}`);
   }
 
   // =====================================================
-  // 9. Collaterals and videos
+  // 11. Collateral plan vs actual
   // =====================================================
   {
     const c = model.collaterals;
-    const s = chrome('Collaterals and Videos');
+    const p = c.planVsActual || { plan: 0, actual: 0, ytdPlan: 0, ytdActual: 0, open: 0 };
+    const s = chrome('Monthly Collateral Plan vs Actual', `Videos, animations and collaterals from tickets raised by the sales team · ${model.meta.monthName} ${model.meta.year}`);
+    const tw = (W - M * 2 - 0.3 * 3) / 4;
+    [
+      { value: p.plan, label: 'Planned (due this month)' },
+      { value: p.actual, label: 'Completed this month', accent: true },
+      { value: `${p.ytdActual}/${p.ytdPlan}`, label: 'YTD completed / planned' },
+      { value: p.open, label: 'Open requests' },
+    ].forEach((t, i) => tile(s, { x: M + i * (tw + 0.3), y: TOP + 0.1, w: tw, h: 0.85, ...t }));
     const half = (W - M * 2 - 0.3) / 2;
-    const shape = (rows) => rows.map((r) => [{ text: r.project, align: 'left' }, r.location, r.month, r.type, { text: r.status, color: statusColor(r.status), bold: true }]);
-    const colW = [half * 0.3, half * 0.2, half * 0.12, half * 0.2, half * 0.18];
-    table(s, { x: M, y: TOP + 0.2, w: half, head: ['Project', 'Location', 'Month', 'Type', 'Status'], colW, rows: shape(c.completed || []), fontSize: 9.5, rowH: 0.34, headFill: HEAD_GREEN });
-    table(s, { x: M + half + 0.3, y: TOP + 0.2, w: half, head: ['Project', 'Location', 'Month', 'Type', 'Status'], colW, rows: shape(c.planned || []), fontSize: 9.5, rowH: 0.34 });
+    const shape = (rows) => rows.slice(0, 12).map((r) => [{ text: r.project, align: 'left' }, r.location, r.month, r.type, { text: r.status, color: statusColor(r.status), bold: true }]);
+    const colW = [half * 0.34, half * 0.18, half * 0.12, half * 0.18, half * 0.18];
+    s.addText('COMPLETED', { x: M, y: TOP + 1.1, w: half, h: 0.26, fontFace: FONT, fontSize: 10, bold: true, color: HEAD_GREEN, isTextBox: true, margin: 0 });
+    s.addText('PLANNED / IN PROGRESS', { x: M + half + 0.3, y: TOP + 1.1, w: half, h: 0.26, fontFace: FONT, fontSize: 10, bold: true, color: BAR, isTextBox: true, margin: 0 });
+    table(s, { x: M, y: TOP + 1.38, w: half, head: ['Project', 'Location', 'Month', 'Type', 'Status'], colW, rows: shape(c.completed || []), fontSize: 9, rowH: 0.3, headFill: HEAD_GREEN });
+    table(s, { x: M + half + 0.3, y: TOP + 1.38, w: half, head: ['Project', 'Location', 'Month', 'Type', 'Status'], colW, rows: shape(c.planned || []), fontSize: 9, rowH: 0.3 });
+    footnote(s, c.fromTickets ? 'Rows: tickets ticked on the MRM page. Counts: every ticket in the collateral categories.' : 'Rows are typed in; tick tickets on the MRM page to list them from the portal. Counts: every ticket in the collateral categories.');
   }
 
   // =====================================================
-  // 10. Open export opportunities
-  // =====================================================
-  {
-    const eo = model.exportOpps;
-    const s = chrome('Open Export Opportunities');
-    const rows = eo.rows.map((r) => [
-      { text: r.name, align: 'left', bold: true }, r.stage, r.country, r.product, dash(r.carSpaces),
-      r.amountUsdMn != null ? `${r.amountUsdMn} Mn` : '', prettyDate(r.closeDate),
-    ]);
-    rows.push(['TOTAL', '', '', '', '', `${eo.totalUsdMn} Mn`, '']);
-    table(s, {
-      y: TOP + 0.2,
-      head: ['Opportunity name', 'Stage', 'Country', 'Product', 'Car spaces', 'Opp Amount (USD)', 'Close date'],
-      colW: [4.4, 1.3, 1.6, 1.4, 1.2, 1.4, 1.13],
-      rows, fontSize: 10, rowH: 0.38, boldLast: true,
-    });
-    footnote(s, 'From Salesforce: open Sieger Parking opportunities priced in a foreign currency, past Qualification. Country, product and car spaces are filled in where Salesforce has none.');
-  }
-
-  // =====================================================
-  // 11. Agents
-  // =====================================================
-  {
-    const a = model.agents;
-    const s = chrome(a.title || 'Agents');
-    table(s, {
-      y: TOP + 0.2,
-      head: ['Month', 'Agent Name', 'Location', 'Potential', 'Status', 'Next Action'],
-      colW: [1.0, 2.6, 1.9, 2.2, 3.0, 1.73],
-      rows: (a.items || []).map((i) => [i.month, { text: i.name, align: 'left', bold: true }, i.location, i.potential, { text: i.status, align: 'left' }, i.nextAction]),
-      fontSize: 10.5, rowH: 0.42,
-    });
-  }
-
-  // =====================================================
-  // 12. Thank you
+  // 12. Thank you (last slide)
   // =====================================================
   {
     const s = pres.addSlide();

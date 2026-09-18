@@ -19,6 +19,7 @@
 const supabase = require('../config/supabase');
 const { salesforce, isConfigured: salesforceConfigured } = require('../config/salesforceDb');
 const DEFAULTS = require('./mrmDefaults');
+const { buildFunnel, buildAbm, buildEngagement, buildSeo } = require('./mrmFunnel');
 
 const IST_MS = 330 * 60000;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -576,9 +577,10 @@ const buildMrm = async (month, viewerName) => {
         },
         byOwner: ownerRows,
         byOwnerTotal: total,
+        newExpos: (Array.isArray(ex) ? [] : ex?.newExpos || []).map((r) => ({ ...r })),
       };
     },
-    { rows: [], totals: { spendLakh: 0, leads: 0, converted: 0 }, byOwner: [], byOwnerTotal: null }
+    { rows: [], totals: { spendLakh: 0, leads: 0, converted: 0 }, byOwner: [], byOwnerTotal: null, newExpos: [] }
   );
 
   // ------------------------------------------------ Site branding (project tasks, by due date)
@@ -741,8 +743,26 @@ const buildMrm = async (month, viewerName) => {
     async () => {
       const picked = inputs.collaterals?.tickets || {};
       const ids = Object.keys(picked).filter((id) => picked[id]?.include !== false);
+
+      // Plan vs actual over every ticket in the collateral categories: due in
+      // the month is the plan, completed in the month is the actual. The
+      // ticked tickets only decide which rows are listed on the slide.
+      const cats = S.collateralCategories?.length ? S.collateralCategories : ['Video', 'Animation', 'ANIMATION VIDEO', 'Collateral'];
+      const all = await pageAll(
+        () => supabase.from('tickets').select('id, status, due_date, completed_date').in('category', cats).eq('deleted', false),
+        'id'
+      );
+      const isDone = (t) => /^(completed|closed)$/i.test(String(t.status || ''));
+      const planVsActual = {
+        plan: all.filter((t) => t.due_date && String(t.due_date).slice(0, 7) === month).length,
+        actual: all.filter((t) => isDone(t) && t.completed_date && String(t.completed_date).slice(0, 7) === month).length,
+        ytdPlan: all.filter((t) => t.due_date && t.due_date >= `${fyStart}-01` && t.due_date <= monthEndDay).length,
+        ytdActual: all.filter((t) => isDone(t) && t.completed_date && t.completed_date >= `${fyStart}-01` && t.completed_date <= monthEndDay).length,
+        open: all.filter((t) => !isDone(t)).length,
+      };
+
       if (!ids.length) {
-        return { completed: inputs.collaterals?.completed || [], planned: inputs.collaterals?.planned || [], fromTickets: false };
+        return { completed: inputs.collaterals?.completed || [], planned: inputs.collaterals?.planned || [], fromTickets: false, planVsActual };
       }
       const tickets = [];
       for (const part of chunk(ids, 100)) {
@@ -781,10 +801,20 @@ const buildMrm = async (month, viewerName) => {
       const planned = rows
         .filter((r) => !r.done)
         .sort((a, b) => String(a.due || '9999').localeCompare(String(b.due || '9999')));
-      return { completed, planned, fromTickets: true, completedYtd: rows.filter((r) => r.done && r.completedMonth >= fyStart && r.completedMonth <= month).length };
+      return { completed, planned, fromTickets: true, planVsActual, completedYtd: rows.filter((r) => r.done && r.completedMonth >= fyStart && r.completedMonth <= month).length };
     },
-    { completed: [], planned: [], fromTickets: false }
+    { completed: [], planned: [], fromTickets: false, planVsActual: { plan: 0, actual: 0, ytdPlan: 0, ytdActual: 0, open: 0 } }
   );
+
+  // ------------------------------------------------ Pipeline by division and source, ABM, engagement, SEO
+  const ctx = {
+    salesforce, salesforceConfigured, supabase, pageAll, chunk, safely, istMonth,
+    inputs, month, fyStart, fyMonths, elapsed, monthStartUtc, addMonths, monthEndDay,
+  };
+  const funnel = await buildFunnel(ctx);
+  const abm = await buildAbm(ctx);
+  const engagement = await buildEngagement(ctx);
+  const seo = buildSeo(ctx);
 
   // ------------------------------------------------ ABP slide tokens
   const [, mNum] = parseYm(month);
@@ -841,6 +871,10 @@ const buildMrm = async (month, viewerName) => {
     warnings,
     tokens,
     abp,
+    funnel,
+    abm,
+    engagement,
+    seo,
     mql,
     siteBranding,
     exhibitions,

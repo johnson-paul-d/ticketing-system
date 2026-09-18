@@ -13,6 +13,28 @@ module.exports = {
   // How the computed figures are defined
   // ---------------------------------------------------------------
   settings: {
+    // The three divisions on the pipeline slides, and how each is found in
+    // Salesforce (Division__c / Divisions__c values), the portal's ticket
+    // division, and the Google Ads account whose spend counts as its "Ads".
+    divisions: [
+      { key: 'CPS', label: 'Sieger Parking (CPS)', salesforce: ['Sieger Parking'], ticketDivision: 'CPS', adsAccount: 'Sieger Parking' },
+      { key: 'ASTOR', label: 'ASTOR', salesforce: ['Automatic Storage Solutions(Textile)', 'Automatic Storage Solutions(Non-Textile)'], ticketDivision: 'ASTOR', adsAccount: 'Sieger Astor' },
+      { key: 'TMD', label: 'Textile Machinery (TMD)', salesforce: ['Textile Machinery Division'], ticketDivision: 'TMD', adsAccount: null },
+    ],
+    // Marketing sources, in slide order. A lead or opportunity is placed in
+    // the first source whose leadSources (exact) or match (contains) fits;
+    // anything else is "Sales-created / other".
+    sources: [
+      { key: 'website', label: 'Website', leadSources: ['Website'] },
+      { key: 'ads', label: 'Ads', leadSources: ['Google AdWords'] },
+      { key: 'database', label: 'Database / AI / Campaigns', leadSources: ['Mkt - Database', 'Mkt-Database', 'Database', 'Mktg', 'ABM', 'Whatsapp', 'IndiaMart', 'Just Dial'] },
+      { key: 'scouter', label: 'Scouter', match: 'Scouter' },
+      { key: 'expo', label: 'Expo', leadSources: ['Trade Show', 'Tradeshow'] },
+    ],
+    // A quote in these statuses is pipeline.
+    openQuoteStatuses: ['In Review', 'Presented', 'Negotiation'],
+    // Ticket categories that count as customer engagement activities.
+    engagementCategories: ['Customer Engagement', 'Customer Follow up', 'Email Campaign', 'Campaign'],
     division: 'Sieger Parking',
     // "Leads" on the MQL slide means inbound marketing leads only.
     leadSources: ['Google AdWords', 'Website'],
@@ -150,6 +172,8 @@ module.exports = {
       { projectMatch: 'HOSPEX', name: 'Hospex Healthcare Expo', from: '2026-09-24', to: '2026-09-26', spendLakh: 3, claimMatch: ['Hospex'], remarks: '18 Sq.m stall finalized' },
       { projectMatch: 'ACETECH', name: 'Ace Tech – Mumbai', from: '2026-11-19', to: '2026-11-22', spendLakh: 12, claimMatch: ['Acetech', 'Ace Tech'], remarks: '50 Sq.m stall finalized, advance of 30% done' },
     ],
+    // Strategic new exhibitions identified for the coming year, typed in.
+    newExpos: [],
     // Events with no portal project (older ones, or not yet planned as a project).
     manual: [
       { name: 'Medical Hyd 2026', from: '2026-05-07', to: '2026-05-09', status: 'Done', budgetLakh: 2.5, spendLakh: 2.3, claimMatch: ['Medicall Hyd', 'Medical Hyd'], remarks: 'Budget – 2.5 lakh' },
@@ -160,6 +184,31 @@ module.exports = {
     ],
   },
 
+
+  // ---------------------------------------------------------------
+  // Marketing spend, typed in monthly: ₹ lakh per division per source
+  // ---------------------------------------------------------------
+  // { CPS: { website: { '2026-08': 0.5 }, database: {...} }, ASTOR: {...} }.
+  // "ads" is read from Google Ads (settings.divisions[].adsAccount) unless a
+  // month is typed here, which then wins.
+  spend: {},
+
+  // ---------------------------------------------------------------
+  // Targeted ABM accounts
+  // ---------------------------------------------------------------
+  // The accounts marketing is working on. Status and action are typed; the
+  // open quote value is read from Salesforce by account name when blank.
+  abm: {
+    accounts: [],
+  },
+
+  // ---------------------------------------------------------------
+  // SEO: targeted keywords and their Google rank, typed in monthly
+  // ---------------------------------------------------------------
+  seo: {
+    keywords: [],
+    notes: '',
+  },
 
   // ---------------------------------------------------------------
   // LinkedIn slide wording

@@ -303,19 +303,19 @@ Reports → **MRM Report (PPT)**, Marketing admins only. The server builds the
 deck the team used to assemble by hand: pick the month, check the figures on
 the page, download the `.pptx`.
 
-**Where each slide's data comes from**
+**The deck follows the review's five sections** (layout of 18 Sep 2026):
 
-| Slide | Source |
+| Section / slide | Source |
 |---|---|
-| ABP targets | Wording and targets from the inputs; SQLs, pipeline, closed-won and followers filled in from the computed figures |
-| MQL comparison | Salesforce mirror: leads with source Google AdWords or Website, division Sieger Parking; conversions by converted date; pipeline = amount of opportunities from those sources by created month. Ad spend = the "Sieger Parking" Google Ads account |
-| Site branding | Portal project matching "Site Branding": one task per site, in due-date order |
-| Exhibition tracker | Portal projects ticked as exhibitions in the Exhibitions editor (status from the project's tasks), plus any events typed in by hand; leads = Salesforce leads with source Trade Show created in the event window; spend = as entered, else approved expense claims matched by title |
-| Exhibition lead status | The same leads by Salesforce owner; visits = visit plans with a check-in |
-| LinkedIn | Portal LinkedIn sync, one row and one chart per page (Sieger Parking and Sieger Global by default; pages are listed under Definitions); month-end follower count minus the previous month's |
-| Collaterals & videos | Portal tickets in the collateral categories (Video, Animation, Collateral), ticked in the Collaterals editor; completed in the review month go to the left table, open ones to the right with their status |
-| Inaugurations, agents | Inputs |
-| Export opportunities | Salesforce: open Sieger Parking opportunities in a foreign currency, past Qualification; blanks filled from the inputs |
+| 1. Marketing qualified pipeline (overview + one slide per division: CPS, ASTOR, TMD) | Salesforce mirror. Per marketing source (Website, Ads, Database/AI/Campaigns, Scouter, Expo; anything else is "sales-created"): leads created, leads converted, opportunities created, quotes raised, pipeline = open quotes (In Review / Presented / Negotiation) on those opportunities at Salesforce currency rates, and pipeline per lakh of spend. Spend: Google Ads for Ads (account per division in Definitions), everything else typed under Marketing spend |
+| 2. Targeted ABM accounts | Typed list; open opportunities, stage and open quotation read from Salesforce by account name |
+| 3. Expo plan and actuals | Portal projects ticked as exhibitions plus hand-typed events; leads = Salesforce Trade Show leads in the event window; strategic new exhibitions typed in |
+| Exhibition leads by salesperson | Same leads by owner; visits = visit plans with a check-in |
+| 4. Brand visibility – LinkedIn | Portal LinkedIn sync, per page |
+| 4. Brand visibility – engagement and SEO | Engagement: tickets in the engagement categories (Definitions), due in the month = plan, completed = actual. SEO: keyword ranks typed monthly |
+| 5. Collateral plan vs actual | Tickets in the collateral categories: due in the month = plan, completed = actual; the rows listed are the ticked tickets |
+
+The divisions and sources are records under Definitions (Advanced view): each division names its Salesforce division values and Google Ads account, each source the Salesforce lead sources it collects.
 
 **Presented figures are kept.** Salesforce keeps moving after a month closes
 (leads get re-tagged, merged, dropped), so a recount of an old month drifts

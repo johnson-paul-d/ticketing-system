@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
 import { FileDown, Loader2, AlertCircle, RefreshCw, Save, RotateCcw, Presentation, Database, Lock, Code2 } from "lucide-react";
-import { InaugurationsEditor, AgentsEditor, ExportEditor, LinkedinEditor, AbpEditor } from "../components/mrm/InputEditors";
+import { LinkedinEditor } from "../components/mrm/InputEditors";
 import { ExhibitionsEditor, CollateralsEditor, HistoryEditor, TargetsEditor, SettingsEditor } from "../components/mrm/PickerEditors";
+import { SpendEditor, AbmEditor, SeoEditor } from "../components/mrm/FunnelEditors";
 
 // =====================================================
 // MRM REPORT
@@ -30,16 +31,15 @@ const fyYearOf = (ym) => {
 
 // The editable inputs, in the order a person would look for them.
 const INPUTS = [
-  { key: "exhibitions", label: "Exhibitions", hint: "Slide 5: tick the projects that are exhibitions; dates, spend and remarks per event." },
-  { key: "abp", label: "ABP targets wording", hint: "Slide 2: the text in each cell." },
-  { key: "inaugurations", label: "Inaugurations", hint: "Slide 8." },
-  { key: "collaterals", label: "Collaterals & videos", hint: "Slide 9: tick the tickets to show." },
-  { key: "agents", label: "Agents", hint: "Slide 11." },
-  { key: "linkedin", label: "LinkedIn wording", hint: "Slide 7: done this month, next month plan." },
-  { key: "exportOpportunities", label: "Export opportunities", hint: "Slide 10: country, product and car spaces that Salesforce lacks." },
-  { key: "targets", label: "Targets", hint: "Monthly targets shown on the charts and the ABP slide." },
+  { key: "spend", label: "Marketing spend", hint: "Section 1: rupees lakh per division, source and month. Ads comes from Google Ads unless typed." },
+  { key: "abm", label: "ABM accounts", hint: "Section 2: the targeted accounts, their status and the action required." },
+  { key: "exhibitions", label: "Exhibitions", hint: "Section 3: tick the projects that are exhibitions; strategic new exhibitions identified." },
+  { key: "linkedin", label: "LinkedIn wording", hint: "Section 4: done this month, next month plan." },
+  { key: "seo", label: "SEO keywords", hint: "Section 4: targeted keywords and their Google rank for the month." },
+  { key: "collaterals", label: "Collaterals & videos", hint: "Section 5: tick the tickets to list on the slide." },
+  { key: "targets", label: "Targets", hint: "Monthly targets shown on the LinkedIn charts." },
   { key: "history", label: "Presented figures", hint: "Past months, shown exactly as presented." },
-  { key: "settings", label: "Definitions", hint: "Division, lead sources, accounts. Rarely changed." },
+  { key: "settings", label: "Definitions", hint: "Divisions, sources, categories, quote statuses. Rarely changed." },
 ];
 
 const card = "bg-white rounded-2xl border border-gray-200 shadow-sm";
@@ -79,7 +79,7 @@ export default function MrmReport() {
 
   const [inputs, setInputs] = useState(null);
   const [inputsMeta, setInputsMeta] = useState(null);
-  const [activeKey, setActiveKey] = useState("exhibitions");
+  const [activeKey, setActiveKey] = useState("spend");
   const [draft, setDraft] = useState(null);
   const [dirty, setDirty] = useState(false);
   const [showJson, setShowJson] = useState(false);
@@ -163,7 +163,7 @@ export default function MrmReport() {
 
   const lock = async () => {
     const ok = window.confirm(
-      `Lock the ${monthName(month)} figures?\n\nToday's leads, conversions, pipeline, ad spend and followers for ${monthName(month)} are saved as the presented figures, so the deck keeps showing them even after Salesforce changes. You can edit them later under "Presented figures".`
+      `Lock the ${monthName(month)} figures?\n\nToday's LinkedIn follower gains (and the older lead figures) for ${monthName(month)} are saved as the presented figures, so the deck keeps showing them even after the data moves on. You can edit them later under "Presented figures".`
     );
     if (!ok) return;
     setLocking(true);
@@ -225,41 +225,48 @@ export default function MrmReport() {
   const storedKeys = useMemo(() => new Set((inputsMeta?.stored || []).map((s) => s.key)), [inputsMeta]);
   const fyYear = fyYearOf(month);
 
-  const mqlRows = useMemo(() => {
-    if (!model) return [];
-    const yms = Object.keys(model.mql.leads.sources);
-    return model.mql.leads.categories
-      .map((label, i) => ({
-        label,
-        ym: yms[i],
-        leads: model.mql.leads.current.values[i],
-        converted: model.mql.convertedLeads.current.values[i],
-        convertedTarget: model.mql.convertedLeads.target?.values[i],
-        pipeline: model.mql.pipelineMn.current.values[i],
-        adSpend: model.mql.adSpendLakh.current.values[i],
-        followers: model.linkedin.series.current.values[i],
-      }))
-      .filter((r) => r.ym);
-  }, [model]);
-
   const srcBadge = (series, ym) => {
-    const s = series?.sources?.[ym];
-    if (s === "presented") return <span title="Shown as presented to management" className="ml-1 text-[10px] text-gray-400">●</span>;
-    if (s === "live") return <span title="Read live" className="ml-1 text-[10px] text-emerald-500">●</span>;
+    const st = series?.sources?.[ym];
+    if (st === "presented") return <span title="Shown as presented to management" className="ml-1 text-[10px] text-gray-400">●</span>;
+    if (st === "live") return <span title="Read live" className="ml-1 text-[10px] text-emerald-500">●</span>;
     return null;
   };
+  const money = (v) => (v == null ? "—" : Number(v).toLocaleString("en-IN", { maximumFractionDigits: 2 }));
+  const funnelCells = (c) => (
+    <>
+      <td className={num}>{money(c.spendLakh)}</td>
+      <td className={num}>{c.leads}</td>
+      <td className={num}>{c.converted}</td>
+      <td className={num}>{c.opps}</td>
+      <td className={num}>{c.quotes}</td>
+      <td className={num}>{money(c.pipelineCr)}</td>
+      <td className={num}>{c.efficiency == null ? "—" : money(c.efficiency)}</td>
+    </>
+  );
+  const funnelHead = (first) => (
+    <thead><tr>
+      <th className={th}>{first}</th><th className={`${th} text-right`}>Spend (L)</th><th className={`${th} text-right`}>Leads</th><th className={`${th} text-right`}>Conv.</th>
+      <th className={`${th} text-right`}>Opps</th><th className={`${th} text-right`}>Quotes</th><th className={`${th} text-right`}>Pipeline (Cr)</th><th className={`${th} text-right`} title="Open quote value in crore per lakh spent">Cr / 1 L</th>
+    </tr></thead>
+  );
+  // Two rows per source: the month, then FY to date in grey.
+  const sourceRows = (x) => (
+    <>
+      <tr><td className={x.marketing ? td : `${td} text-gray-500`}>{x.label}</td>{funnelCells(x.month)}</tr>
+      <tr className="text-gray-400 text-xs"><td className={`${td} text-gray-400 text-xs`}>FY to date</td>{funnelCells(x.ytd)}</tr>
+    </>
+  );
 
   const editor = () => {
     if (!draft && draft !== 0) return null;
     const p = { value: draft, onChange: changeDraft, fyYear, month, settings: inputs?.settings };
     switch (activeKey) {
+      case "spend": return <SpendEditor {...p} />;
+      case "abm": return <AbmEditor {...p} />;
       case "exhibitions": return <ExhibitionsEditor {...p} />;
-      case "abp": return <AbpEditor {...p} />;
-      case "inaugurations": return <InaugurationsEditor {...p} />;
       case "collaterals": return <CollateralsEditor {...p} />;
-      case "agents": return <AgentsEditor {...p} />;
       case "linkedin": return <LinkedinEditor {...p} />;
-      case "exportOpportunities": return <ExportEditor {...p} />;
+      case "seo": return <SeoEditor {...p} />;
       case "targets": return <TargetsEditor {...p} />;
       case "history": return <HistoryEditor {...p} />;
       case "settings": return <SettingsEditor {...p} />;
@@ -278,7 +285,7 @@ export default function MrmReport() {
               <Presentation size={26} className="text-[#9b2423]" /> MRM Report
             </h1>
             <p className="text-gray-500 mt-1 text-sm">
-              The monthly management review deck, built from Salesforce, Google Ads, LinkedIn and the portal.
+              The monthly management review deck: marketing qualified pipeline by division and source, ABM accounts, expo plan vs actuals, brand visibility, and collateral plan vs actual.
             </p>
           </div>
           <label className="text-xs font-semibold text-gray-500">
@@ -324,10 +331,10 @@ export default function MrmReport() {
         {model ? (
           <>
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-              <Tile label={`Leads – ${model.meta.monthName}`} value={model.mql.leads.current.values[mqlRows.length - 1]} note="Google AdWords + Website" />
-              <Tile label="Converted (SQLs)" value={model.tokens.sqlMonth} note={`Target ${model.tokens.sqlTargetMonth} · YTD ${model.tokens.sqlYtd}`} />
-              <Tile label="Pipeline YTD" value={`₹${model.tokens.pipelineCrYtd} Cr`} note={`Closed won ${model.tokens.wonCrYtd} Cr`} />
-              <Tile label="Ad spend" value={model.mql.adSpendLakh.current.values[mqlRows.length - 1] != null ? `₹${model.mql.adSpendLakh.current.values[mqlRows.length - 1]} L` : "—"} note="Sieger Parking account" />
+              <Tile label={`Marketing leads – ${model.meta.monthName}`} value={model.funnel.overall.marketing.month.leads} note={`YTD ${model.funnel.overall.marketing.ytd.leads}`} />
+              <Tile label="Converted" value={model.funnel.overall.marketing.month.converted} note={`YTD ${model.funnel.overall.marketing.ytd.converted}`} />
+              <Tile label="Pipeline (open quotes)" value={`₹${money(model.funnel.overall.marketing.month.pipelineCr)} Cr`} note={`YTD ₹${money(model.funnel.overall.marketing.ytd.pipelineCr)} Cr`} />
+              <Tile label="Marketing spend" value={model.funnel.overall.marketing.month.spendLakh != null ? `₹${money(model.funnel.overall.marketing.month.spendLakh)} L` : "—"} note={model.funnel.overall.marketing.month.efficiency != null ? `₹${money(model.funnel.overall.marketing.month.efficiency)} Cr per ₹1 L` : "type spend to see efficiency"} />
               <Tile label="LinkedIn followers gained" value={model.linkedin.month.achieved} note={model.linkedin.month.target ? `Target ${model.linkedin.month.target}` : null} />
               <Tile label="Exhibition leads FY" value={model.exhibitions.totals.leads} note={`${model.exhibitions.totals.converted} converted`} />
             </div>
@@ -337,48 +344,62 @@ export default function MrmReport() {
               {model.meta.salesforce.configured
                 ? <>Salesforce mirror synced {model.meta.salesforce.syncedAt ? new Date(model.meta.salesforce.syncedAt).toLocaleString("en-IN") : "—"}.</>
                 : <>Salesforce mirror not connected.</>}
-              <span className="text-gray-400">●</span> presented to management
-              <span className="text-emerald-500">●</span> read live
             </div>
 
-            <Section title={`MQL comparison – ${model.meta.fiscalYear}`} hint="Slide 3. Past months keep the figures already presented; the live recount is shown alongside so drift is visible.">
+            <Section title="1. Marketing qualified pipeline – by division" hint={`Slide 2. Marketing sources only; the deck also shows sales-created opportunities. ${model.funnel.definitions.pipeline}.`}>
               <table className="w-full">
-                <thead><tr>
-                  <th className={th}>Month</th><th className={`${th} text-right`}>Leads</th><th className={`${th} text-right`}>Live recount</th>
-                  <th className={`${th} text-right`}>Converted</th><th className={`${th} text-right`}>Target</th>
-                  <th className={`${th} text-right`}>Pipeline (Mn)</th><th className={`${th} text-right`}>Ad spend (L)</th><th className={`${th} text-right`}>Followers</th>
-                </tr></thead>
+                {funnelHead("Division")}
                 <tbody>
-                  {mqlRows.map((r) => (
-                    <tr key={r.ym}>
-                      <td className={td}>{r.label}</td>
-                      <td className={num}>{r.leads ?? "—"}{srcBadge(model.mql.leads, r.ym)}</td>
-                      <td className={`${num} text-gray-400`}>{model.mql.leads.liveRecount[r.ym] ?? "—"}</td>
-                      <td className={num}>{r.converted ?? "—"}{srcBadge(model.mql.convertedLeads, r.ym)}</td>
-                      <td className={`${num} text-gray-400`}>{r.convertedTarget ?? "—"}</td>
-                      <td className={num}>{r.pipeline ?? "—"}{srcBadge(model.mql.pipelineMn, r.ym)}</td>
-                      <td className={num}>{r.adSpend ?? "—"}{srcBadge(model.mql.adSpendLakh, r.ym)}</td>
-                      <td className={num}>{r.followers ?? "—"}{srcBadge(model.linkedin.series, r.ym)}</td>
-                    </tr>
+                  {model.funnel.divisions.map((d) => (
+                    <tr key={d.key}><td className={td}>{d.label} <span className="text-gray-400 text-xs">{model.meta.monthName}</span></td>{funnelCells(d.marketingTotal.month)}</tr>
                   ))}
+                  <tr className="font-semibold bg-gray-50"><td className={td}>All divisions – {model.meta.monthName}</td>{funnelCells(model.funnel.overall.marketing.month)}</tr>
+                  <tr className="font-semibold bg-gray-50"><td className={td}>All divisions – FY to date</td>{funnelCells(model.funnel.overall.marketing.ytd)}</tr>
                 </tbody>
               </table>
             </Section>
 
             <div className="grid xl:grid-cols-2 gap-5">
-              <Section title="Exhibition tracker" hint="Slide 5. Leads: Salesforce source Trade Show, created in the event window.">
+              {model.funnel.divisions.map((d, di) => (
+                <Section key={d.key} title={`${d.label} – by source`} hint={`Slide ${3 + di}. ${model.meta.monthName} on the first line of each source, FY to date in grey on the second.`}>
+                  <table className="w-full">
+                    {funnelHead("Source")}
+                    <tbody>
+                      {d.sources.map((x) => <Fragment key={x.key}>{sourceRows(x)}</Fragment>)}
+                      <tr className="font-semibold bg-gray-50"><td className={td}>Marketing sources – {model.meta.monthName}</td>{funnelCells(d.marketingTotal.month)}</tr>
+                      <tr className="font-semibold bg-gray-50"><td className={td}>Marketing sources – FY to date</td>{funnelCells(d.marketingTotal.ytd)}</tr>
+                    </tbody>
+                  </table>
+                </Section>
+              ))}
+            </div>
+
+            <div className="grid xl:grid-cols-2 gap-5">
+              <Section title="2. Targeted ABM accounts" hint={`Slide ${3 + model.funnel.divisions.length}. ${model.abm.totals.accounts} accounts, ${model.abm.totals.quoted} with a quotation, ₹${money(model.abm.totals.quotationLakh)} L in total.`}>
                 <table className="w-full">
-                  <thead><tr><th className={th}>Exhibition</th><th className={th}>Status</th><th className={`${th} text-right`}>Spend (L)</th><th className={`${th} text-right`}>Claimed (L)</th><th className={`${th} text-right`}>Leads</th><th className={`${th} text-right`}>Conv.</th></tr></thead>
+                  <thead><tr><th className={th}>Account</th><th className={th}>Status</th><th className={`${th} text-right`}>Open opps</th><th className={th}>Stage</th><th className={`${th} text-right`}>Quotation (L)</th><th className={th}>Action</th></tr></thead>
                   <tbody>
-                    {model.exhibitions.rows.map((r) => (
-                      <tr key={r.name}><td className={td}>{r.name}</td><td className={td}>{r.status}</td><td className={num}>{r.spendLakh ?? "—"}</td><td className={`${num} text-gray-400`}>{r.claimedLakh ?? "—"}</td><td className={num}>{r.leads ?? "—"}</td><td className={num}>{r.converted ?? "—"}</td></tr>
+                    {model.abm.rows.length === 0 ? <tr><td colSpan={6} className={`${td} text-gray-400`}>No accounts yet. Add them under “ABM accounts” below.</td></tr> : null}
+                    {model.abm.rows.map((r, i) => (
+                      <tr key={i}><td className={td}>{r.account}</td><td className={td}>{r.status}</td><td className={num}>{r.openOpps ?? "—"}</td><td className={td}>{r.stage || "—"}</td><td className={num}>{r.quotationLakh != null ? `${money(r.quotationLakh)}${r.quotationSource === "typed" ? " *" : ""}` : "—"}</td><td className={td}>{r.action}</td></tr>
                     ))}
-                    <tr className="font-semibold bg-gray-50"><td className={td}>Total</td><td className={td} /><td className={num}>{model.exhibitions.totals.spendLakh}</td><td className={num} /><td className={num}>{model.exhibitions.totals.leads}</td><td className={num}>{model.exhibitions.totals.converted}</td></tr>
                   </tbody>
                 </table>
               </Section>
 
-              <Section title="Exhibition leads by salesperson" hint="Slide 6. Visits: visit plans with a check-in against the lead.">
+              <Section title="3. Expo plan & actuals" hint={`Leads: Salesforce source Trade Show, created in the event window. ${model.exhibitions.newExpos?.length || 0} strategic new exhibitions identified.`}>
+                <table className="w-full">
+                  <thead><tr><th className={th}>Exhibition</th><th className={th}>Status</th><th className={`${th} text-right`}>Budget (L)</th><th className={`${th} text-right`}>Spend (L)</th><th className={`${th} text-right`}>Leads</th><th className={`${th} text-right`}>Conv.</th></tr></thead>
+                  <tbody>
+                    {model.exhibitions.rows.map((r) => (
+                      <tr key={r.name}><td className={td}>{r.name}</td><td className={td}>{r.status}</td><td className={num}>{r.budgetLakh ?? "—"}</td><td className={num}>{r.spendLakh ?? "—"}</td><td className={num}>{r.leads ?? "—"}</td><td className={num}>{r.converted ?? "—"}</td></tr>
+                    ))}
+                    <tr className="font-semibold bg-gray-50"><td className={td}>Total</td><td className={td} /><td className={num} /><td className={num}>{model.exhibitions.totals.spendLakh}</td><td className={num}>{model.exhibitions.totals.leads}</td><td className={num}>{model.exhibitions.totals.converted}</td></tr>
+                  </tbody>
+                </table>
+              </Section>
+
+              <Section title="Exhibition leads by salesperson" hint="Visits: visit plans with a check-in against the lead.">
                 <table className="w-full">
                   <thead><tr><th className={th}>User</th><th className={`${th} text-right`}>Assigned</th><th className={`${th} text-right`}>Converted</th><th className={`${th} text-right`}>Open</th><th className={`${th} text-right`}>Dropped</th><th className={`${th} text-right`}>Visits</th></tr></thead>
                   <tbody>
@@ -392,27 +413,58 @@ export default function MrmReport() {
                 </table>
               </Section>
 
-              <Section title="Open export opportunities" hint={`Slide 10. Total ${model.exportOpps.totalUsdMn} Mn USD. From Salesforce; blanks filled from the inputs.`}>
+              <Section title="4. Brand visibility – LinkedIn" hint="Followers gained per month, per page. Past months keep the presented figure; the live recount is beside it.">
                 <table className="w-full">
-                  <thead><tr><th className={th}>Opportunity</th><th className={th}>Stage</th><th className={th}>Country</th><th className={`${th} text-right`}>Cars</th><th className={`${th} text-right`}>USD Mn</th><th className={th}>Close</th></tr></thead>
+                  <thead><tr><th className={th}>Month</th>{model.linkedin.pages.map((p) => <th key={p.org} className={`${th} text-right`}>{p.label}</th>)}{model.linkedin.pages.map((p) => <th key={`${p.org}-live`} className={`${th} text-right`}>{p.label} live</th>)}</tr></thead>
                   <tbody>
-                    {model.exportOpps.rows.map((r) => (
-                      <tr key={r.name}><td className={td}>{r.name}</td><td className={td}>{r.stage}</td><td className={td}>{r.country || "—"}</td><td className={num}>{r.carSpaces ?? "—"}</td><td className={num}>{r.amountUsdMn ?? "—"}</td><td className={td}>{r.closeDate || "—"}</td></tr>
+                    {model.linkedin.pages[0]?.series.categories.map((cat, i) => {
+                      const ym = Object.keys(model.linkedin.pages[0].series.sources)[i];
+                      if (!ym) return null;
+                      return (
+                        <tr key={ym}>
+                          <td className={td}>{cat}</td>
+                          {model.linkedin.pages.map((p) => <td key={p.org} className={num}>{p.series.current.values[i] ?? "—"}{srcBadge(p.series, ym)}</td>)}
+                          {model.linkedin.pages.map((p) => <td key={`${p.org}-live`} className={`${num} text-gray-400`}>{p.series.liveRecount[ym] ?? "—"}</td>)}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </Section>
+
+              <Section title="4. Brand visibility – customer engagement activities" hint={`Tickets in categories ${model.engagement.categories.join(", ")}. Plan = due in ${model.meta.monthName} (${model.engagement.plan}), actual = completed (${model.engagement.actual}); YTD ${model.engagement.ytdActual}/${model.engagement.ytdPlan}.`}>
+                <table className="w-full">
+                  <thead><tr><th className={th}>Activity</th><th className={th}>Division</th><th className={th}>Due</th><th className={th}>Status</th></tr></thead>
+                  <tbody>
+                    {model.engagement.rows.length === 0 ? <tr><td colSpan={4} className={`${td} text-gray-400`}>No tickets in these categories for this month. Change the categories under Definitions if activities are logged differently.</td></tr> : null}
+                    {model.engagement.rows.map((r, i) => (
+                      <tr key={i}><td className={td}>{r.title}</td><td className={td}>{r.division || "—"}</td><td className={td}>{r.due || "—"}</td><td className={`${td} ${r.done ? "text-emerald-700 font-semibold" : "text-amber-700"}`}>{r.status}</td></tr>
                     ))}
                   </tbody>
                 </table>
               </Section>
 
-              <Section title="Site branding" hint={`Slide 4. ${model.siteBranding.completed} of ${model.siteBranding.total} complete, from the portal project "${model.siteBranding.project || "—"}", in due-date order.`}>
+              <Section title="4. Brand visibility – SEO keyword ranking" hint={`${model.seo.targeted} targeted keywords, ${model.seo.top10} in the top 10, average rank ${model.seo.avgRank ?? "—"}. Ranks are typed under “SEO keywords”.`}>
                 <table className="w-full">
-                  <thead><tr><th className={th}>Customer</th><th className={th}>System</th><th className={th}>Progress</th></tr></thead>
+                  <thead><tr><th className={th}>Keyword</th><th className={th}>Division</th><th className={`${th} text-right`}>Rank</th><th className={`${th} text-right`}>Prev month</th><th className={`${th} text-right`}>Change</th></tr></thead>
                   <tbody>
-                    {model.siteBranding.rows.slice(0, 14).map((r, i) => (
-                      <tr key={i}><td className={td}>{r.customer}</td><td className={td}>{r.system || "—"}</td><td className={`${td} ${r.done ? "text-emerald-700 font-semibold" : r.overdue ? "text-red-600 font-semibold" : "text-amber-700"}`}>{r.progress}</td></tr>
+                    {model.seo.rows.length === 0 ? <tr><td colSpan={5} className={`${td} text-gray-400`}>No keywords yet.</td></tr> : null}
+                    {model.seo.rows.map((r, i) => (
+                      <tr key={i}><td className={td}>{r.keyword}</td><td className={td}>{r.division || "—"}</td><td className={num}>{r.rank ?? "—"}</td><td className={num}>{r.prevRank ?? "—"}</td><td className={`${num} ${r.change > 0 ? "text-emerald-700" : r.change < 0 ? "text-red-600" : ""}`}>{r.change == null ? "—" : r.change > 0 ? `▲ ${r.change}` : r.change < 0 ? `▼ ${-r.change}` : "="}</td></tr>
                     ))}
                   </tbody>
                 </table>
-                {model.siteBranding.rows.length > 14 ? <div className="px-4 py-2 text-xs text-gray-500 border-t border-gray-100">…and {model.siteBranding.rows.length - 14} more. The deck shows the first 36.</div> : null}
+              </Section>
+
+              <Section title="5. Collateral plan vs actual" hint={`Tickets in categories ${(inputs?.settings?.collateralCategories || []).join(", ")}. Planned (due in ${model.meta.monthName}) ${model.collaterals.planVsActual?.plan ?? 0}, completed ${model.collaterals.planVsActual?.actual ?? 0}, YTD ${model.collaterals.planVsActual?.ytdActual ?? 0}/${model.collaterals.planVsActual?.ytdPlan ?? 0}, open ${model.collaterals.planVsActual?.open ?? 0}. Rows listed on the slide: ${model.collaterals.fromTickets ? "ticked tickets" : "typed lists (tick tickets below)"}.`}>
+                <table className="w-full">
+                  <thead><tr><th className={th}>Project</th><th className={th}>Location</th><th className={th}>Type</th><th className={th}>Status</th></tr></thead>
+                  <tbody>
+                    {[...(model.collaterals.completed || []), ...(model.collaterals.planned || [])].slice(0, 16).map((r, i) => (
+                      <tr key={i}><td className={td}>{r.project}</td><td className={td}>{r.location || "—"}</td><td className={td}>{r.type}</td><td className={`${td} ${r.status === "Completed" ? "text-emerald-700 font-semibold" : "text-amber-700"}`}>{r.status}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
               </Section>
             </div>
           </>

@@ -109,6 +109,22 @@ export function ExhibitionsEditor({ value, onChange }) {
           blank={() => ({ name: "", from: "", to: "", status: "Planned", budgetLakh: null, spendLakh: null, claimMatch: [], countLeads: true, remarks: "" })}
         />
       </div>
+
+      <div>
+        <h3 className="text-sm font-semibold text-gray-800">4. Strategic new exhibitions identified</h3>
+        <p className="text-xs text-gray-500 mb-2">Shows on the Expo slide as the shortlist for next year. Once one is approved, plan it as a project and tick it above.</p>
+        <RowsEditor
+          rows={v.newExpos} onChange={(newExpos) => onChange({ ...v, newExpos })} addLabel="Add exhibition"
+          columns={[
+            { key: "name", label: "Exhibition", width: 200 },
+            { key: "city", label: "City", width: 120 },
+            { key: "month", label: "When", width: 110, placeholder: "e.g. Feb 2027" },
+            { key: "rationale", label: "Why it matters", type: "textarea", width: 260 },
+            { key: "status", label: "Status", type: "select", options: ["Identified", "Evaluating", "Approved", "Dropped"], width: 110 },
+          ]}
+          blank={() => ({ name: "", city: "", month: "", rationale: "", status: "Identified" })}
+        />
+      </div>
     </div>
   );
 }
@@ -326,9 +342,15 @@ export function SettingsEditor({ value, onChange }) {
         </div>
         {text("googleAdsAccount", "Google Ads account for the ad-spend chart")}
         {text("siteBrandingProjectMatch", "Site branding: project name contains")}
-        {list("collateralCategories", "Ticket categories offered as collaterals")}
+        {list("collateralCategories", "Ticket categories counted as collaterals")}
+        {list("engagementCategories", "Ticket categories counted as customer engagement activities")}
+        {list("openQuoteStatuses", "Quote statuses that count as pipeline", "As spelled in Salesforce.")}
         {list("exportStages", "Export slide: opportunity stages shown")}
       </div>
+      <p className="text-xs text-gray-500">
+        The divisions (Salesforce names, ticket division, Google Ads account) and the marketing sources (which Salesforce lead sources fall in each) are lists of
+        records; edit them under Advanced if a source is renamed in Salesforce.
+      </p>
       <div>
         <label className={label}>LinkedIn pages on the slide</label>
         <p className="text-xs text-gray-500 mb-2">“Page in sync” must match the organisation name recorded by the LinkedIn sync; “Label” is what the slide shows.</p>
