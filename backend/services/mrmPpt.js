@@ -455,7 +455,11 @@ const renderMrm = async (model) => {
     s.addText('PLANNED / IN PROGRESS', { x: M + half + 0.3, y: TOP + 1.1, w: half, h: 0.26, fontFace: FONT, fontSize: 10, bold: true, color: BAR, isTextBox: true, margin: 0 });
     table(s, { x: M, y: TOP + 1.38, w: half, head: ['Project', 'Location', 'Month', 'Type', 'Status'], colW, rows: shape(c.completed || []), fontSize: 9, rowH: 0.3, headFill: HEAD_GREEN });
     table(s, { x: M + half + 0.3, y: TOP + 1.38, w: half, head: ['Project', 'Location', 'Month', 'Type', 'Status'], colW, rows: shape(c.planned || []), fontSize: 9, rowH: 0.3 });
-    footnote(s, c.fromTickets ? 'Rows: tickets ticked on the MRM page. Counts: every ticket in the collateral categories.' : 'Rows are typed in; tick tickets on the MRM page to list them from the portal. Counts: every ticket in the collateral categories.');
+    footnote(s, c.fromTickets
+      ? 'Rows: tickets ticked on the MRM page. Counts: every ticket in the collateral categories.'
+      : c.autoListed
+        ? 'Rows and counts: every ticket in the collateral categories (tick tickets on the MRM page to choose which are listed).'
+        : 'Rows are typed in; tick tickets on the MRM page to list them from the portal. Counts: every ticket in the collateral categories.');
   }
 
   // =====================================================

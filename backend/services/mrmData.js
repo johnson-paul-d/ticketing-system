@@ -311,13 +311,18 @@ const buildMrm = async (month, viewerName) => {
     );
     for (const p of liPages) {
       const lastOf = {};
-      for (const r of rows) if (r.org_name === p.org) lastOf[String(r.date).slice(0, 7)] = Number(r.total_followers);
+      let latest = null; // last count on or before the month end, whatever month it is in
+      for (const r of rows) {
+        if (r.org_name !== p.org) continue;
+        lastOf[String(r.date).slice(0, 7)] = Number(r.total_followers);
+        latest = Number(r.total_followers);
+      }
       liLive[p.org] = {};
       for (const m of [...prevFyMonths, ...fyMonths]) {
         const prev = lastOf[addMonths(m, -1)];
         if (lastOf[m] != null && prev != null) liLive[p.org][m] = lastOf[m] - prev;
       }
-      liTotal[p.org] = lastOf[month] ?? null;
+      liTotal[p.org] = lastOf[month] ?? latest;
     }
     // The first page also feeds the generic metric machinery below.
     live.linkedinFollowersGained = liLive[liPages[0].org] || {};
@@ -749,7 +754,7 @@ const buildMrm = async (month, viewerName) => {
       // ticked tickets only decide which rows are listed on the slide.
       const cats = S.collateralCategories?.length ? S.collateralCategories : ['Video', 'Animation', 'ANIMATION VIDEO', 'Collateral'];
       const all = await pageAll(
-        () => supabase.from('tickets').select('id, status, due_date, completed_date').in('category', cats).eq('deleted', false),
+        () => supabase.from('tickets').select('id, title, status, category, division, due_date, completed_date').in('category', cats).eq('deleted', false),
         'id'
       );
       const isDone = (t) => /^(completed|closed)$/i.test(String(t.status || ''));
@@ -761,8 +766,29 @@ const buildMrm = async (month, viewerName) => {
         open: all.filter((t) => !isDone(t)).length,
       };
 
+      // Nothing ticked: list the month straight from the categories, so the
+      // slide is right without anyone visiting the MRM page. Completed in the
+      // month on the left; open tickets due by month end on the right.
       if (!ids.length) {
-        return { completed: inputs.collaterals?.completed || [], planned: inputs.collaterals?.planned || [], fromTickets: false, planVsActual };
+        const tag = (d) => (d ? MONTHS[Number(String(d).slice(5, 7)) - 1] : '');
+        const auto = (t) => ({
+          project: t.title,
+          location: t.division || '',
+          month: tag(isDone(t) ? t.completed_date : t.due_date),
+          type: t.category || '',
+          status: isDone(t) ? 'Completed' : /approval/i.test(t.status || '') ? 'Awaiting approval' : /progress/i.test(t.status || '') ? 'In progress' : 'Planned',
+          done: isDone(t),
+          due: t.due_date || null,
+        });
+        const completed = all
+          .filter((t) => isDone(t) && t.completed_date && String(t.completed_date).slice(0, 7) === month)
+          .map(auto)
+          .sort((a, b) => a.project.localeCompare(b.project));
+        const planned = all
+          .filter((t) => !isDone(t) && t.due_date && t.due_date <= monthEndDay)
+          .map(auto)
+          .sort((a, b) => String(a.due || '9999').localeCompare(String(b.due || '9999')));
+        return { completed, planned, fromTickets: false, autoListed: true, planVsActual };
       }
       const tickets = [];
       for (const part of chunk(ids, 100)) {
