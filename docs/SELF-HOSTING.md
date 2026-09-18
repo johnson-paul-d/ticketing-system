@@ -369,8 +369,20 @@ month-end follower count exists without anyone pressing Sync.
   Google's 10-million-cell cap, which is why the history is not kept there. It used to write to Supabase's REST
   endpoint directly; the self-hosted PostgREST is deliberately unreachable
   from the internet. For a one-off CSV load, pgAdmin 4 (installed with
-  PostgreSQL) has Import/Export on each table. LinkedIn data is refreshed from
-  the dashboard's own Sync button, unchanged.
+  PostgreSQL) has Import/Export on each table.
+- **LinkedIn only gives this app the follower count of the day.** The
+  day-by-day history calls (follower and page statistics with a time range)
+  answer 403 for apps without LinkedIn's Marketing Developer Platform, so the
+  history in `linkedin_follower_stats` is one snapshot per sync. With
+  `LINKEDIN_AUTO_SYNC=on` that is one row a day; days without a row are shown
+  as estimates (the gain spread evenly between the two syncs around them).
+  Importing the page's own follower export (Analytics → Followers → Export)
+  fills past days with LinkedIn's real daily figures and is the only source of
+  the organic / sponsored split. Page views are a running counter LinkedIn
+  keeps per page; the dashboard reports the change between syncs. The
+  dashboard's **Pages** menu chooses which of the account's pages are synced
+  and counted; a page missing from that list is one the connected LinkedIn
+  login does not administer.
 - **Three files on the server hold secrets** and default to being readable by
   every local account: `C:\ProgramData\mkttickets\pgpass.conf`,
   `D:\postgrest\postgrest.conf` and `D:\mkttickets\backend\.env`. Restrict them

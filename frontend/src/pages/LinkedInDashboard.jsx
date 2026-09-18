@@ -4,6 +4,9 @@ import useLinkedInData from "../hooks/useLinkedInData";
 import api from "../services/api";
 import { LINKEDIN_OAUTH_STATE_KEY, newLinkedInOAuthState } from "../constants/linkedin";
 import {
+  followerSeries, pageViewSeries, sumNew, lastTotal, monthlyNet, sumPageViews, daysAgoISO,
+} from "../utils/linkedinFollowers";
+import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
   ReferenceLine,
@@ -71,8 +74,8 @@ function autoClassify(text = "") {
   return best.name;
 }
 
-function linearForecast(sortedRows, futureDays) {
-  const vals = sortedRows.map(r => r.total_followers || 0);
+function linearForecast(values, futureDays) {
+  const vals = (values || []).filter(v => v !== null && v !== undefined);
   if (vals.length < 2) return [];
   const n    = vals.length;
   const sumX  = (n*(n-1))/2;
@@ -109,7 +112,7 @@ function bestDayAnalysis(posts) {
   }));
 }
 
-function ruleBasedInsights(posts, followerRows, catStats) {
+function ruleBasedInsights(posts, growth, catStats) {
   const out = [];
   const ranked = catStats.filter(c=>c.count>0).sort((a,b)=>b.avgEng-a.avgEng);
 
@@ -130,10 +133,8 @@ function ruleBasedInsights(posts, followerRows, catStats) {
       action:"Add an open-ended question or clear call-to-action to drive comments." });
   }
 
-  if (followerRows.length >= 2) {
-    const first = followerRows[0].total_followers || 0;
-    const last  = followerRows[followerRows.length-1].total_followers || 0;
-    const delta = last - first;
+  if (growth && growth.last > 0) {
+    const { first, last, delta } = growth;
     out.push({ type:"growth", icon:"📈", color:"#0077B5",
       title:`${delta >= 0 ? "+" : ""}${fmt(delta)} followers this period`,
       text:`Page ${delta >= 0 ? "gained" : "lost"} ${fmt(Math.abs(delta))} followers (${fmt(pctChange(last,first)||0,{pct:true})} change). ${last} total followers now.`,
@@ -266,113 +267,20 @@ function AiBadge({ powered }) {
 
 // ─── Chart Components ─────────────────────────────────────────────────────────
 
-// Import rows: organic = running sum of new followers from CSV (much less than total).
-// Sync rows:  organic = total (our sync endpoint sets organic_followers = total_followers).
-// Threshold 80% — if organic >= 80% of total, it's treated as a sync-only row.
-function isImportRow(p) {
-  return p.total > 0 && p.organic < p.total * 0.8;
-}
+// Follower figures come from followerSeries() in utils/linkedinFollowers: one
+// value per calendar day and per page, estimated between syncs, then added up.
 
-// Fills every calendar day with interpolated totals.
-// "total"         → interpolated from ALL rows (accurate absolute count from syncs).
-// "organic/paid"  → interpolated from import rows ONLY (real daily new-follower data).
-// Days after the last import row get organic=null so the chart line breaks cleanly
-// instead of showing a giant spike caused by mixing import sums with sync totals.
-function buildDailyFollowerData(allRows, cutoffDate) {
-  // 1. Deduplicate: for each (date, org_id) keep the row with the highest total_followers.
-  //    Then sum across orgs so multi-page accounts aggregate correctly.
-  const bestPerOrgDate = {};
-  allRows.forEach(r => {
-    if (!r.date || !r.org_id) return;
-    const key = `${r.date}__${r.org_id}`;
-    const cur = bestPerOrgDate[key];
-    if (!cur || (r.total_followers || 0) > (cur.total_followers || 0)) {
-      bestPerOrgDate[key] = r;
-    }
-  });
-
-  const byDate = {};
-  Object.values(bestPerOrgDate).forEach(r => {
-    if (!byDate[r.date]) byDate[r.date] = { date: r.date, total: 0, organic: 0, paid: 0 };
-    byDate[r.date].total   += r.total_followers   || 0;
-    byDate[r.date].organic += r.organic_followers || 0;
-    byDate[r.date].paid    += r.paid_followers    || 0;
-  });
-  const allPoints    = Object.values(byDate).sort((a, b) => (a.date > b.date ? 1 : -1));
-  if (!allPoints.length) return [];
-
-  const importPoints = allPoints.filter(isImportRow);
-  const importEnd    = importPoints.at(-1)?.date || null;
-
-  // 2. Calendar range
-  const startStr = cutoffDate || allPoints[0].date;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const cur = new Date(startStr + "T00:00:00");
-  const calDays = [];
-  while (cur <= today) {
-    calDays.push(cur.toISOString().split("T")[0]);
-    cur.setDate(cur.getDate() + 1);
-  }
-
-  // 3. Generic linear interpolation across a given point set
-  function interp(points, field, date) {
-    if (!points.length) return { v: null, isSynced: false };
-    const before = [...points].reverse().find(p => p.date <= date);
-    const after  = points.find(p => p.date >= date);
-    if (!before && !after) return { v: null, isSynced: false };
-    if (!before) return { v: after[field], isSynced: after.date === date };
-    if (!after || before.date === after.date) return { v: before[field], isSynced: before.date === date };
-    const t1    = new Date(before.date + "T00:00:00").getTime();
-    const t2    = new Date(after.date  + "T00:00:00").getTime();
-    const t     = new Date(date        + "T00:00:00").getTime();
-    const ratio = (t - t1) / (t2 - t1);
-    return {
-      v: Math.round(before[field] + ratio * (after[field] - before[field])),
-      isSynced: before.date === date || after.date === date,
-    };
-  }
-
-  const withTotals = calDays.map(date => {
-    const tot = interp(allPoints, "total", date);
-    // Beyond import data: no organic/paid delta — avoids spike from sync rows
-    const afterImport = importEnd && date > importEnd;
-    const org = afterImport ? { v: null } : interp(importPoints, "organic", date);
-    const pai = afterImport ? { v: null } : interp(importPoints, "paid",    date);
-    return { date, total: tot.v, organic: org.v, paid: pai.v, isSynced: tot.isSynced };
-  });
-
-  // 4. Daily delta (null-safe)
-  return withTotals.map((d, i) => {
-    const prev = i > 0 ? withTotals[i - 1] : null;
-    const orgDelta = (prev !== null && d.organic !== null && prev.organic !== null)
-      ? Math.max(0, d.organic - prev.organic) : null;
-    const paiDelta = (prev !== null && d.paid !== null && prev.paid !== null)
-      ? Math.max(0, d.paid - prev.paid) : null;
-    return {
-      date:     d.date,
-      label:    shortDate(d.date),
-      organic:  orgDelta,
-      paid:     paiDelta,
-      total:    d.total,
-      isSynced: d.isSynced,
-    };
-  });
-}
-
-function FollowerGainsChart({ allRows, cutoffDate }) {
-  const data = useMemo(
-    () => buildDailyFollowerData(allRows, cutoffDate),
-    [allRows, cutoffDate]
-  );
+function FollowerGainsChart({ series, prevSeries }) {
+  const data = useMemo(() => series.map(d => ({ ...d, label: shortDate(d.date) })), [series]);
 
   if (!data.length) return <Empty label="No follower data in this period" sub="Sync your pages to start tracking follower metrics." />;
 
-  const totalFollowers   = data.at(-1)?.total || 0;
-  const newInPeriod      = data.slice(1).reduce((s, d) => s + (d.organic ?? 0) + (d.paid ?? 0), 0);
-  const prevPeriodData   = data.slice(0, Math.max(1, Math.floor(data.length / 2)));
-  const prevNew          = prevPeriodData.slice(1).reduce((s, d) => s + (d.organic ?? 0) + (d.paid ?? 0), 0);
-  const pctChange        = prevNew > 0 ? Math.round(((newInPeriod - prevNew) / prevNew) * 100) : null;
+  const totalFollowers = lastTotal(data);
+  const newInPeriod    = sumNew(data);
+  const prevNew        = sumNew(prevSeries);
+  const pctChange      = prevNew > 0 ? Math.round(((newInPeriod - prevNew) / prevNew) * 100) : null;
+  const hasSplit       = data.some(d => d.organic !== null || d.paid !== null);
+  const measuredDays   = data.filter(d => d.isSynced).length;
 
   const tickInterval = Math.max(1, Math.floor(data.length / 6));
 
@@ -386,7 +294,6 @@ function FollowerGainsChart({ allRows, cutoffDate }) {
 
   return (
     <div>
-      {/* Header KPIs matching LinkedIn layout */}
       <div className="flex gap-12 mb-6 flex-wrap">
         <div>
           <p className="text-3xl font-bold text-gray-900">{fmt(totalFollowers)}</p>
@@ -400,153 +307,132 @@ function FollowerGainsChart({ allRows, cutoffDate }) {
                 {pctChange >= 0 ? "▲" : "▼"} {Math.abs(pctChange)}%
               </span>
             )}
-            <p className="text-sm text-gray-500">New followers in this period</p>
+            <p className="text-sm text-gray-500">New followers in this period{pctChange !== null ? " vs previous" : ""}</p>
           </div>
         </div>
       </div>
 
-      {/* Chart */}
       <div className="h-44 sm:h-56">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top:8, right:8, left:0, bottom:0 }}>
             <CartesianGrid stroke="#E5E7EB" strokeDasharray="" vertical={false} />
-            <XAxis
-              dataKey="label"
-              tick={{ fontSize:11, fill:"#6B7280" }}
-              tickLine={false}
-              axisLine={false}
-              interval={tickInterval}
-            />
-            <YAxis
-              tick={{ fontSize:11, fill:"#6B7280" }}
-              tickLine={false}
-              axisLine={false}
-              tickFormatter={v => fmt(v)}
-              width={36}
-            />
+            <XAxis dataKey="label" tick={{ fontSize:11, fill:"#6B7280" }} tickLine={false} axisLine={false} interval={tickInterval} />
+            <YAxis tick={{ fontSize:11, fill:"#6B7280" }} tickLine={false} axisLine={false} tickFormatter={v => fmt(v)} width={36} />
             <Tooltip
               cursor={{ stroke: "#D1D5DB", strokeWidth: 1 }}
               content={({ active, payload }) => {
                 if (!active || !payload?.length) return null;
                 const d = payload[0].payload;
-                const orgPrev  = data[data.indexOf(d) - 1];
-                const pctOrg   = orgPrev && orgPrev.organic > 0
-                  ? Math.round(((d.organic - orgPrev.organic) / orgPrev.organic) * 100)
-                  : null;
                 return (
                   <div style={{ ...TTStyle, minWidth: 220 }}>
                     <p className="text-xs font-semibold text-gray-700 mb-2">{fmtFullDate(d.date)}</p>
-                    {d.organic !== null ? (
-                      <>
-                        <div className="flex items-center justify-between gap-4 mb-1">
-                          <span className="flex items-center gap-1.5 text-xs text-gray-600">
-                            <span className="inline-block w-5 border-t-2 border-dashed border-green-500"></span> Organic
-                          </span>
-                          <span className="text-xs font-bold text-gray-800">{fmt(d.organic)}</span>
-                          {pctOrg !== null && (
-                            <span className={`text-xs font-semibold ${pctOrg >= 0 ? "text-green-600" : "text-red-500"}`}>
-                              {pctOrg >= 0 ? "▲" : "▼"} {Math.abs(pctOrg)}% previous day
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center justify-between gap-4">
-                          <span className="flex items-center gap-1.5 text-xs text-gray-600">
-                            <span className="inline-block w-5 border-t-2 border-solid border-blue-500"></span> Sponsored
-                          </span>
-                          <span className="text-xs font-bold text-gray-800">{fmt(d.paid)}</span>
-                        </div>
-                        {!d.isSynced && (
-                          <p className="text-xs text-amber-500 mt-2 pt-2 border-t border-gray-100">⚡ Estimated between syncs</p>
-                        )}
-                      </>
-                    ) : (
-                      <p className="text-xs text-gray-400">Daily breakdown available only for imported date range</p>
+                    <div className="flex items-center justify-between gap-4 mb-1">
+                      <span className="flex items-center gap-1.5 text-xs text-gray-600">
+                        <span className="inline-block w-5 border-t-2 border-solid" style={{ borderColor: LI_BLUE }}></span> New followers
+                      </span>
+                      <span className="text-xs font-bold text-gray-800">{fmt(d.newFollowers)}</span>
+                    </div>
+                    {d.organic !== null && (
+                      <div className="flex items-center justify-between gap-4 mb-1">
+                        <span className="flex items-center gap-1.5 text-xs text-gray-600">
+                          <span className="inline-block w-5 border-t-2 border-dashed border-green-500"></span> Organic
+                        </span>
+                        <span className="text-xs font-bold text-gray-800">{fmt(d.organic)}</span>
+                      </div>
+                    )}
+                    {d.paid !== null && (
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="flex items-center gap-1.5 text-xs text-gray-600">
+                          <span className="inline-block w-5 border-t-2 border-dashed border-amber-500"></span> Sponsored
+                        </span>
+                        <span className="text-xs font-bold text-gray-800">{fmt(d.paid)}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between gap-4 mt-2 pt-2 border-t border-gray-100">
+                      <span className="text-xs text-gray-500">Total followers</span>
+                      <span className="text-xs font-semibold text-gray-700">{d.total === null ? "—" : fmt(d.total)}</span>
+                    </div>
+                    {!d.isSynced && (
+                      <p className="text-xs text-amber-500 mt-2">⚡ Estimated: no sync on this day</p>
                     )}
                   </div>
                 );
               }}
             />
-            <Line
-              type="monotone"
-              dataKey="organic"
-              name="Organic"
-              stroke="#22C55E"
-              strokeWidth={2}
-              strokeDasharray="6 4"
-              dot={false}
-              connectNulls={false}
-              activeDot={{ r: 4, fill: "#22C55E", strokeWidth: 0 }}
-            />
-            <Line
-              type="monotone"
-              dataKey="paid"
-              name="Sponsored"
-              stroke="#3B82F6"
-              strokeWidth={1.5}
-              dot={false}
-              connectNulls={false}
-              activeDot={{ r: 4, fill: "#3B82F6", strokeWidth: 0 }}
-            />
+            <Line type="monotone" dataKey="newFollowers" name="New followers" stroke={LI_BLUE} strokeWidth={2}
+              dot={false} activeDot={{ r: 4, fill: LI_BLUE, strokeWidth: 0 }} />
+            {hasSplit && (
+              <Line type="monotone" dataKey="organic" name="Organic" stroke="#22C55E" strokeWidth={1.5}
+                strokeDasharray="6 4" dot={false} connectNulls={false} activeDot={{ r: 3, fill: "#22C55E", strokeWidth: 0 }} />
+            )}
+            {hasSplit && (
+              <Line type="monotone" dataKey="paid" name="Sponsored" stroke="#F59E0B" strokeWidth={1.5}
+                strokeDasharray="6 4" dot={false} connectNulls={false} activeDot={{ r: 3, fill: "#F59E0B", strokeWidth: 0 }} />
+            )}
           </LineChart>
         </ResponsiveContainer>
       </div>
 
-      {/* Legend */}
       <div className="flex items-center gap-6 mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500 flex-wrap">
         <span className="flex items-center gap-2">
-          <svg width="24" height="10"><line x1="0" y1="5" x2="24" y2="5" stroke="#22C55E" strokeWidth="2" strokeDasharray="6 4"/></svg>
-          Organic
+          <svg width="24" height="10"><line x1="0" y1="5" x2="24" y2="5" stroke={LI_BLUE} strokeWidth="2"/></svg>
+          New followers
         </span>
-        <span className="flex items-center gap-2">
-          <svg width="24" height="10"><line x1="0" y1="5" x2="24" y2="5" stroke="#3B82F6" strokeWidth="1.5"/></svg>
-          Sponsored
+        {hasSplit && (
+          <>
+            <span className="flex items-center gap-2">
+              <svg width="24" height="10"><line x1="0" y1="5" x2="24" y2="5" stroke="#22C55E" strokeWidth="1.5" strokeDasharray="6 4"/></svg>
+              Organic (imported)
+            </span>
+            <span className="flex items-center gap-2">
+              <svg width="24" height="10"><line x1="0" y1="5" x2="24" y2="5" stroke="#F59E0B" strokeWidth="1.5" strokeDasharray="6 4"/></svg>
+              Sponsored (imported)
+            </span>
+          </>
+        )}
+        <span className="ml-auto text-gray-400">
+          {measuredDays} of {data.length} days measured by a sync; the rest is spread evenly between syncs
         </span>
-        <span className="ml-auto text-gray-400">Sync daily for accurate per-day figures</span>
       </div>
     </div>
   );
 }
 
-function OrgSponChart({ rows }) {
+function OrgSponChart({ series }) {
   const data = useMemo(() => {
-    const byDate = {};
-    rows.forEach(r => {
-      if (!r.date) return;
-      if (!byDate[r.date]) byDate[r.date] = { date: r.date, organic_followers: 0, paid_followers: 0 };
-      byDate[r.date].organic_followers += r.organic_followers || 0;
-      byDate[r.date].paid_followers    += r.paid_followers    || 0;
-    });
-    return Object.values(byDate).sort((a,b)=>a.date>b.date?1:-1).map(r => ({
-      date:    shortDate(r.date),
-      Organic: r.organic_followers || 0,
-      Paid:    r.paid_followers    || 0,
+    const months = new Map();
+    for (const d of series || []) {
+      if (d.organic === null && d.paid === null) continue;
+      const m = d.date.slice(0, 7);
+      if (!months.has(m)) months.set(m, { month: m, Organic: 0, Sponsored: 0 });
+      months.get(m).Organic   += d.organic || 0;
+      months.get(m).Sponsored += d.paid    || 0;
+    }
+    return [...months.values()].slice(-12).map(r => ({
+      ...r,
+      label: new Date(r.month + "-01T00:00:00").toLocaleDateString("en-US", { month:"short", year:"2-digit" }),
     }));
-  }, [rows]);
+  }, [series]);
 
-  if (!data.length) return <Empty label="No follower breakdown data" />;
+  if (!data.length) {
+    return (
+      <Empty label="No organic / sponsored split yet"
+        sub="LinkedIn's API only gives the follower total. Import the page's follower export (Analytics → Followers → Export) to see organic against sponsored." />
+    );
+  }
 
   return (
     <div className="h-48 sm:h-64">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data} margin={{ top:8, right:16, left:0, bottom:0 }}>
-          <defs>
-            <linearGradient id="oGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%"  stopColor="#10B981" stopOpacity={0.2}/>
-              <stop offset="95%" stopColor="#10B981" stopOpacity={0.02}/>
-            </linearGradient>
-            <linearGradient id="pGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%"  stopColor="#F59E0B" stopOpacity={0.2}/>
-              <stop offset="95%" stopColor="#F59E0B" stopOpacity={0.02}/>
-            </linearGradient>
-          </defs>
+        <BarChart data={data} margin={{ top:8, right:16, left:0, bottom:0 }}>
           <CartesianGrid stroke="#F3F4F6" strokeDasharray="3 3" />
-          <XAxis dataKey="date" tick={{ fontSize:10, fill:"#9CA3AF" }} tickLine={false} />
+          <XAxis dataKey="label" tick={{ fontSize:10, fill:"#9CA3AF" }} tickLine={false} />
           <YAxis tick={{ fontSize:10, fill:"#9CA3AF" }} tickLine={false} axisLine={false} tickFormatter={v=>fmt(v)} />
           <Tooltip contentStyle={TTStyle} formatter={v=>[fmt(v)]} />
           <Legend wrapperStyle={{ fontSize:11, paddingTop:8 }} />
-          <Area type="monotone" dataKey="Organic" stroke="#10B981" fill="url(#oGrad)" strokeWidth={2} dot={false} />
-          <Area type="monotone" dataKey="Paid"    stroke="#F59E0B" fill="url(#pGrad)" strokeWidth={2} dot={false} />
-        </AreaChart>
+          <Bar dataKey="Organic"   stackId="a" fill="#10B981" maxBarSize={36} />
+          <Bar dataKey="Sponsored" stackId="a" fill="#F59E0B" maxBarSize={36} radius={[6,6,0,0]} />
+        </BarChart>
       </ResponsiveContainer>
     </div>
   );
@@ -690,13 +576,11 @@ function DayHeatmap({ posts }) {
 
 // ─── Overview Section ─────────────────────────────────────────────────────────
 
-function OverviewSection({ posts, followerRows, pageRows, prevPosts, prevFollower, dateRange, cutoff }) {
-  const latestF   = useMemo(() => followerRows.at(-1)?.total_followers || 0, [followerRows]);
-  const prevF     = useMemo(() => prevFollower[0]?.total_followers || null, [prevFollower]);
-  const newF      = useMemo(() => {
-    if (followerRows.length < 2) return 0;
-    return (followerRows.at(-1)?.total_followers||0) - (followerRows[0]?.total_followers||0);
-  }, [followerRows]);
+function OverviewSection({ posts, series, prevSeries, pageSeries, prevPosts, dateRange }) {
+  const latestF   = useMemo(() => lastTotal(series), [series]);
+  const prevF     = useMemo(() => lastTotal(prevSeries) || null, [prevSeries]);
+  const newF      = useMemo(() => sumNew(series), [series]);
+  const pageMeasured = useMemo(() => pageSeries.some(d => d.pageViews !== null), [pageSeries]);
 
   const totalImp  = useMemo(() => posts.reduce((s,p)=>s+(p.impressions||0),0), [posts]);
   const totalReact = useMemo(() => posts.reduce((s,p)=>s+(p.reactions||0),0), [posts]);
@@ -706,7 +590,7 @@ function OverviewSection({ posts, followerRows, pageRows, prevPosts, prevFollowe
   const totalEng  = totalReact + totalComm + totalShare + totalClick;
   const engRate   = totalImp > 0 ? (totalEng/totalImp)*100 : 0;
   const ctr       = totalImp > 0 ? (totalClick/totalImp)*100 : 0;
-  const totalViews = useMemo(() => pageRows.reduce((s,r)=>s+(r.page_views||0),0), [pageRows]);
+  const totalViews = useMemo(() => sumPageViews(pageSeries), [pageSeries]);
   const avgEngPost = posts.length ? totalEng/posts.length : 0;
 
   const prevImp   = useMemo(() => prevPosts.reduce((s,p)=>s+(p.impressions||0),0), [prevPosts]);
@@ -760,13 +644,13 @@ function OverviewSection({ posts, followerRows, pageRows, prevPosts, prevFollowe
         <KPICard label="Total Followers"   value={fmt(latestF)}
           trend={pctChange(latestF, prevF)} color="#1a73e8"
           sub={`+${fmt(newF)} this period`}
-          sparkData={followerRows.slice(-14).map(r=>({ v:r.total_followers||0 }))} />
+          sparkData={series.slice(-14).map(d=>({ v:d.total||0 }))} />
         <KPICard label="Impressions"       value={fmt(totalImp)}
           trend={pctChange(totalImp, prevImp)} color="#fbbc04"
           sub={`${posts.length} posts`}
           sparkData={sparkImp} />
-        <KPICard label="Page Views"        value={fmt(totalViews)}
-          color="#ea4335" sub="all page sections" />
+        <KPICard label="Page Views"        value={pageMeasured ? fmt(totalViews) : "—"}
+          color="#ea4335" sub={pageMeasured ? "between syncs, all page sections" : "needs two syncs to measure"} />
         <KPICard label="Posts Published"   value={fmt(posts.length)}
           color="#34a853" sub={`last ${dateRange} days`} />
       </div>
@@ -1045,30 +929,15 @@ function ImportHistoricalPanel({ allOrgs, onImported }) {
   );
 }
 
-function FollowerSection({ rows, filtRows, cutoff, allOrgs }) {
+function FollowerSection({ fullSeries, series, prevSeries, allOrgs }) {
 
-  // Monthly breakdown — aggregate all orgs by date first, then bucket by month
-  const monthlyData = useMemo(() => {
-    // Step 1: sum all orgs per date
-    const byDate = {};
-    rows.forEach(r => {
-      if (!r.date) return;
-      if (!byDate[r.date]) byDate[r.date] = { date: r.date, total: 0 };
-      byDate[r.date].total += r.total_followers || 0;
-    });
-    // Step 2: bucket into months, tracking first/last value per month
-    const byMonth = {};
-    Object.values(byDate).sort((a,b)=>a.date>b.date?1:-1).forEach(r => {
-      const m = r.date.slice(0,7);
-      if (!byMonth[m]) byMonth[m] = { month:m, start:r.total, end:r.total };
-      byMonth[m].end = r.total;
-    });
-    return Object.values(byMonth).map(m => ({
-      month: new Date(m.month+"-01").toLocaleDateString("en-US",{month:"short",year:"2-digit"}),
-      Net:   m.end - m.start,
+  // Net gain per month across the visible pages, last 12 months.
+  const monthlyData = useMemo(() =>
+    monthlyNet(fullSeries).slice(-12).map(m => ({
+      month: new Date(m.month + "-01T00:00:00").toLocaleDateString("en-US", { month:"short", year:"2-digit" }),
+      Net:   m.net,
       End:   m.end,
-    }));
-  }, [rows]);
+    })), [fullSeries]);
 
   return (
     <div className="space-y-6">
@@ -1077,19 +946,19 @@ function FollowerSection({ rows, filtRows, cutoff, allOrgs }) {
       )}
 
       <Section title="Daily Follower Growth"
-        sub="Followers gained per calendar day (estimated between syncs)">
+        sub="Followers gained per calendar day; days without a sync are estimated">
         <div className="bg-white rounded-2xl p-3 sm:p-5 border border-gray-100 shadow-sm">
-          <FollowerGainsChart allRows={rows} cutoffDate={cutoff} />
+          <FollowerGainsChart series={series} prevSeries={prevSeries} />
         </div>
       </Section>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Section title="Organic vs Paid Growth" sub="All-time follower source breakdown">
+        <Section title="Organic vs Sponsored" sub="New followers by month, from imported LinkedIn exports">
           <div className="bg-white rounded-2xl p-3 sm:p-5 border border-gray-100 shadow-sm">
-            <OrgSponChart rows={rows} />
+            <OrgSponChart series={fullSeries} />
           </div>
         </Section>
-        <Section title="Net Followers by Month" sub="Monthly growth delta">
+        <Section title="Net Followers by Month" sub="Followers gained per month, last 12 months">
           <div className="bg-white rounded-2xl p-3 sm:p-5 border border-gray-100 shadow-sm">
             {monthlyData.length ? (
               <div className="h-48 sm:h-64">
@@ -1098,7 +967,8 @@ function FollowerSection({ rows, filtRows, cutoff, allOrgs }) {
                     <CartesianGrid stroke="#F3F4F6" strokeDasharray="3 3" />
                     <XAxis dataKey="month" tick={{ fontSize:10, fill:"#9CA3AF" }} tickLine={false} />
                     <YAxis tick={{ fontSize:10, fill:"#9CA3AF" }} tickLine={false} axisLine={false} tickFormatter={v=>fmt(v)} />
-                    <Tooltip contentStyle={TTStyle} formatter={v=>[fmt(v),"Net Gained"]} />
+                    <Tooltip contentStyle={TTStyle}
+                      formatter={(v, name, item) => [`${fmt(v)} gained · ${fmt(item?.payload?.End || 0)} at month end`, "Net"]} />
                     <Bar dataKey="Net" fill={LI_BLUE} radius={[6,6,0,0]} maxBarSize={36}>
                       {monthlyData.map((m,i)=><Cell key={i} fill={m.Net>=0 ? "#10B981" : "#EF4444"} />)}
                     </Bar>
@@ -1302,7 +1172,7 @@ function CategorySection({ posts, classifications, onClassifyAI, classifying, ai
 
 // ─── AI Insights Section ──────────────────────────────────────────────────────
 
-function InsightsSection({ posts, followerRows, orgId, dateRange }) {
+function InsightsSection({ posts, growth, orgId, dateRange }) {
   const [aiInsights,    setAIInsights]    = useState([]);
   const [loadingAI,     setLoadingAI]     = useState(false);
   const [aiPowered,     setAiPowered]     = useState(false);
@@ -1322,7 +1192,7 @@ function InsightsSection({ posts, followerRows, orgId, dateRange }) {
   }, [posts]);
 
   const ruleInsights = useMemo(() =>
-    ruleBasedInsights(posts, followerRows, catStats), [posts, followerRows, catStats]);
+    ruleBasedInsights(posts, growth, catStats), [posts, growth, catStats]);
 
   const insights = aiInsights.length ? aiInsights : ruleInsights;
 
@@ -1421,7 +1291,7 @@ function InsightsSection({ posts, followerRows, orgId, dateRange }) {
 
 // ─── Strategy Section ─────────────────────────────────────────────────────────
 
-function StrategySection({ posts, followerRows }) {
+function StrategySection({ posts, fullSeries }) {
   const dayAn  = useMemo(()=>bestDayAnalysis(posts), [posts]);
   const bestDay = useMemo(()=>[...dayAn].sort((a,b)=>b.avgEng-a.avgEng).find(d=>d.posts>0), [dayAn]);
 
@@ -1468,24 +1338,18 @@ function StrategySection({ posts, followerRows }) {
   }, [bestDay, topCats]);
 
   const forecastRows = useMemo(()=>{
-    // Aggregate orgs per date before forecasting
-    const byDate = {};
-    followerRows.forEach(r => {
-      if (!r.date) return;
-      if (!byDate[r.date]) byDate[r.date] = { date:r.date, total_followers:0 };
-      byDate[r.date].total_followers += r.total_followers || 0;
-    });
-    const sorted = Object.values(byDate).sort((a,b)=>a.date>b.date?1:-1);
-    const fc30  = linearForecast(sorted, 30);
-    const fc60  = linearForecast(sorted, 60);
-    const fc90  = linearForecast(sorted, 90);
-    const latest = sorted.at(-1)?.total_followers || 0;
+    // Straight-line fit over the last 90 days of the daily total.
+    const vals   = (fullSeries || []).slice(-90).map(d => d.total);
+    const latest = lastTotal(fullSeries || []);
+    const fc30  = linearForecast(vals, 30);
+    const fc60  = linearForecast(vals, 60);
+    const fc90  = linearForecast(vals, 90);
     return [
       { period:"30 Days", predicted: fc30.at(-1)?.predicted || latest },
       { period:"60 Days", predicted: fc60.at(-1)?.predicted || latest },
       { period:"90 Days", predicted: fc90.at(-1)?.predicted || latest },
     ];
-  }, [followerRows]);
+  }, [fullSeries]);
 
   return (
     <div className="space-y-6">
@@ -1628,21 +1492,10 @@ const GA_METRICS = [
   { id:"ctr",            label:"CTR",             color:"#f59e0b", field:"ctr",            fmt:(v)=>fmt(v,{dec:2}), unit:"%" },
 ];
 
-// Build merged daily dataset: followers (interpolated) + page metrics + post metrics
-function buildUnifiedDaily(allFollowerRows, pageRows, posts, cutoff) {
-  // 1. Follower daily (every calendar day via interpolation)
-  const follDaily = buildDailyFollowerData(allFollowerRows, cutoff);
+// Merged daily dataset: follower series + estimated page views + post metrics
+function buildUnifiedDaily(series, pageSeries, posts) {
+  const pageByDate = new Map((pageSeries || []).map(d => [d.date, d.pageViews]));
 
-  // 2. Page analytics: aggregate by date
-  const pageByDate = {};
-  pageRows.forEach(r => {
-    if (!r.date) return;
-    if (!pageByDate[r.date]) pageByDate[r.date] = { impressions:0, page_views:0 };
-    pageByDate[r.date].impressions += r.impressions || 0;
-    pageByDate[r.date].page_views  += r.page_views  || 0;
-  });
-
-  // 3. Post metrics: aggregate by publish date
   const postsByDate = {};
   (posts || []).forEach(p => {
     const d = p.post_date;
@@ -1656,19 +1509,17 @@ function buildUnifiedDaily(allFollowerRows, pageRows, posts, cutoff) {
     postsByDate[d].count++;
   });
 
-  // 4. Merge — follower data provides the full date spine
-  return follDaily.map(d => {
-    const pg  = pageByDate[d.date]  || null;
+  return (series || []).map(d => {
     const pt  = postsByDate[d.date] || null;
-    const imp = pg?.impressions || pt?.impressions || null;
+    const imp = pt?.impressions || null;
     const totalEng = pt ? (pt.reactions + pt.comments + pt.shares + pt.clicks) : null;
     return {
       date:          d.date,
-      label:         d.label,
-      new_followers: (d.organic ?? 0) + (d.paid ?? 0),
+      label:         shortDate(d.date),
+      new_followers: d.newFollowers,
       total:         d.total,
       impressions:   imp,
-      page_views:    pg?.page_views   ?? null,
+      page_views:    pageByDate.get(d.date) ?? null,
       reactions:     pt?.reactions    ?? null,
       comments:      pt?.comments     ?? null,
       shares:        pt?.shares       ?? null,
@@ -1685,21 +1536,7 @@ function periodTotal(data, field) {
 }
 
 // Google Ads-style metric card + chart component
-function MetricSelectorChart({ followerStats, pageRows, posts, cutoff, dateRange, selectedMetrics, onToggleMetric }) {
-  const data = useMemo(
-    () => buildUnifiedDaily(followerStats, pageRows, posts, cutoff),
-    [followerStats, pageRows, posts, cutoff]
-  );
-
-  const prevCutoffDate = useMemo(() => {
-    const d = new Date(); d.setDate(d.getDate() - dateRange * 2);
-    return d.toISOString().split("T")[0];
-  }, [dateRange]);
-
-  const prevData = useMemo(
-    () => buildUnifiedDaily(followerStats, pageRows, posts, prevCutoffDate).slice(0, data.length),
-    [followerStats, pageRows, posts, prevCutoffDate, data.length]
-  );
+function MetricSelectorChart({ data, prevData, selectedMetrics, onToggleMetric }) {
 
   const tickInterval = Math.max(1, Math.floor(data.length / 7));
 
@@ -1707,8 +1544,9 @@ function MetricSelectorChart({ followerStats, pageRows, posts, cutoff, dateRange
   const stat = id => {
     const m    = GA_METRICS.find(x => x.id === id);
     const field = m?.field || id;
-    // Rate metrics: take last non-null value instead of summing
-    const isRate = id === "eng_rate" || id === "ctr";
+    // Rates and the follower total are levels, not amounts: show the latest
+    // value instead of adding the days up.
+    const isRate = id === "eng_rate" || id === "ctr" || id === "total_followers";
     const cur  = isRate
       ? (data.filter(d => d[field] != null).at(-1)?.[field] ?? 0)
       : periodTotal(data, field);
@@ -1792,7 +1630,7 @@ function MetricSelectorChart({ followerStats, pageRows, posts, cutoff, dateRange
                 <CartesianGrid stroke="#f1f3f4" strokeDasharray="" vertical={false} />
                 <XAxis dataKey="label" tick={{ fontSize:11, fill:"#5f6368" }} tickLine={false} axisLine={false}
                   interval={tickInterval} />
-                <YAxis tick={{ fontSize:11, fill:"#5f6368" }} tickLine={false} axisLine={false}
+                <YAxis tick={{ fontSize:11, fill:"#5f6368" }} tickLine={false} axisLine={false} domain={[0, "auto"]}
                   tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}K` : v} width={40} />
                 <Tooltip
                   cursor={{ stroke:"#dadce0", strokeWidth:1 }}
@@ -1851,7 +1689,7 @@ export default function LinkedInDashboard() {
   const {
     status, allOrgs, selectedOrgId, selectOrg,
     followerStats, pageAnalytics, posts, loading,
-    dataLoading, syncing, syncResult, sync, refreshOrgs, disconnect,
+    dataLoading, syncing, syncResult, sync, refreshOrgs, setOrgHidden, disconnect,
   } = useLinkedInData();
 
   const [section,       setSection]      = useState("overview");
@@ -1862,27 +1700,37 @@ export default function LinkedInDashboard() {
   const [classifying,   setClassifying]  = useState(false);
   const [aiClassified,  setAiClassified] = useState(false);
   const [selectedMetrics, setSelectedMetrics] = useState(["new_followers", "impressions"]);
-  const [deduping,      setDeduping]     = useState(false);
-  const [dedupMsg,      setDedupMsg]     = useState(null);
+  const [pagesOpen,     setPagesOpen]    = useState(false);
+  const [pagesMsg,      setPagesMsg]     = useState(null);
 
   // All hooks must be above early returns
-  const cutoff = useMemo(() => {
-    const d = new Date(); d.setDate(d.getDate() - dateRange);
-    return d.toISOString().split("T")[0];
-  }, [dateRange]);
+  const cutoff     = useMemo(() => daysAgoISO(dateRange), [dateRange]);
+  const prevCutoff = useMemo(() => daysAgoISO(dateRange * 2), [dateRange]);
+  const prevEnd    = useMemo(() => daysAgoISO(dateRange + 1), [dateRange]);
 
-  const prevCutoff = useMemo(() => {
-    const d = new Date(); d.setDate(d.getDate() - dateRange * 2);
-    return d.toISOString().split("T")[0];
-  }, [dateRange]);
+  // Follower and page-view figures are built per page on a full calendar and
+  // then added up (see utils/linkedinFollowers), so the "All" view no longer
+  // jumps when one page has a row on a day and another does not.
+  const fullSeries     = useMemo(() => followerSeries(followerStats), [followerStats]);
+  const series         = useMemo(() => followerSeries(followerStats, { from: cutoff }), [followerStats, cutoff]);
+  const prevSeries     = useMemo(() => followerSeries(followerStats, { from: prevCutoff, to: prevEnd }), [followerStats, prevCutoff, prevEnd]);
+  const pageSeries     = useMemo(() => pageViewSeries(pageAnalytics, { from: cutoff }), [pageAnalytics, cutoff]);
+  const prevPageSeries = useMemo(() => pageViewSeries(pageAnalytics, { from: prevCutoff, to: prevEnd }), [pageAnalytics, prevCutoff, prevEnd]);
 
-  const filtFollower = useMemo(()=>followerStats.filter(r=>r.date>=cutoff), [followerStats, cutoff]);
-  const filtPage     = useMemo(()=>pageAnalytics.filter(r=>r.date>=cutoff), [pageAnalytics, cutoff]);
   const filtPosts    = useMemo(()=>posts.filter(r=>!r.post_date||r.post_date>=cutoff), [posts, cutoff]);
-  const prevFollower = useMemo(()=>followerStats.filter(r=>r.date>=prevCutoff&&r.date<cutoff), [followerStats, prevCutoff, cutoff]);
   const prevPosts    = useMemo(()=>posts.filter(r=>r.post_date&&r.post_date>=prevCutoff&&r.post_date<cutoff), [posts, prevCutoff, cutoff]);
 
-  const showPage = !selectedOrgId && allOrgs.length > 1;
+  const unified     = useMemo(() => buildUnifiedDaily(series, pageSeries, filtPosts), [series, pageSeries, filtPosts]);
+  const prevUnified = useMemo(() => buildUnifiedDaily(prevSeries, prevPageSeries, prevPosts), [prevSeries, prevPageSeries, prevPosts]);
+
+  const growth = useMemo(() => {
+    const last  = lastTotal(series);
+    const delta = sumNew(series);
+    return last ? { first: last - delta, last, delta } : null;
+  }, [series]);
+
+  const visibleOrgs = useMemo(() => allOrgs.filter(o => !o.hidden), [allOrgs]);
+  const showPage = !selectedOrgId && visibleOrgs.length > 1;
 
   const handleClassifyAI = useCallback(async () => {
     if (!filtPosts.length) return;
@@ -1915,19 +1763,11 @@ export default function LinkedInDashboard() {
     });
   }, []);
 
-  const handleDedup = useCallback(async () => {
-    setDeduping(true); setDedupMsg(null);
-    try {
-      const res = await api.post("/linkedin/dedup-followers");
-      const n = res.data?.deleted ?? 0;
-      setDedupMsg(n > 0 ? `Removed ${n} duplicate rows` : "No duplicates found");
-    } catch (e) {
-      setDedupMsg("Dedup failed");
-    } finally {
-      setDeduping(false);
-      setTimeout(() => setDedupMsg(null), 5000);
-    }
-  }, []);
+  const handleToggleOrg = useCallback(async (org) => {
+    setPagesMsg(null);
+    const r = await setOrgHidden(org.id, !org.hidden);
+    if (!r.success) setPagesMsg(r.error || "Could not update the page");
+  }, [setOrgHidden]);
 
   if (loading) {
     return (
@@ -1972,7 +1812,7 @@ export default function LinkedInDashboard() {
 
               {/* Page selector pills — scrollable on mobile */}
               <div className="flex items-center gap-1 overflow-x-auto flex-shrink min-w-0" style={{ WebkitOverflowScrolling:"touch", scrollbarWidth:"none" }}>
-                {[{ id: null, name: "All" }, ...allOrgs.map(o => ({ id: o.id, name: o.name || o.id }))].map(o => (
+                {[{ id: null, name: "All" }, ...visibleOrgs.map(o => ({ id: o.id, name: o.name || o.id }))].map(o => (
                   <button key={o.id ?? "all"} onClick={() => selectOrg(o.id)}
                     className="px-2.5 py-1 rounded-full text-xs font-medium transition-colors whitespace-nowrap flex-shrink-0 min-h-[32px]"
                     style={(!o.id && !selectedOrgId) || selectedOrgId === o.id
@@ -2021,13 +1861,32 @@ export default function LinkedInDashboard() {
               {syncResult?.summary && <span className="text-xs font-medium hidden sm:inline" style={{ color:"#34a853" }}>✓</span>}
               {dataLoading && <span className="text-xs hidden sm:inline" style={{ color:"#5f6368" }}>…</span>}
 
-              <button onClick={handleDedup} disabled={deduping}
-                className="hidden sm:flex text-xs px-2 py-1 rounded transition-colors min-h-[32px] disabled:opacity-50"
-                style={{ color:"#5f6368" }}
-                title="Remove duplicate follower rows from the database">
-                {deduping ? "…" : "⊘ Dedup"}
-              </button>
-              {dedupMsg && <span className="text-xs font-medium hidden sm:inline" style={{ color:"#34a853" }}>{dedupMsg}</span>}
+              {/* Pages: choose which of the account's pages count */}
+              <div className="relative hidden sm:block">
+                <button onClick={() => setPagesOpen(o => !o)}
+                  className="text-xs px-2 py-1 rounded transition-colors min-h-[32px]"
+                  style={{ color:"#5f6368" }}
+                  title="Choose which LinkedIn pages are synced and counted">
+                  ☰ Pages{allOrgs.length > visibleOrgs.length ? ` (${allOrgs.length - visibleOrgs.length} hidden)` : ""}
+                </button>
+                {pagesOpen && (
+                  <div className="absolute right-0 mt-1 w-72 bg-white rounded-lg shadow-lg z-40 p-3 text-xs" style={{ border:"1px solid #dadce0" }}>
+                    <p className="font-semibold mb-1" style={{ color:"#202124" }}>Pages on this LinkedIn account</p>
+                    <p className="mb-2" style={{ color:"#5f6368" }}>Unticked pages are not synced and are left out of the &quot;All&quot; figures.</p>
+                    {allOrgs.map(o => (
+                      <label key={o.id} className="flex items-center gap-2 py-1 cursor-pointer">
+                        <input type="checkbox" checked={!o.hidden} onChange={() => handleToggleOrg(o)} />
+                        <span style={{ color:"#202124" }}>{o.name || o.id}</span>
+                        <span className="ml-auto" style={{ color:"#9aa0a6" }}>{String(o.role || "").toLowerCase().replace(/_/g, " ")}</span>
+                      </label>
+                    ))}
+                    {pagesMsg && <p className="mt-2 text-red-600">{pagesMsg}</p>}
+                    <p className="mt-2 pt-2 border-t border-gray-100" style={{ color:"#5f6368" }}>
+                      A page that is missing here is one this LinkedIn login does not administer. Reconnect with a login that does, then press Refresh.
+                    </p>
+                  </div>
+                )}
+              </div>
 
               <button onClick={disconnect}
                 className="hidden sm:flex text-xs px-2 py-1 rounded transition-colors min-h-[32px]"
@@ -2062,12 +1921,8 @@ export default function LinkedInDashboard() {
           {(section === "overview" || section === "followers") && (
             <div className="mb-6">
               <MetricSelectorChart
-                followerStats={followerStats}
-                pageRows={filtPage}
-                posts={filtPosts}
-                prevFollower={prevFollower}
-                cutoff={cutoff}
-                dateRange={dateRange}
+                data={unified}
+                prevData={prevUnified}
                 selectedMetrics={selectedMetrics}
                 onToggleMetric={handleToggleMetric}
               />
@@ -2079,16 +1934,15 @@ export default function LinkedInDashboard() {
             {section === "overview" && (
               <OverviewSection
                 posts={filtPosts}
-                followerRows={filtFollower}
-                pageRows={filtPage}
+                series={series}
+                prevSeries={prevSeries}
+                pageSeries={pageSeries}
                 prevPosts={prevPosts}
-                prevFollower={prevFollower}
                 dateRange={dateRange}
-                cutoff={cutoff}
               />
             )}
             {section === "followers" && (
-              <FollowerSection rows={followerStats} filtRows={filtFollower} cutoff={cutoff} allOrgs={allOrgs} />
+              <FollowerSection fullSeries={fullSeries} series={series} prevSeries={prevSeries} allOrgs={visibleOrgs} />
             )}
             {section === "content" && (
               <ContentSection posts={filtPosts} showPage={showPage} />
@@ -2105,13 +1959,13 @@ export default function LinkedInDashboard() {
             {section === "insights" && (
               <InsightsSection
                 posts={filtPosts}
-                followerRows={filtFollower}
+                growth={growth}
                 orgId={selectedOrgId}
                 dateRange={dateRange}
               />
             )}
             {section === "strategy" && (
-              <StrategySection posts={filtPosts} followerRows={followerStats} />
+              <StrategySection posts={filtPosts} fullSeries={fullSeries} />
             )}
           </div>
         </div>

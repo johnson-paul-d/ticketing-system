@@ -79,6 +79,23 @@ export default function useLinkedInData() {
     }
   }, []);
 
+  // Show or hide one of the connected account's pages. Hidden pages are not
+  // synced and are left out of the "All" figures.
+  const setOrgHidden = useCallback(async (orgId, hidden) => {
+    try {
+      const res = await api.put(`/linkedin/orgs/${orgId}`, { hidden });
+      const orgs = res.data.orgs || [];
+      setAllOrgs(orgs);
+      const stillVisible = orgs.find(o => o.id === selectedOrgId && !o.hidden);
+      const nextOrg = stillVisible ? selectedOrgId : null;
+      if (nextOrg !== selectedOrgId) setSelectedOrgId(nextOrg);
+      await fetchData(nextOrg);
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e?.response?.data?.message || e.message };
+    }
+  }, [fetchData, selectedOrgId]);
+
   const disconnect = useCallback(async () => {
     try { await api.delete("/linkedin/disconnect"); } catch { /* ignore */ }
     setStatus({ connected: false });
@@ -120,6 +137,7 @@ export default function useLinkedInData() {
     error,
     sync,
     refreshOrgs,
+    setOrgHidden,
     disconnect,
     debug,
     refetch: () => fetchData(selectedOrgId),

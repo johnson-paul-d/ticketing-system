@@ -76,6 +76,37 @@ function daysAgoMs(n) {
   return d.getTime();
 }
 
+// The date a snapshot is filed under: the server's own calendar day (the
+// server runs in Indian time, as do the people reading the dashboard). A UTC
+// date would file a 3 am sync under the previous day.
+function localDate(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+// Pages the user has switched off on the dashboard (all_orgs[].hidden). They
+// are left out of syncs and of the "All pages" figures, but their history
+// stays in the tables in case they are switched back on.
+function hiddenOrgIds(t) {
+  return (t?.all_orgs || []).filter(o => o?.hidden).map(o => String(o.id));
+}
+
+// Parses the dates LinkedIn's follower export uses without going through the
+// Date constructor, whose local-time parse of "MM/DD/YYYY" lands on the
+// previous day once converted to UTC on a server east of Greenwich.
+function parseExportDate(raw) {
+  const s = String(raw || "").trim();
+  let m;
+  if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  if ((m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/))) return `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`; // LinkedIn: MM/DD/YYYY
+  if ((m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})/))) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;  // DD-MM-YYYY
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return null;
+  return localDate(d);
+}
+
 // ─── 1. Exchange code → store token + all orgs ───────────────────────────────
 
 router.post("/exchange-token", async (req, res) => {
@@ -167,7 +198,8 @@ router.post("/refresh-orgs", async (req, res) => {
         const info = await liGet(`/organizations/${id}`, token);
         name = info?.localizedName || info?.name?.localized?.en_US || name;
       } catch { /* keep default */ }
-      orgs.push({ id, name, urn, role: el.role });
+      const hidden = (t.all_orgs || []).find(o => String(o.id) === id)?.hidden === true;
+      orgs.push({ id, name, urn, role: el.role, ...(hidden ? { hidden } : {}) });
     }
 
     const { error } = await supabase
@@ -207,6 +239,32 @@ router.post("/select-org", async (req, res) => {
   } catch (err) {
     console.error("select-org:", err);
     res.status(500).json({ message: "Failed to select LinkedIn organization" });
+  }
+});
+
+// ─── Show or hide a page ─────────────────────────────────────────────────────
+// The connected LinkedIn account may administer pages that have nothing to do
+// with this dashboard. A hidden page is skipped by the sync and left out of the
+// "All pages" figures; its rows stay in the tables.
+
+router.put("/orgs/:id", async (req, res) => {
+  const id = String(req.params.id || "");
+  const hidden = req.body?.hidden === true;
+  try {
+    const t = await getStoredToken();
+    const orgs = (t.all_orgs || []).map(o => {
+      if (String(o.id) !== id) return o;
+      const { hidden: _old, ...rest } = o;
+      return hidden ? { ...rest, hidden: true } : rest;
+    });
+    if (!orgs.some(o => String(o.id) === id)) return res.status(404).json({ message: "Page not found" });
+    if (!orgs.some(o => !o.hidden)) return res.status(400).json({ message: "At least one page has to stay visible" });
+    const { error } = await supabase.from("linkedin_tokens").update({ all_orgs: orgs }).eq("id", t.id);
+    if (error) throw error;
+    res.json({ success: true, orgs });
+  } catch (err) {
+    console.error("orgs update:", err);
+    res.status(500).json({ message: "Failed to update the page" });
   }
 });
 
@@ -299,96 +357,64 @@ router.post("/sync", async (req, res) => {
     }
 
     const summary = {};
+    const hidden  = new Set(hiddenOrgIds(t));
+    const today   = localDate();
 
     for (const org of allOrgs) {
+      if (hidden.has(String(org.id))) continue;
       const orgId  = org.id;
       const orgUrn = org.urn || `urn:li:organization:${orgId}`;
       const orgName = org.name || orgId;
       const r = { follower: 0, page: 0, posts: 0, errors: [] };
 
-      // ── Follower data: daily time-series (up to 1 year) + today's snapshot ──
+      // ── Followers: today's count ─────────────────────────────────────────
+      // LinkedIn only lets this app read the current follower count. The
+      // day-by-day history (organizationalEntityFollowerStatistics with a time
+      // range) answers 403 "Unpermitted fields" for apps without the Marketing
+      // Developer Platform, so the history is built from one snapshot a day
+      // (see services/linkedinScheduler.js) plus imports of LinkedIn's own
+      // follower export. networkSizes is the count shown on the page itself;
+      // the statistics call is kept as a fallback only.
       try {
-        // 1. Time-series: fetch last 365 days of daily follower counts
-        //    LinkedIn returns one element per day with organic + paid totals.
-        //    This works with r_organization_social scope (no MDP required).
-        let timeSeriesCount = 0;
+        let total = 0;
         try {
-          const series = await liGet("/organizationalEntityFollowerStatistics", token, {
-            q:                                      "organizationalEntity",
-            organizationalEntity:                   orgUrn,
-            "timeIntervals.timeGranularityType":    "DAY",
-            "timeIntervals.timeRange.start":        daysAgoMs(365),
-            "timeIntervals.timeRange.end":          Date.now(),
+          const ns = await liGet(`/networkSizes/${encodeURIComponent(orgUrn)}`, token, {
+            edgeType: "CompanyFollowedByMember",
           });
+          total = ns?.firstDegreeSize || 0;
+        } catch (e) { r.errors.push(`Followers: ${e.message}`); }
 
-          const rows = [];
-          for (const el of series?.elements || []) {
-            const date    = toDate(el.timeRange?.start);
-            if (!date) continue;
-            const organic = el.totalFollowerCounts?.organicFollowerCount || 0;
-            const paid    = el.totalFollowerCounts?.paidFollowerCount    || 0;
-            if (organic + paid === 0) continue;
-            rows.push({
-              date, org_id: orgId, org_name: orgName,
-              total_followers:   organic + paid,
-              organic_followers: organic,
-              paid_followers:    paid,
-            });
-          }
-
-          if (rows.length > 0) {
-            const BATCH = 100;
-            for (let i = 0; i < rows.length; i += BATCH) {
-              const { error } = await supabase
-                .from("linkedin_follower_stats")
-                .upsert(rows.slice(i, i + BATCH), { onConflict: "date,org_id" });
-              if (error) r.errors.push(`FollowerTimeSeries[${i}]: ${error.message}`);
-            }
-            timeSeriesCount = rows.length;
-            r.follower = rows.length;
-          }
-        } catch (e) {
-          r.errors.push(`FollowerTimeSeries: ${e.message}`);
-        }
-
-        // 2. Always fetch today's snapshot for the most accurate current total
-        //    (time-series may lag by a day; snapshot is real-time)
-        let snapOrganic = 0, snapPaid = 0;
-        try {
-          const snap = await liGet("/organizationalEntityFollowerStatistics", token, {
-            q: "organizationalEntity", organizationalEntity: orgUrn,
-          });
-          const tc     = snap?.elements?.[0]?.totalFollowerCounts || {};
-          snapOrganic  = tc.organicFollowerCount || 0;
-          snapPaid     = tc.paidFollowerCount    || 0;
-        } catch (e) { r.errors.push(`FollowerSnap: ${e.message}`); }
-
-        // 3. Fallback: networkSizes (if snapshot also returned 0)
-        if (!snapOrganic && !snapPaid) {
+        if (!total) {
           try {
-            const ns   = await liGet(`/networkSizes/${encodeURIComponent(orgUrn)}`, token, {
-              edgeType: "CompanyFollowedByMember",
+            const snap = await liGet("/organizationalEntityFollowerStatistics", token, {
+              q: "organizationalEntity", organizationalEntity: orgUrn,
             });
-            snapOrganic = ns?.firstDegreeSize || 0;
-          } catch (e) { r.errors.push(`NetworkSizes: ${e.message}`); }
+            const tc = snap?.elements?.[0]?.totalFollowerCounts || {};
+            total = (tc.organicFollowerCount || 0) + (tc.paidFollowerCount || 0);
+          } catch (e) { r.errors.push(`Followers (fallback): ${e.message}`); }
         }
 
-        const snapTotal = snapOrganic + snapPaid;
-        if (snapTotal > 0) {
-          const today = new Date().toISOString().split("T")[0];
+        if (total > 0) {
+          // organic = total, paid = 0 marks a sync row: LinkedIn gives no
+          // organic/paid split of the total. Import rows look different (see
+          // /import-followers) and the dashboard tells the two apart.
           const { error } = await supabase.from("linkedin_follower_stats").upsert(
             [{ date: today, org_id: orgId, org_name: orgName,
-               total_followers: snapTotal, organic_followers: snapOrganic, paid_followers: snapPaid }],
+               total_followers: total, organic_followers: total, paid_followers: 0 }],
             { onConflict: "date,org_id" }
           );
-          if (error) r.errors.push(`FollowerToday: ${error.message}`);
-          else if (!r.follower) r.follower = 1;
-        } else if (!timeSeriesCount) {
-          r.errors.push("Follower: no data from any source");
+          if (error) r.errors.push(`Followers: could not save (${error.message})`);
+          else r.follower = 1;
+        } else {
+          r.errors.push("Followers: LinkedIn returned no follower count for this page");
         }
-      } catch (e) { r.errors.push(`Follower: ${e.message}`); }
+      } catch (e) { r.errors.push(`Followers: ${e.message}`); }
 
-      // ── Page stats (snapshot only — time-series requires LinkedIn MDP) ────
+      // ── Page views: running counter ──────────────────────────────────────
+      // Same restriction: no day-by-day page views, only the counter LinkedIn
+      // keeps for the page. Each sync stores the counter as of that day; the
+      // dashboard turns the difference between two syncs into views per day.
+      // LinkedIn reports no unique-visitor figure here, so that stays 0.
       try {
         const snap = await liGet("/organizationPageStatistics", token, {
           q: "organization", organization: orgUrn,
@@ -396,19 +422,18 @@ router.post("/sync", async (req, res) => {
         const el0  = snap?.elements?.[0];
         const views = el0?.totalPageStatistics?.views?.allPageViews;
         if (views?.pageViews) {
-          const today = new Date().toISOString().split("T")[0];
           const { error } = await supabase.from("linkedin_page_analytics").upsert(
             [{ date: today, org_id: orgId, org_name: orgName,
                page_views: views.pageViews || 0, unique_visitors: views.uniquePageViews || 0,
                impressions: 0, clicks: 0 }],
             { onConflict: "date,org_id" }
           );
-          if (error) r.errors.push(`Page upsert: ${error.message}`);
+          if (error) r.errors.push(`Page views: could not save (${error.message})`);
           else r.page = 1;
         } else {
-          r.errors.push(`Page: empty snapshot. keys: ${Object.keys(snap || {}).join(",")}`);
+          r.errors.push("Page views: LinkedIn returned no page statistics for this page");
         }
-      } catch (e) { r.errors.push(`Page: ${e.message}`); }
+      } catch (e) { r.errors.push(`Page views: ${e.message}`); }
 
       // ── Posts + share stats ───────────────────────────────────────────────
       try {
@@ -481,11 +506,7 @@ router.post("/sync", async (req, res) => {
       summary[orgName] = r;
     }
 
-    // Clean up any duplicates created by concurrent syncs or re-imports
-    const dedup = await dedupFollowerStats();
-    if (dedup.deleted > 0) console.log(`sync dedup: removed ${dedup.deleted} duplicate follower rows`);
-
-    res.json({ success: true, summary, dedupDeleted: dedup.deleted });
+    res.json({ success: true, summary, skippedHidden: [...hidden] });
   } catch (err) {
     console.error("sync:", err);
     res.status(500).json({ message: "Failed to sync LinkedIn data" });
@@ -494,10 +515,17 @@ router.post("/sync", async (req, res) => {
 
 // ─── 7. Data endpoints — filter by ?orgId= or return all ─────────────────────
 
+const hiddenIds = async () => {
+  try { return hiddenOrgIds(await getStoredToken()); } catch { return []; }
+};
+const withoutHidden = (q, ids) =>
+  ids.length ? q.not("org_id", "in", `(${ids.map(i => `"${i}"`).join(",")})`) : q;
+
 router.get("/follower-stats", async (req, res) => {
   try {
     let q = supabase.from("linkedin_follower_stats").select("*").order("date", { ascending: true });
     if (req.query.orgId) q = q.eq("org_id", req.query.orgId);
+    else q = withoutHidden(q, await hiddenIds());
     const { data, error } = await q;
     if (error) throw error;
     res.json(data || []);
@@ -511,6 +539,7 @@ router.get("/page-analytics", async (req, res) => {
   try {
     let q = supabase.from("linkedin_page_analytics").select("*").order("date", { ascending: true });
     if (req.query.orgId) q = q.eq("org_id", req.query.orgId);
+    else q = withoutHidden(q, await hiddenIds());
     const { data, error } = await q;
     if (error) throw error;
     res.json(data || []);
@@ -524,6 +553,7 @@ router.get("/posts", async (req, res) => {
   try {
     let q = supabase.from("linkedin_post_analytics").select("*").order("post_date", { ascending: false });
     if (req.query.orgId) q = q.eq("org_id", req.query.orgId);
+    else q = withoutHidden(q, await hiddenIds());
     const { data, error } = await q;
     if (error) throw error;
     res.json(data || []);
@@ -646,6 +676,7 @@ router.get("/ai-insights", aiLimit, async (req, res) => {
     let pQ = supabase.from("linkedin_post_analytics").select("*").gte("post_date", cutoff).order("post_date");
     let fQ = supabase.from("linkedin_follower_stats").select("*").gte("date", cutoff).order("date");
     if (orgId) { pQ = pQ.eq("org_id", orgId); fQ = fQ.eq("org_id", orgId); }
+    else { const h = await hiddenIds(); pQ = withoutHidden(pQ, h); fQ = withoutHidden(fQ, h); }
 
     const [{ data: posts }, { data: followers }] = await Promise.all([pQ, fQ]);
     const pp = posts || [], ff = followers || [];
@@ -656,8 +687,16 @@ router.get("/ai-insights", aiLimit, async (req, res) => {
 
     const totalEng = pp.reduce((s,p) => s+(p.reactions||0)+(p.clicks||0)+(p.comments||0)+(p.shares||0), 0);
     const totalImp = pp.reduce((s,p) => s+(p.impressions||0), 0);
-    const latestF  = ff.at(-1)?.total_followers || 0;
-    const firstF   = ff[0]?.total_followers     || 0;
+    // Followers per page first, then added up: the rows of several pages are
+    // interleaved by date, so "last row minus first row" would compare two
+    // different pages.
+    const byOrg = {};
+    for (const r of ff) {
+      if (!byOrg[r.org_id]) byOrg[r.org_id] = { first: r.total_followers || 0, last: 0 };
+      byOrg[r.org_id].last = r.total_followers || 0;
+    }
+    const latestF  = Object.values(byOrg).reduce((s, o) => s + o.last, 0);
+    const firstF   = Object.values(byOrg).reduce((s, o) => s + o.first, 0);
     const topPost  = [...pp].sort((a,b) => (b.impressions||0)-(a.impressions||0))[0];
 
     const prompt =
@@ -729,26 +768,16 @@ router.post("/import-followers", upload.single("file"), async (req, res) => {
     const dataRows = raw.slice(headerIdx + 1).filter(r => r && String(r[dateCol] || "").trim());
 
     const parsed = dataRows.map(row => {
-      const rawDate = String(row[dateCol] || "").trim();
-      if (!rawDate) return null;
-
-      let dateISO;
-      try {
-        // Handle various date formats
-        const d = new Date(rawDate);
-        if (isNaN(d.getTime())) return null;
-        dateISO = d.toISOString().split("T")[0];
-      } catch { return null; }
-
+      const dateISO = parseExportDate(row[dateCol]);
+      if (!dateISO) return null;
       const organic = Math.abs(parseInt(organicCol >= 0 ? row[organicCol] : (newTotalCol >= 0 ? row[newTotalCol] : 0)) || 0);
       const paid    = Math.abs(parseInt(paidCol    >= 0 ? row[paidCol]    : 0) || 0);
-
       return { date: dateISO, organic, paid };
     }).filter(Boolean).sort((a, b) => a.date > b.date ? 1 : -1);
 
     if (!parsed.length) return res.status(400).json({ error: "No valid data rows found. Ensure the file has Date + follower columns." });
 
-    // Build running cumulative totals
+    // The export lists new followers per day. Turn it into running totals…
     let runOrg = 0, runPaid = 0;
     const daily = parsed.map(r => {
       runOrg  += r.organic;
@@ -756,29 +785,50 @@ router.post("/import-followers", upload.single("file"), async (req, res) => {
       return { date: r.date, runOrg, runPaid, runTotal: runOrg + runPaid };
     });
 
-    // Anchor the cumulative total to the latest known DB value for this org
-    const { data: latestDB } = await supabase
+    // …and pin them to a follower count the sync has read from LinkedIn.
+    // Sync rows carry organic = total. The anchor is the sync row closest to
+    // the end of the export, preferring one inside the exported range where
+    // the two agree on the same day; the running total on that day is set
+    // equal to it and every other day shifts by the same amount. Anchoring to
+    // the newest sync row regardless of date, as this used to do, pushed the
+    // whole export up by the followers gained since it ended.
+    const { data: syncRows } = await supabase
       .from("linkedin_follower_stats")
-      .select("total_followers, date")
+      .select("date, total_followers, organic_followers")
       .eq("org_id", orgId)
-      .order("date", { ascending: false })
-      .limit(1);
+      .order("date", { ascending: true });
+    const syncDates = new Set();
+    const anchors   = [];
+    for (const r of syncRows || []) {
+      if ((r.total_followers || 0) > 0 && r.organic_followers === r.total_followers) {
+        syncDates.add(r.date);
+        anchors.push(r);
+      }
+    }
+    const firstDay = daily[0].date;
+    const lastDay  = daily.at(-1).date;
+    const dayNum   = d => Math.round(new Date(d + "T00:00:00Z").getTime() / 864e5);
+    const anchor   = anchors
+      .map(r => ({ r, score: Math.abs(dayNum(r.date) - dayNum(lastDay)) + (r.date >= firstDay && r.date <= lastDay ? 0 : 10000) }))
+      .sort((a, b) => a.score - b.score)[0]?.r || null;
+    let offset = 0;
+    if (anchor) {
+      const at = [...daily].reverse().find(d => d.date <= anchor.date) || daily[0];
+      offset = anchor.total_followers - at.runTotal;
+    }
 
-    const knownTotal   = latestDB?.[0]?.total_followers || 0;
-    const lastRunTotal = daily.at(-1)?.runTotal || 0;
-    const offset       = knownTotal > 0 ? knownTotal - lastRunTotal : 0;
+    // Days the sync has already measured keep the measured count.
+    const upsertRows = daily
+      .filter(r => !syncDates.has(r.date))
+      .map(r => ({
+        date:              r.date,
+        org_id:            orgId,
+        org_name:          orgName || orgId,
+        organic_followers: r.runOrg,
+        paid_followers:    r.runPaid,
+        total_followers:   Math.max(0, r.runTotal + offset),
+      }));
 
-    // Build upsert rows
-    const upsertRows = daily.map(r => ({
-      date:              r.date,
-      org_id:            orgId,
-      org_name:          orgName || orgId,
-      organic_followers: r.runOrg,
-      paid_followers:    r.runPaid,
-      total_followers:   r.runTotal + offset,
-    }));
-
-    // Upsert in batches of 100 (don't overwrite existing sync rows if they're newer)
     let inserted = 0;
     for (let i = 0; i < upsertRows.length; i += 100) {
       const batch = upsertRows.slice(i, i + 100);
@@ -789,12 +839,15 @@ router.post("/import-followers", upload.single("file"), async (req, res) => {
       else console.error("import-followers upsert error:", error.message);
     }
 
+    const knownTotal = anchor?.total_followers || 0;
     res.json({
       success:   true,
       inserted,
       dateRange: { from: daily[0]?.date, to: daily.at(-1)?.date },
       offset,
       knownTotal,
+      anchorDate: anchor?.date || null,
+      keptSyncDays: daily.length - upsertRows.length,
     });
   } catch (e) {
     console.error("import-followers error:", e);
