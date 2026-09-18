@@ -432,13 +432,13 @@ export default function MrmReport() {
                 </table>
               </Section>
 
-              <Section title="4. Brand visibility – customer engagement activities" hint={`Tickets in categories ${model.engagement.categories.join(", ")}. Plan = due in ${model.meta.monthName} (${model.engagement.plan}), actual = completed (${model.engagement.actual}); YTD ${model.engagement.ytdActual}/${model.engagement.ytdPlan}.`}>
+              <Section title="4. Brand visibility – customer engagement activities" hint={`Tickets in ${model.engagement.describe}. Plan = due in ${model.meta.monthName} (${model.engagement.plan}), actual = completed (${model.engagement.actual}); YTD ${model.engagement.ytdActual}/${model.engagement.ytdPlan}. Tune the categories and keywords under Definitions.`}>
                 <table className="w-full">
-                  <thead><tr><th className={th}>Activity</th><th className={th}>Division</th><th className={th}>Due</th><th className={th}>Status</th></tr></thead>
+                  <thead><tr><th className={th}>Activity</th><th className={th}>Category</th><th className={th}>Division</th><th className={th}>Due</th><th className={th}>Status</th></tr></thead>
                   <tbody>
-                    {model.engagement.rows.length === 0 ? <tr><td colSpan={4} className={`${td} text-gray-400`}>No tickets in these categories for this month. Change the categories under Definitions if activities are logged differently.</td></tr> : null}
+                    {model.engagement.rows.length === 0 ? <tr><td colSpan={5} className={`${td} text-gray-400`}>No engagement activities found for this month. Adjust the categories and keywords under Definitions.</td></tr> : null}
                     {model.engagement.rows.map((r, i) => (
-                      <tr key={i}><td className={td}>{r.title}</td><td className={td}>{r.division || "—"}</td><td className={td}>{r.due || "—"}</td><td className={`${td} ${r.done ? "text-emerald-700 font-semibold" : "text-amber-700"}`}>{r.status}</td></tr>
+                      <tr key={i}><td className={td}>{r.title}</td><td className={`${td} text-gray-500`}>{r.category || "—"}</td><td className={td}>{r.division || "—"}</td><td className={td}>{r.due || "—"}</td><td className={`${td} ${r.done ? "text-emerald-700 font-semibold" : "text-amber-700"}`}>{r.status}</td></tr>
                     ))}
                   </tbody>
                 </table>

@@ -343,7 +343,10 @@ export function SettingsEditor({ value, onChange }) {
         {text("googleAdsAccount", "Google Ads account for the ad-spend chart")}
         {text("siteBrandingProjectMatch", "Site branding: project name contains")}
         {list("collateralCategories", "Ticket categories counted as collaterals")}
-        {list("engagementCategories", "Ticket categories counted as customer engagement activities")}
+        {list("engagementCategories", "Engagement activities: ticket categories that always count")}
+        {list("engagementKeywords", "Engagement activities: words in a ticket title that count", "Whole words, any case: association names, AGM, seminar, partner.")}
+        {list("engagementExcludeCategories", "Engagement activities: categories never counted", "Exhibition and collateral work is reported on its own slides. Tickets inside an exhibition project are never counted either.")}
+        {list("engagementExcludeKeywords", "Engagement activities: words in a title that rule a ticket out", "Production and admin tasks: payment, invoice, brochure, banner…")}
         {list("openQuoteStatuses", "Quote statuses that count as pipeline", "As spelled in Salesforce.")}
         {list("exportStages", "Export slide: opportunity stages shown")}
       </div>

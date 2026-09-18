@@ -810,6 +810,7 @@ const buildMrm = async (month, viewerName) => {
   const ctx = {
     salesforce, salesforceConfigured, supabase, pageAll, chunk, safely, istMonth,
     inputs, month, fyStart, fyMonths, elapsed, monthStartUtc, addMonths, monthEndDay,
+    exhibitionProjectIds: (exhibitions.rows || []).map((r) => r.projectId).filter(Boolean),
   };
   const funnel = await buildFunnel(ctx);
   const abm = await buildAbm(ctx);

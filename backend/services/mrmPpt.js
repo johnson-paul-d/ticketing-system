@@ -411,7 +411,7 @@ const renderMrm = async (model) => {
       x: M, y: TOP + 1.35, w: half,
       head: ['Activity', 'Division', 'Due', 'Status'],
       colW: [half * 0.52, half * 0.14, half * 0.17, half * 0.17],
-      rows: enRows.length ? enRows : [[`No tickets in categories ${en.categories.join(', ')} for this month`, '', '', '']],
+      rows: enRows.length ? enRows : [['No engagement activities found for this month', '', '', '']],
       fontSize: 8.5, rowH: 0.28,
     });
     // Right: SEO
@@ -431,7 +431,7 @@ const renderMrm = async (model) => {
       rows: seoRows.length ? seoRows : [['No keywords entered yet – add them under "SEO keywords" on the MRM page', '', '', '', '']],
       fontSize: 8.5, rowH: 0.28,
     });
-    footnote(s, `Engagement: portal tickets in categories ${en.categories.join(', ')}; plan = due in the month, actual = completed in the month. SEO ranks are entered monthly.${seo.notes ? ` ${seo.notes}` : ''}`);
+    footnote(s, `Engagement: portal tickets in ${en.describe}; plan = due in the month, actual = completed in the month. SEO ranks are entered monthly.${seo.notes ? ` ${seo.notes}` : ''}`);
   }
 
   // =====================================================

@@ -33,8 +33,19 @@ module.exports = {
     ],
     // A quote in these statuses is pipeline.
     openQuoteStatuses: ['In Review', 'Presented', 'Negotiation'],
-    // Ticket categories that count as customer engagement activities.
-    engagementCategories: ['Customer Engagement', 'Customer Follow up', 'Email Campaign', 'Campaign'],
+    // Customer engagement activities. The team has no category for them:
+    // campaigns and follow-ups carry a category, while association work
+    // (RAI, CREDAI, IGCC, IHCC...) is only recognisable by the ticket title.
+    // A ticket counts when its category is listed here OR its title contains
+    // one of the keywords, unless its category is in the exclusion list
+    // (exhibition and collateral work is reported on other slides).
+    engagementCategories: ['Email Campaign', 'Campaign', 'Customer Follow up', 'Customer Engagement'],
+    engagementKeywords: ['CREDAI', 'RAI', 'ARCHON', 'IDAC', 'Medicall', 'CHAI', 'IGCC', 'IHCC', 'AGM', 'seminar', 'webinar', 'conference', 'VC', 'partner', 'MoU', 'ABM'],
+    engagementExcludeCategories: ['Exhibition', 'Social Media', 'Video', 'Animation', 'ANIMATION VIDEO', 'Collateral', 'Branding', 'Salesforce', 'Reports', 'Reports / MIS', 'Website'],
+    // Tickets that belong to a project ticked as an exhibition are never
+    // engagement activities, nor are production and admin tasks whose title
+    // contains one of these words.
+    engagementExcludeKeywords: ['payment', 'invoice', 'creative', 'brochure', 'flyer', 'banner', 'merchandise', 'giveaway', 'stall', 'PPT', 'design', 'poster', 'video', 'packing'],
     division: 'Sieger Parking',
     // "Leads" on the MQL slide means inbound marketing leads only.
     leadSources: ['Google AdWords', 'Website'],

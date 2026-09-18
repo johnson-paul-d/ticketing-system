@@ -317,28 +317,51 @@ const buildAbm = async (ctx) => {
   };
 };
 
-// Customer engagement activities: tickets in the engagement categories, plan
-// (due in the month) against actual (completed in the month).
+// Customer engagement activities: plan (due in the month) against actual
+// (completed in the month). A ticket is an engagement activity when its
+// category is one of settings.engagementCategories, or its title contains one
+// of settings.engagementKeywords (whole words, any case), unless its category
+// is excluded (exhibition and collateral work belong to other slides).
+const escapeRe = (k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const buildEngagement = async (ctx) => {
-  const { supabase, pageAll, safely, inputs, month, fyStart, monthEndDay } = ctx;
+  const { supabase, pageAll, safely, inputs, month, fyStart, monthEndDay, exhibitionProjectIds = [] } = ctx;
   const S = inputs.settings;
-  const cats = S.engagementCategories?.length ? S.engagementCategories : ['Customer Engagement'];
+  const cats = new Set((S.engagementCategories || []).map((c) => String(c).toLowerCase()));
+  const exhibitionProjects = new Set(exhibitionProjectIds);
+  const stopWords = (S.engagementExcludeKeywords || []).map((k) => String(k).trim()).filter(Boolean);
+  // Stop words match as prefixes too (invoice → invoices, design → designs).
+  const stop = stopWords.length ? new RegExp(`(^|[^a-z0-9])(${stopWords.map(escapeRe).join('|')})`, 'i') : null;
+  const excluded = new Set((S.engagementExcludeCategories || []).map((c) => String(c).toLowerCase()));
+  const words = (S.engagementKeywords || []).map((k) => String(k).trim()).filter(Boolean);
+  const kw = words.length ? new RegExp(`(^|[^a-z0-9])(${words.map(escapeRe).join('|')})(?=$|[^a-z0-9])`, 'i') : null;
+  const describe = `categories ${(S.engagementCategories || []).join(', ') || 'none'}; titles mentioning ${words.join(', ') || 'none'}`;
   return safely(
     'Engagement activities',
     async () => {
+      const since = `${fyStart}-01`;
       const rows = await pageAll(
         () =>
           supabase
             .from('tickets')
-            .select('id, title, status, category, division, due_date, completed_date, assigned_to_name')
-            .in('category', cats)
-            .eq('deleted', false),
+            .select('id, title, status, category, division, due_date, completed_date, assigned_to_name, project_id')
+            .eq('deleted', false)
+            .or(`due_date.gte.${since},completed_date.gte.${since}`),
         'id'
       );
+      const isEngagement = (t) => {
+        const cat = String(t.category || '').toLowerCase();
+        if (excluded.has(cat)) return false;
+        if (t.project_id && exhibitionProjects.has(t.project_id)) return false;
+        if (stop && stop.test(String(t.title || ''))) return false;
+        if (cats.has(cat)) return true;
+        return Boolean(kw && kw.test(String(t.title || '')));
+      };
+      const mine = rows.filter(isEngagement);
       const done = (t) => /^(completed|closed)$/i.test(String(t.status || ''));
       const inMonth = (d) => d && String(d).slice(0, 7) === month;
       const shape = (t) => ({
         title: t.title,
+        category: t.category || '',
         division: t.division || '',
         assignee: t.assigned_to_name || '',
         due: t.due_date || null,
@@ -346,16 +369,16 @@ const buildEngagement = async (ctx) => {
         status: done(t) ? 'Completed' : /progress/i.test(t.status || '') ? 'In progress' : 'Planned',
         done: done(t),
       });
-      const planned = rows.filter((t) => inMonth(t.due_date)).map(shape);
-      const actual = rows.filter((t) => done(t) && inMonth(t.completed_date)).map(shape);
-      const ytdDone = rows.filter((t) => done(t) && t.completed_date && t.completed_date >= `${fyStart}-01` && t.completed_date <= monthEndDay).length;
-      const ytdPlanned = rows.filter((t) => t.due_date && t.due_date >= `${fyStart}-01` && t.due_date <= monthEndDay).length;
+      const planned = mine.filter((t) => inMonth(t.due_date)).map(shape);
+      const actual = mine.filter((t) => done(t) && inMonth(t.completed_date)).map(shape);
+      const ytdDone = mine.filter((t) => done(t) && t.completed_date && t.completed_date >= since && t.completed_date <= monthEndDay).length;
+      const ytdPlanned = mine.filter((t) => t.due_date && t.due_date >= since && t.due_date <= monthEndDay).length;
       const list = [...new Map([...planned, ...actual].map((r) => [r.title + r.due, r])).values()].sort((a, b) =>
         Number(b.done) - Number(a.done) || String(a.due || '9999').localeCompare(String(b.due || '9999'))
       );
-      return { categories: cats, plan: planned.length, actual: actual.length, ytdPlan: ytdPlanned, ytdActual: ytdDone, rows: list };
+      return { categories: S.engagementCategories || [], keywords: words, describe, plan: planned.length, actual: actual.length, ytdPlan: ytdPlanned, ytdActual: ytdDone, rows: list };
     },
-    { categories: cats, plan: 0, actual: 0, ytdPlan: 0, ytdActual: 0, rows: [] }
+    { categories: S.engagementCategories || [], keywords: words, describe, plan: 0, actual: 0, ytdPlan: 0, ytdActual: 0, rows: [] }
   );
 };
 
