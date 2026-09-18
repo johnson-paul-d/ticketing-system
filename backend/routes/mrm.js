@@ -5,7 +5,7 @@ const auth = require('../middleware/auth');
 const requireAccess = require('../middleware/requireAccess');
 const { isAdmin, isServiceTeam } = require('../utils/roles');
 const { rateLimit } = require('../utils/rateLimit');
-const { buildMrm, loadInputs, saveInput, resetInput, DEFAULT_KEYS } = require('../services/mrmData');
+const { buildMrm, loadInputs, saveInput, resetInput, lockMonth, DEFAULT_KEYS } = require('../services/mrmData');
 const { renderMrm } = require('../services/mrmPpt');
 const DEFAULTS = require('../services/mrmDefaults');
 const { todayIST } = require('../utils/time');
@@ -96,6 +96,18 @@ router.put('/inputs/:key', async (req, res) => {
     res.json({ message: 'Saved', key: req.params.key });
   } catch (err) {
     fail(res, err, 'Failed to save');
+  }
+});
+
+// Freeze the review month's figures into history. Idempotent: pressing it
+// again after a late Salesforce change simply overwrites with today's values.
+router.post('/lock', async (req, res) => {
+  try {
+    const month = String(req.body?.month || monthOf(req));
+    const result = await lockMonth(month, req.user.name);
+    res.json({ message: `Locked ${month}`, ...result });
+  } catch (err) {
+    fail(res, err, 'Failed to lock the month');
   }
 });
 

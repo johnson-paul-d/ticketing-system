@@ -154,11 +154,26 @@ const buildMrm = async (month, viewerName) => {
   const rangeEndUtc = monthStartUtc(addMonths(month, 1));
   const [fyYear] = parseYm(fyStart);
 
+  // Failures are reported in words a manager can act on, not stack-trace
+  // vocabulary. The raw message is kept in the server log.
+  const explain = (err) => {
+    const m = String(err?.message || err);
+    if (/ByteString|Invalid character in header/i.test(m)) {
+      return 'the Salesforce token in the server settings contains an invalid character. Re-enter SALESFORCE_DB_JWT on the server.';
+    }
+    if (/fetch failed|ECONNREFUSED|timeout/i.test(m)) {
+      return 'the Salesforce mirror did not answer. Check that the postgrest-sf service is running on the server.';
+    }
+    if (/permission denied/i.test(m)) return 'the Salesforce read-only role is missing a permission on a table.';
+    if (/JWT|jwt/.test(m)) return 'the Salesforce token was rejected. Mint it again with the current secret.';
+    return m;
+  };
   const safely = async (label, fn, fallback) => {
     try {
       return await fn();
     } catch (err) {
-      warnings.push(`${label}: ${err.message}`);
+      console.error(`MRM ${label}:`, err?.message || err);
+      warnings.push(`${label}: ${explain(err)}`);
       return fallback;
     }
   };
@@ -673,4 +688,40 @@ const buildMrm = async (month, viewerName) => {
   };
 };
 
-module.exports = { buildMrm, loadInputs, saveInput, resetInput, DEFAULT_KEYS: Object.keys(DEFAULTS) };
+// Freezes a month: copies the figures as they stand today into the history
+// input, so the deck keeps showing them after Salesforce moves on. Meant to
+// be pressed right after the review. Metrics with no live value are left
+// alone rather than written as blanks.
+const LOCKABLE = ['leads', 'convertedLeads', 'pipelineMn', 'adSpendLakh', 'linkedinFollowersGained'];
+
+const lockMonth = async (month, userName) => {
+  const model = await buildMrm(month, userName);
+  const { inputs } = await loadInputs();
+  const history = JSON.parse(JSON.stringify(inputs.history || {}));
+  const written = {};
+  const seriesOf = {
+    leads: model.mql.leads,
+    convertedLeads: model.mql.convertedLeads,
+    pipelineMn: model.mql.pipelineMn,
+    adSpendLakh: model.mql.adSpendLakh,
+    linkedinFollowersGained: model.linkedin.series,
+  };
+  for (const metric of LOCKABLE) {
+    const s = seriesOf[metric];
+    const idx = Object.keys(s.sources).indexOf(month);
+    const value = idx >= 0 ? s.current.values[idx] : null;
+    if (value == null) continue;
+    history[metric] = history[metric] || {};
+    history[metric][month] = value;
+    written[metric] = value;
+  }
+  if (!Object.keys(written).length) {
+    const err = new Error('Nothing to lock: no figures could be computed for that month.');
+    err.status = 400;
+    throw err;
+  }
+  await saveInput('history', history, userName);
+  return { month, written };
+};
+
+module.exports = { buildMrm, loadInputs, saveInput, resetInput, lockMonth, DEFAULT_KEYS: Object.keys(DEFAULTS) };

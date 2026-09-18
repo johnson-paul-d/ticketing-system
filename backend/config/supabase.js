@@ -24,13 +24,18 @@ const { createClient } = require('@supabase/supabase-js');
 // db-max-rows is set. Every listing in this app pages explicitly, so either
 // behaviour is fine.
 
-const SELF_HOSTED = Boolean(process.env.POSTGREST_URL);
+// Tokens and URLs are printable ASCII; an invisible character that slipped in
+// while pasting into .env would make fetch reject the header with an opaque
+// "ByteString" error, so anything outside that range is dropped.
+const clean = (v) => String(v || '').replace(/[^\x21-\x7e]/g, '');
+
+const SELF_HOSTED = Boolean(clean(process.env.POSTGREST_URL));
 
 let supabase;
 
 if (SELF_HOSTED) {
-  const base = process.env.POSTGREST_URL.replace(/\/+$/, '');
-  const key = process.env.POSTGREST_JWT;
+  const base = clean(process.env.POSTGREST_URL).replace(/\/+$/, '');
+  const key = clean(process.env.POSTGREST_JWT);
   if (!key) {
     console.error('FATAL: POSTGREST_URL is set but POSTGREST_JWT is not. Refusing to start.');
     process.exit(1);

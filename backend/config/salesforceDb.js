@@ -16,8 +16,15 @@ const { createClient } = require('@supabase/supabase-js');
 // Optional: without these the rest of the portal is unaffected and the reports
 // that depend on it say so. Same /rest/v1 prefix handling as config/supabase.js.
 
-const url = (process.env.SALESFORCE_DB_URL || '').replace(/\/+$/, '');
-const key = process.env.SALESFORCE_DB_JWT;
+// A token pasted into .env can arrive with an invisible character (a soft
+// hyphen, a zero-width space, a stray byte from the editor's encoding). fetch
+// then refuses the Authorization header outright with an opaque "ByteString"
+// error. A JWT is plain printable ASCII by definition, so anything else is
+// noise and is dropped here.
+const clean = (v) => String(v || '').replace(/[^\x21-\x7e]/g, '');
+
+const url = clean(process.env.SALESFORCE_DB_URL).replace(/\/+$/, '');
+const key = clean(process.env.SALESFORCE_DB_JWT);
 
 let salesforce = null;
 

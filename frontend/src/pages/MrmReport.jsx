@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
-import { FileDown, Loader2, AlertCircle, RefreshCw, Save, RotateCcw, Presentation, Database } from "lucide-react";
+import { FileDown, Loader2, AlertCircle, RefreshCw, Save, RotateCcw, Presentation, Database, Lock, Code2 } from "lucide-react";
+import {
+  ExhibitionsEditor, InaugurationsEditor, CollateralsEditor, AgentsEditor, ExportEditor,
+  LinkedinEditor, AbpEditor, HistoryEditor, TargetsEditor, SettingsEditor,
+} from "../components/mrm/InputEditors";
 
 // =====================================================
 // MRM REPORT
@@ -9,8 +13,8 @@ import { FileDown, Loader2, AlertCircle, RefreshCw, Save, RotateCcw, Presentatio
 // The monthly Management Review Meeting deck, built by the server from
 // Salesforce, Google Ads, LinkedIn and the portal's own projects and expenses.
 // This page shows the figures behind each slide so they can be checked before
-// the deck is downloaded, and edits the inputs the server cannot compute:
-// targets, wording, the hand-kept trackers, and figures already presented.
+// the deck is downloaded, and edits what the server cannot compute: targets,
+// wording, the hand-kept trackers, and figures already presented.
 
 const pad = (n) => String(n).padStart(2, "0");
 const lastMonth = () => {
@@ -19,19 +23,26 @@ const lastMonth = () => {
   d.setMonth(d.getMonth() - 1);
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
 };
-
-const INPUT_LABELS = {
-  settings: "Definitions (division, lead sources, accounts)",
-  targets: "Monthly targets per fiscal year",
-  history: "Figures already presented (locked months)",
-  abp: "ABP targets slide wording",
-  exhibitions: "Exhibitions (dates, status, spend, remarks)",
-  linkedin: "LinkedIn slide wording",
-  inaugurations: "Project inauguration plan",
-  collaterals: "Collaterals and videos",
-  agents: "Agents",
-  exportOpportunities: "Export opportunities (fill-ins)",
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const monthName = (ym) => MONTH_NAMES[Number(ym.split("-")[1]) - 1] || ym;
+const fyYearOf = (ym) => {
+  const [y, m] = ym.split("-").map(Number);
+  return m >= 4 ? y : y - 1;
 };
+
+// The editable inputs, in the order a person would look for them.
+const INPUTS = [
+  { key: "exhibitions", label: "Exhibitions", hint: "Slide 5: the events, their dates, status, spend and remarks." },
+  { key: "abp", label: "ABP targets wording", hint: "Slide 2: the text in each cell." },
+  { key: "inaugurations", label: "Inaugurations", hint: "Slide 8." },
+  { key: "collaterals", label: "Collaterals & videos", hint: "Slide 9." },
+  { key: "agents", label: "Agents", hint: "Slide 11." },
+  { key: "linkedin", label: "LinkedIn wording", hint: "Slide 7: done this month, next month plan." },
+  { key: "exportOpportunities", label: "Export opportunities", hint: "Slide 10: country, product and car spaces that Salesforce lacks." },
+  { key: "targets", label: "Targets", hint: "Monthly targets shown on the charts and the ABP slide." },
+  { key: "history", label: "Presented figures", hint: "Past months, shown exactly as presented." },
+  { key: "settings", label: "Definitions", hint: "Division, lead sources, accounts. Rarely changed." },
+];
 
 const card = "bg-white rounded-2xl border border-gray-200 shadow-sm";
 const th = "px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 bg-gray-50";
@@ -66,12 +77,16 @@ export default function MrmReport() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [downloading, setDownloading] = useState(false);
+  const [locking, setLocking] = useState(false);
 
   const [inputs, setInputs] = useState(null);
   const [inputsMeta, setInputsMeta] = useState(null);
   const [activeKey, setActiveKey] = useState("exhibitions");
-  const [draft, setDraft] = useState("");
-  const [draftError, setDraftError] = useState("");
+  const [draft, setDraft] = useState(null);
+  const [dirty, setDirty] = useState(false);
+  const [showJson, setShowJson] = useState(false);
+  const [jsonText, setJsonText] = useState("");
+  const [saveError, setSaveError] = useState("");
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
 
@@ -95,18 +110,36 @@ export default function MrmReport() {
       setInputs(res.data.inputs);
       setInputsMeta(res.data.meta);
     } catch {
-      // The figures above already report what is wrong; the editor just stays empty.
+      // The figures above already say what is wrong; the editor stays empty.
     }
   }, []);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadInputs(); }, [loadInputs]);
+
+  // A fresh copy of the stored value whenever the key changes or a save lands.
   useEffect(() => {
     if (inputs && activeKey in inputs) {
-      setDraft(JSON.stringify(inputs[activeKey], null, 2));
-      setDraftError("");
+      const v = JSON.parse(JSON.stringify(inputs[activeKey]));
+      setDraft(v);
+      setJsonText(JSON.stringify(v, null, 2));
+      setDirty(false);
+      setSaveError("");
     }
   }, [inputs, activeKey]);
+
+  const changeDraft = (v) => {
+    setDraft(v);
+    setJsonText(JSON.stringify(v, null, 2));
+    setDirty(true);
+  };
+
+  const pickKey = (k) => {
+    if (dirty && !window.confirm("You have unsaved changes here. Discard them?")) return;
+    setActiveKey(k);
+    setNotice("");
+    setShowJson(false);
+  };
 
   const download = async () => {
     setDownloading(true);
@@ -130,71 +163,113 @@ export default function MrmReport() {
     }
   };
 
-  const saveDraft = async () => {
-    let value;
+  const lock = async () => {
+    const ok = window.confirm(
+      `Lock the ${monthName(month)} figures?\n\nToday's leads, conversions, pipeline, ad spend and followers for ${monthName(month)} are saved as the presented figures, so the deck keeps showing them even after Salesforce changes. You can edit them later under "Presented figures".`
+    );
+    if (!ok) return;
+    setLocking(true);
+    setError("");
+    setNotice("");
     try {
-      value = JSON.parse(draft);
-    } catch (e) {
-      setDraftError(`Not valid JSON: ${e.message}`);
-      return;
+      const res = await api.post("/reports/mrm/lock", { month });
+      const w = res.data.written || {};
+      setNotice(`Locked ${monthName(month)}: ${Object.entries(w).map(([k, v]) => `${k} ${v}`).join(", ")}`);
+      await Promise.all([loadInputs(), load()]);
+    } catch (err) {
+      setError(err.response?.data?.message || "Could not lock the month");
+    } finally {
+      setLocking(false);
+    }
+  };
+
+  const save = async () => {
+    let value = draft;
+    if (showJson) {
+      try {
+        value = JSON.parse(jsonText);
+      } catch (e) {
+        setSaveError(`Not valid JSON: ${e.message}`);
+        return;
+      }
     }
     setSaving(true);
-    setDraftError("");
+    setSaveError("");
     setNotice("");
     try {
       await api.put(`/reports/mrm/inputs/${activeKey}`, { value });
-      setNotice(`Saved "${INPUT_LABELS[activeKey] || activeKey}"`);
+      setNotice(`Saved ${INPUTS.find((i) => i.key === activeKey)?.label || activeKey}. The figures above have been refreshed.`);
+      setDirty(false);
       await Promise.all([loadInputs(), load()]);
     } catch (err) {
-      setDraftError(err.response?.data?.message || "Could not save");
+      setSaveError(err.response?.data?.message || "Could not save");
     } finally {
       setSaving(false);
     }
   };
 
   const resetKey = async () => {
-    if (!window.confirm(`Reset "${INPUT_LABELS[activeKey] || activeKey}" to the built-in default? Your saved version is discarded.`)) return;
+    if (!window.confirm(`Reset "${INPUTS.find((i) => i.key === activeKey)?.label}" to the built-in default? Your saved version is discarded.`)) return;
     setSaving(true);
-    setDraftError("");
+    setSaveError("");
     setNotice("");
     try {
       await api.delete(`/reports/mrm/inputs/${activeKey}`);
       setNotice("Reset to the built-in default");
       await Promise.all([loadInputs(), load()]);
     } catch (err) {
-      setDraftError(err.response?.data?.message || "Could not reset");
+      setSaveError(err.response?.data?.message || "Could not reset");
     } finally {
       setSaving(false);
     }
   };
 
   const storedKeys = useMemo(() => new Set((inputsMeta?.stored || []).map((s) => s.key)), [inputsMeta]);
+  const fyYear = fyYearOf(month);
 
-  // The elapsed fiscal months, for the MQL table.
   const mqlRows = useMemo(() => {
     if (!model) return [];
-    const cats = model.mql.leads.categories;
-    return cats
+    const yms = Object.keys(model.mql.leads.sources);
+    return model.mql.leads.categories
       .map((label, i) => ({
         label,
+        ym: yms[i],
         leads: model.mql.leads.current.values[i],
         converted: model.mql.convertedLeads.current.values[i],
         convertedTarget: model.mql.convertedLeads.target?.values[i],
         pipeline: model.mql.pipelineMn.current.values[i],
         adSpend: model.mql.adSpendLakh.current.values[i],
         followers: model.linkedin.series.current.values[i],
-        ym: Object.keys(model.mql.leads.sources)[i],
       }))
       .filter((r) => r.ym);
   }, [model]);
 
-  const srcBadge = (metric, ym) => {
-    const src = model?.[metric === "linkedinFollowersGained" ? "linkedin" : "mql"];
-    const s = metric === "linkedinFollowersGained" ? src?.series?.sources?.[ym] : src?.[metric]?.sources?.[ym];
+  const srcBadge = (series, ym) => {
+    const s = series?.sources?.[ym];
     if (s === "presented") return <span title="Shown as presented to management" className="ml-1 text-[10px] text-gray-400">●</span>;
     if (s === "live") return <span title="Read live" className="ml-1 text-[10px] text-emerald-500">●</span>;
     return null;
   };
+
+  const editor = () => {
+    if (!draft && draft !== 0) return null;
+    const p = { value: draft, onChange: changeDraft, fyYear };
+    switch (activeKey) {
+      case "exhibitions": return <ExhibitionsEditor {...p} />;
+      case "abp": return <AbpEditor {...p} />;
+      case "inaugurations": return <InaugurationsEditor {...p} />;
+      case "collaterals": return <CollateralsEditor {...p} />;
+      case "agents": return <AgentsEditor {...p} />;
+      case "linkedin": return <LinkedinEditor {...p} />;
+      case "exportOpportunities": return <ExportEditor {...p} />;
+      case "targets": return <TargetsEditor {...p} />;
+      case "history": return <HistoryEditor {...p} />;
+      case "settings": return <SettingsEditor {...p} />;
+      default: return null;
+    }
+  };
+
+  const active = INPUTS.find((i) => i.key === activeKey);
 
   return (
     <MainLayout>
@@ -217,20 +292,14 @@ export default function MrmReport() {
               className="block mt-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white outline-none focus:ring-2 focus:ring-[#9b2423]/40"
             />
           </label>
-          <button
-            onClick={load}
-            disabled={loading}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-          >
+          <button onClick={load} disabled={loading} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60">
             <RefreshCw size={15} className={loading ? "animate-spin" : ""} /> Refresh
           </button>
-          <button
-            onClick={download}
-            disabled={downloading || loading || !model}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#9b2423] hover:bg-[#7f1d1c] text-white text-sm font-semibold disabled:opacity-60"
-          >
-            {downloading ? <Loader2 size={16} className="animate-spin" /> : <FileDown size={16} />}
-            Download deck (.pptx)
+          <button onClick={lock} disabled={locking || loading || !model} title="Save this month's computed figures as the presented figures" className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60">
+            {locking ? <Loader2 size={15} className="animate-spin" /> : <Lock size={15} />} Lock {monthName(month).slice(0, 3)} figures
+          </button>
+          <button onClick={download} disabled={downloading || loading || !model} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#9b2423] hover:bg-[#7f1d1c] text-white text-sm font-semibold disabled:opacity-60">
+            {downloading ? <Loader2 size={16} className="animate-spin" /> : <FileDown size={16} />} Download deck (.pptx)
           </button>
         </div>
 
@@ -239,9 +308,11 @@ export default function MrmReport() {
             <AlertCircle size={16} className="mt-0.5 flex-shrink-0" /> {error}
           </div>
         ) : null}
+        {notice ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{notice}</div> : null}
 
         {model?.warnings?.length ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 space-y-1">
+            <div className="font-semibold">Some figures could not be read. The deck still builds; the affected slides show what is available.</div>
             {model.warnings.map((w, i) => (
               <div key={i} className="flex items-start gap-2"><AlertCircle size={15} className="mt-0.5 flex-shrink-0" /> {w}</div>
             ))}
@@ -283,13 +354,13 @@ export default function MrmReport() {
                   {mqlRows.map((r) => (
                     <tr key={r.ym}>
                       <td className={td}>{r.label}</td>
-                      <td className={num}>{r.leads ?? "—"}{srcBadge("leads", r.ym)}</td>
+                      <td className={num}>{r.leads ?? "—"}{srcBadge(model.mql.leads, r.ym)}</td>
                       <td className={`${num} text-gray-400`}>{model.mql.leads.liveRecount[r.ym] ?? "—"}</td>
-                      <td className={num}>{r.converted ?? "—"}{srcBadge("convertedLeads", r.ym)}</td>
+                      <td className={num}>{r.converted ?? "—"}{srcBadge(model.mql.convertedLeads, r.ym)}</td>
                       <td className={`${num} text-gray-400`}>{r.convertedTarget ?? "—"}</td>
-                      <td className={num}>{r.pipeline ?? "—"}{srcBadge("pipelineMn", r.ym)}</td>
-                      <td className={num}>{r.adSpend ?? "—"}{srcBadge("adSpendLakh", r.ym)}</td>
-                      <td className={num}>{r.followers ?? "—"}{srcBadge("linkedinFollowersGained", r.ym)}</td>
+                      <td className={num}>{r.pipeline ?? "—"}{srcBadge(model.mql.pipelineMn, r.ym)}</td>
+                      <td className={num}>{r.adSpend ?? "—"}{srcBadge(model.mql.adSpendLakh, r.ym)}</td>
+                      <td className={num}>{r.followers ?? "—"}{srcBadge(model.linkedin.series, r.ym)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -350,46 +421,43 @@ export default function MrmReport() {
         ) : null}
 
         <section className={`${card} overflow-hidden`}>
-          <header className="px-4 py-3 border-b border-gray-100">
-            <h2 className="text-sm font-bold text-gray-900">Inputs</h2>
-            <p className="text-xs text-gray-500 mt-0.5">
-              What the deck cannot compute: targets, wording, the hand-kept trackers, and figures already presented. Edit, save, and the figures above refresh.
-            </p>
+          <header className="px-4 py-3 border-b border-gray-100 flex flex-wrap items-center gap-3">
+            <div className="mr-auto">
+              <h2 className="text-sm font-bold text-gray-900">Deck content you maintain</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Everything the deck cannot compute. Edit, save, and the figures above refresh.</p>
+            </div>
+            <button type="button" onClick={() => setShowJson((v) => !v)} className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border ${showJson ? "border-[#9b2423] text-[#9b2423] bg-[#9b2423]/5" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`} title="For copying or pasting the raw data">
+              <Code2 size={13} /> {showJson ? "Back to form" : "Advanced"}
+            </button>
           </header>
-          <div className="grid md:grid-cols-[260px_1fr]">
+          <div className="grid md:grid-cols-[240px_1fr]">
             <nav className="border-b md:border-b-0 md:border-r border-gray-100 p-2 space-y-0.5">
-              {Object.keys(INPUT_LABELS).map((k) => (
-                <button
-                  key={k}
-                  onClick={() => { setActiveKey(k); setNotice(""); }}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm ${activeKey === k ? "bg-[#9b2423]/10 text-[#9b2423] font-semibold" : "text-gray-700 hover:bg-gray-50"}`}
-                >
-                  {INPUT_LABELS[k]}
-                  {storedKeys.has(k) ? <span className="ml-1.5 text-[10px] text-emerald-600 font-semibold">edited</span> : null}
+              {INPUTS.map((i) => (
+                <button key={i.key} onClick={() => pickKey(i.key)} className={`w-full text-left px-3 py-2 rounded-lg text-sm ${activeKey === i.key ? "bg-[#9b2423]/10 text-[#9b2423] font-semibold" : "text-gray-700 hover:bg-gray-50"}`}>
+                  {i.label}
+                  {storedKeys.has(i.key) ? <span className="ml-1.5 text-[10px] text-emerald-600 font-semibold">edited</span> : null}
                 </button>
               ))}
             </nav>
-            <div className="p-4 space-y-3">
+            <div className="p-4 space-y-3 min-w-0">
+              {active ? <p className="text-xs text-gray-500">{active.hint}</p> : null}
               {inputsMeta?.migrationNeeded ? (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                  Saving is not available yet: run <code>backend/database/mrm-migration.sql</code> on the server. Until then the built-in defaults are used.
+                  Saving is not available yet: run <code>backend/database/mrm-migration.sql</code> on the server. Until then the built-in content is used.
                 </div>
               ) : null}
-              <textarea
-                value={draft}
-                onChange={(e) => { setDraft(e.target.value); setDraftError(""); }}
-                spellCheck={false}
-                className="w-full h-[420px] font-mono text-xs leading-5 border border-gray-200 rounded-xl p-3 bg-gray-50 outline-none focus:ring-2 focus:ring-[#9b2423]/40"
-              />
-              {draftError ? <div className="text-sm text-red-600">{draftError}</div> : null}
-              {notice ? <div className="text-sm text-emerald-700">{notice}</div> : null}
-              <div className="flex flex-wrap gap-2">
-                <button onClick={saveDraft} disabled={saving} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#9b2423] hover:bg-[#7f1d1c] text-white text-sm font-semibold disabled:opacity-60">
-                  {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Save
+              {showJson ? (
+                <textarea value={jsonText} onChange={(e) => { setJsonText(e.target.value); setDirty(true); }} spellCheck={false} className="w-full h-[420px] font-mono text-xs leading-5 border border-gray-200 rounded-xl p-3 bg-gray-50 outline-none focus:ring-2 focus:ring-[#9b2423]/40" />
+              ) : editor()}
+              {saveError ? <div className="text-sm text-red-600">{saveError}</div> : null}
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button onClick={save} disabled={saving || !dirty} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#9b2423] hover:bg-[#7f1d1c] text-white text-sm font-semibold disabled:opacity-60">
+                  {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Save changes
                 </button>
                 <button onClick={resetKey} disabled={saving || !storedKeys.has(activeKey)} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
                   <RotateCcw size={15} /> Reset to default
                 </button>
+                {dirty ? <span className="text-xs text-amber-700">Unsaved changes</span> : null}
               </div>
             </div>
           </div>
