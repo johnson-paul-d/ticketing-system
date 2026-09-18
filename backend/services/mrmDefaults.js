@@ -21,7 +21,13 @@ module.exports = {
     // A lead captured at a stand is often keyed in over the following days.
     exhibitionLeadWindowDays: 10,
     googleAdsAccount: 'Sieger Parking',
-    linkedinOrg: 'Sieger Parking',
+    // The company pages on the LinkedIn slide, as named in the LinkedIn sync.
+    linkedinOrgs: [
+      { org: 'Sieger Parking', label: 'Sieger Parking' },
+      { org: 'Sieger', label: 'Sieger Global' },
+    ],
+    // Ticket categories offered on the collaterals slide.
+    collateralCategories: ['Video', 'Animation', 'ANIMATION VIDEO', 'Collateral'],
     siteBrandingProjectMatch: 'Site Branding',
     // Export slide: open opportunities in a foreign currency, in these stages.
     exportStages: ['Design', 'Costing', 'Proposal'],
@@ -36,7 +42,11 @@ module.exports = {
       convertedLeads: { '2026-04': 42, '2026-05': 42, '2026-06': 42, default: 50 },
       pipelineMn: { default: 420 },
       adSpendLakh: { default: 1 },
-      linkedinFollowers: { default: 765 },
+      // Per LinkedIn page. Sieger Global had no target in the deck yet.
+      linkedinFollowers: {
+        'Sieger Parking': { default: 765 },
+        Sieger: { default: null },
+      },
     },
   },
 
@@ -67,7 +77,7 @@ module.exports = {
       '2026-04': 0.92, '2026-05': 0.96, '2026-06': 1.23, '2026-07': 1.28, '2026-08': 1.12,
     },
     linkedinFollowersGained: {
-      '2026-04': 141, '2026-05': 122, '2026-06': 206, '2026-07': 234, '2026-08': 297,
+      'Sieger Parking': { '2026-04': 141, '2026-05': 122, '2026-06': 206, '2026-07': 234, '2026-08': 297 },
     },
   },
 
@@ -129,17 +139,27 @@ module.exports = {
   // created date falls inside (plus the window above) are counted for it.
   // claimMatch ties the row to expense claims by title. spendLakh, when set,
   // overrides the computed spend (use for an estimate before bills arrive).
-  exhibitions: [
-    { name: 'Medical Hyd 2026', from: '2026-05-07', to: '2026-05-09', status: 'Done', budgetLakh: 2.5, spendLakh: 2.3, claimMatch: ['Medicall Hyd', 'Medical Hyd'], remarks: 'Budget – 2.5 lakh' },
-    { name: 'Medicall Chennai – July 24 to 26 – 2026', from: '2026-07-24', to: '2026-07-26', status: 'Done', budgetLakh: 4, spendLakh: 3.41, claimMatch: ['Medicall Expo Chennai', 'Medicall Chennai'], remarks: 'Budget – 4 lakh' },
-    { name: 'RAI Chennai – Aug 2026', from: '2026-08-27', to: '2026-08-28', status: 'Done', budgetLakh: 5, spendLakh: 4.7, claimMatch: ['RAI Chennai'], remarks: 'Budget – 5 lakh' },
-    { name: 'CHAI AGM – Aug 2026', from: '2026-08-28', to: '2026-08-29', status: 'Done', budgetLakh: 1, spendLakh: 0.6, claimMatch: ['CHAI AGM'], remarks: 'Budget – 1 lakh', countLeads: false },
-    { name: 'Hospex Healthcare Expo', from: '2026-09-24', to: '2026-09-26', status: '20%', spendLakh: 3, claimMatch: ['Hospex'], remarks: '18 Sq.m stall finalized' },
-    { name: 'Ace Tech – Mumbai', from: '2026-11-19', to: '2026-11-22', status: '30%', spendLakh: 12, claimMatch: ['Acetech', 'Ace Tech'], remarks: '50 Sq.m stall finalized, advance of 30% done' },
-    { name: 'INDIA MED EXPO – Sep 2026', from: '2026-09-28', to: '2026-09-30', status: '10%', spendLakh: 5, claimMatch: ['India Med Expo'], remarks: 'Floor plan received, pricing received – need to be discussed' },
-    { name: 'Medicall Mumbai – Dec 2026', from: '2026-12-10', to: '2026-12-12', status: '5%', spendLakh: 6, claimMatch: ['Medicall Mumbai'], remarks: 'Enquired – waiting for response' },
-    { name: 'Medicall – Kolkata – Feb 2027', from: '2027-02-10', to: '2027-02-12', status: '5%', spendLakh: 4, claimMatch: ['Medicall Kolkata'], remarks: 'Enquired – waiting for response' },
-  ],
+  exhibitions: {
+    // Portal projects that are exhibitions. projectId is set by the editor;
+    // projectMatch (name contains) is how these built-in rows find theirs.
+    // Dates default to the project's target date, status to its task progress
+    // (Done once the event has passed); both can be overridden per row.
+    projects: [
+      { projectMatch: 'Medicall Chennai', from: '2026-07-24', to: '2026-07-26', budgetLakh: 4, spendLakh: 3.41, claimMatch: ['Medicall Expo Chennai', 'Medicall Chennai'], remarks: 'Budget – 4 lakh' },
+      { projectMatch: 'RAI CRS', name: 'RAI Chennai – Aug 2026', from: '2026-08-27', to: '2026-08-28', budgetLakh: 5, spendLakh: 4.7, claimMatch: ['RAI Chennai'], remarks: 'Budget – 5 lakh' },
+      { projectMatch: 'HOSPEX', name: 'Hospex Healthcare Expo', from: '2026-09-24', to: '2026-09-26', spendLakh: 3, claimMatch: ['Hospex'], remarks: '18 Sq.m stall finalized' },
+      { projectMatch: 'ACETECH', name: 'Ace Tech – Mumbai', from: '2026-11-19', to: '2026-11-22', spendLakh: 12, claimMatch: ['Acetech', 'Ace Tech'], remarks: '50 Sq.m stall finalized, advance of 30% done' },
+    ],
+    // Events with no portal project (older ones, or not yet planned as a project).
+    manual: [
+      { name: 'Medical Hyd 2026', from: '2026-05-07', to: '2026-05-09', status: 'Done', budgetLakh: 2.5, spendLakh: 2.3, claimMatch: ['Medicall Hyd', 'Medical Hyd'], remarks: 'Budget – 2.5 lakh' },
+      { name: 'CHAI AGM – Aug 2026', from: '2026-08-28', to: '2026-08-29', status: 'Done', budgetLakh: 1, spendLakh: 0.6, claimMatch: ['CHAI AGM'], remarks: 'Budget – 1 lakh', countLeads: false },
+      { name: 'INDIA MED EXPO – Sep 2026', from: '2026-09-28', to: '2026-09-30', status: '10%', spendLakh: 5, claimMatch: ['India Med Expo'], remarks: 'Floor plan received, pricing received – need to be discussed' },
+      { name: 'Medicall Mumbai – Dec 2026', from: '2026-12-10', to: '2026-12-12', status: '5%', spendLakh: 6, claimMatch: ['Medicall Mumbai'], remarks: 'Enquired – waiting for response' },
+      { name: 'Medicall – Kolkata – Feb 2027', from: '2027-02-10', to: '2027-02-12', status: '5%', spendLakh: 4, claimMatch: ['Medicall Kolkata'], remarks: 'Enquired – waiting for response' },
+    ],
+  },
+
 
   // ---------------------------------------------------------------
   // LinkedIn slide wording
@@ -174,6 +194,9 @@ module.exports = {
   },
 
   collaterals: {
+    // Tickets ticked on the MRM page: { [ticketId]: { include, location, type, label } }.
+    // While empty, the two typed lists below are shown instead.
+    tickets: {},
     completed: [
       { project: 'Shiva Textile', location: 'Salem', month: 'Aug', type: 'Video', status: 'Completed' },
       { project: 'Pothys', location: 'Salem', month: 'Aug', type: 'Video', status: 'Completed' },

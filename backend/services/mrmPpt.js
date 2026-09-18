@@ -302,17 +302,32 @@ const renderMrm = async (model) => {
   // =====================================================
   {
     const li = model.linkedin;
-    const s = chrome('LinkedIn Performance', `${model.meta.monthName} ${model.meta.year} LinkedIn followers – target vs actual`);
+    const pages = li.pages && li.pages.length ? li.pages : [li];
+    const s = chrome('LinkedIn Performance', `${model.meta.monthName} ${model.meta.year} LinkedIn followers – target vs actual, per page`);
+    const leftW = 7.4;
     table(s, {
-      x: M, y: TOP + 0.2, w: 6.2,
-      head: ['Page', 'Target', 'Achieved', 'Gap', 'Achieved %'],
-      colW: [2.2, 1.0, 1.0, 1.0, 1.0],
-      rows: [[{ text: li.org, align: 'left', bold: true }, dash(li.month.target), { text: dash(li.month.achieved), bold: true }, dash(li.month.gap), li.month.achievedPct != null ? `${li.month.achievedPct}%` : '—']],
-      fontSize: 11, rowH: 0.42,
+      x: M, y: TOP + 0.2, w: leftW,
+      head: ['Page', 'Followers', 'Target', 'Achieved', 'Gap', 'Achieved %'],
+      colW: [2.2, 1.1, 1.0, 1.05, 1.0, 1.05],
+      rows: pages.map((p) => [
+        { text: p.label || p.org, align: 'left', bold: true },
+        p.followersTotal != null ? p.followersTotal.toLocaleString('en-IN') : '—',
+        dash(p.month.target),
+        { text: dash(p.month.achieved), bold: true },
+        dash(p.month.gap),
+        p.month.achievedPct != null ? `${p.month.achievedPct}%` : '—',
+      ]),
+      fontSize: 10.5, rowH: 0.4,
     });
-    lineChart(s, 'Follower Target vs Actual', li.series, { x: M, y: TOP + 1.25, w: 6.2, h: 4.4 });
+    // One chart per page, side by side under the table.
+    const chartY = TOP + 0.35 + 0.4 * (pages.length + 1) + 0.2;
+    const chartH = H - chartY - 0.55;
+    const cw = (leftW - 0.2 * (pages.length - 1)) / pages.length;
+    pages.forEach((p, i) => {
+      lineChart(s, `${p.label || p.org} – target vs actual`, p.series, { x: M + i * (cw + 0.2), y: chartY, w: cw, h: chartH });
+    });
 
-    const bx = M + 6.5;
+    const bx = M + leftW + 0.3;
     const bw = W - M - bx;
     const box = (title, items, y, fill) => {
       s.addShape(pres.ShapeType.rect, { x: bx, y, w: bw, h: 0.36, fill: { color: fill }, line: { color: fill } });
@@ -324,7 +339,7 @@ const renderMrm = async (model) => {
     };
     box(model.meta.monthName, li.doneThisMonth, TOP + 0.2, HEAD_GREY);
     box('Next month plan', li.nextMonthPlan, TOP + 2.95, HEAD_GREEN);
-    if (li.followersTotal != null) footnote(s, `${li.org} page followers at month end: ${li.followersTotal.toLocaleString('en-IN')}.`);
+    footnote(s, 'Followers: page total at month end. Achieved: followers gained in the month, from the portal’s LinkedIn sync.');
   }
 
   // =====================================================

@@ -2,10 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
 import { FileDown, Loader2, AlertCircle, RefreshCw, Save, RotateCcw, Presentation, Database, Lock, Code2 } from "lucide-react";
-import {
-  ExhibitionsEditor, InaugurationsEditor, CollateralsEditor, AgentsEditor, ExportEditor,
-  LinkedinEditor, AbpEditor, HistoryEditor, TargetsEditor, SettingsEditor,
-} from "../components/mrm/InputEditors";
+import { InaugurationsEditor, AgentsEditor, ExportEditor, LinkedinEditor, AbpEditor } from "../components/mrm/InputEditors";
+import { ExhibitionsEditor, CollateralsEditor, HistoryEditor, TargetsEditor, SettingsEditor } from "../components/mrm/PickerEditors";
 
 // =====================================================
 // MRM REPORT
@@ -32,10 +30,10 @@ const fyYearOf = (ym) => {
 
 // The editable inputs, in the order a person would look for them.
 const INPUTS = [
-  { key: "exhibitions", label: "Exhibitions", hint: "Slide 5: the events, their dates, status, spend and remarks." },
+  { key: "exhibitions", label: "Exhibitions", hint: "Slide 5: tick the projects that are exhibitions; dates, spend and remarks per event." },
   { key: "abp", label: "ABP targets wording", hint: "Slide 2: the text in each cell." },
   { key: "inaugurations", label: "Inaugurations", hint: "Slide 8." },
-  { key: "collaterals", label: "Collaterals & videos", hint: "Slide 9." },
+  { key: "collaterals", label: "Collaterals & videos", hint: "Slide 9: tick the tickets to show." },
   { key: "agents", label: "Agents", hint: "Slide 11." },
   { key: "linkedin", label: "LinkedIn wording", hint: "Slide 7: done this month, next month plan." },
   { key: "exportOpportunities", label: "Export opportunities", hint: "Slide 10: country, product and car spaces that Salesforce lacks." },
@@ -253,7 +251,7 @@ export default function MrmReport() {
 
   const editor = () => {
     if (!draft && draft !== 0) return null;
-    const p = { value: draft, onChange: changeDraft, fyYear };
+    const p = { value: draft, onChange: changeDraft, fyYear, month, settings: inputs?.settings };
     switch (activeKey) {
       case "exhibitions": return <ExhibitionsEditor {...p} />;
       case "abp": return <AbpEditor {...p} />;

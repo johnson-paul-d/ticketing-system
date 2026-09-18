@@ -310,17 +310,19 @@ the page, download the `.pptx`.
 | ABP targets | Wording and targets from the inputs; SQLs, pipeline, closed-won and followers filled in from the computed figures |
 | MQL comparison | Salesforce mirror: leads with source Google AdWords or Website, division Sieger Parking; conversions by converted date; pipeline = amount of opportunities from those sources by created month. Ad spend = the "Sieger Parking" Google Ads account |
 | Site branding | Portal project matching "Site Branding": one task per site, in due-date order |
-| Exhibition tracker | Inputs list the events; leads = Salesforce leads with source Trade Show created in the event window; spend = as entered, else approved expense claims matched by title |
+| Exhibition tracker | Portal projects ticked as exhibitions in the Exhibitions editor (status from the project's tasks), plus any events typed in by hand; leads = Salesforce leads with source Trade Show created in the event window; spend = as entered, else approved expense claims matched by title |
 | Exhibition lead status | The same leads by Salesforce owner; visits = visit plans with a check-in |
-| LinkedIn | Portal LinkedIn sync, month-end follower count minus the previous month's |
-| Inaugurations, collaterals, agents | Inputs |
+| LinkedIn | Portal LinkedIn sync, one row and one chart per page (Sieger Parking and Sieger Global by default; pages are listed under Definitions); month-end follower count minus the previous month's |
+| Collaterals & videos | Portal tickets in the collateral categories (Video, Animation, Collateral), ticked in the Collaterals editor; completed in the review month go to the left table, open ones to the right with their status |
+| Inaugurations, agents | Inputs |
 | Export opportunities | Salesforce: open Sieger Parking opportunities in a foreign currency, past Qualification; blanks filled from the inputs |
 
 **Presented figures are kept.** Salesforce keeps moving after a month closes
 (leads get re-tagged, merged, dropped), so a recount of an old month drifts
-from what the meeting saw. Months listed under the `history` input are shown
+from what the meeting saw. Months under **Presented figures** are shown
 exactly as presented; the page shows the live recount beside them. After each
-review, add that month's figures to `history` so they stay fixed.
+review, press **Lock <month> figures** on the page so they stay fixed
+(LinkedIn gains are locked per page).
 
 **Setup on the server, once**
 

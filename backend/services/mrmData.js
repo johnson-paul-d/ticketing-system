@@ -287,53 +287,87 @@ const buildMrm = async (month, viewerName) => {
     }
   });
 
-  // ------------------------------------------------ Portal: LinkedIn followers
-  let followersTotal = null;
+  // ------------------------------------------------ Portal: LinkedIn followers, per page
+  // Two company pages are reported (Sieger, Sieger Parking). Each gets its own
+  // gain series, target and month-end count. Older inputs named one page in
+  // settings.linkedinOrg; that still works as the first page.
+  const liPages = (Array.isArray(S.linkedinOrgs) && S.linkedinOrgs.length
+    ? S.linkedinOrgs
+    : [{ org: S.linkedinOrg || 'Sieger Parking', label: S.linkedinOrg || 'Sieger Parking' }]
+  ).map((p) => (typeof p === 'string' ? { org: p, label: p } : { org: p.org, label: p.label || p.org }));
+  const liLive = {}; // org -> month -> gain
+  const liTotal = {}; // org -> month-end followers
   await safely('LinkedIn followers', async () => {
     const rows = await pageAll(
       () =>
         supabase
           .from('linkedin_follower_stats')
-          .select('date, total_followers')
-          .eq('org_name', S.linkedinOrg)
+          .select('date, org_name, total_followers')
+          .in('org_name', liPages.map((p) => p.org))
           .gte('date', `${addMonths(prevFyStart, -1)}-01`)
           .lte('date', monthEndDay),
       'date'
     );
-    const lastOf = {};
-    for (const r of rows) lastOf[String(r.date).slice(0, 7)] = Number(r.total_followers);
-    for (const m of [...prevFyMonths, ...fyMonths]) {
-      const prev = lastOf[addMonths(m, -1)];
-      if (lastOf[m] != null && prev != null) live.linkedinFollowersGained[m] = lastOf[m] - prev;
+    for (const p of liPages) {
+      const lastOf = {};
+      for (const r of rows) if (r.org_name === p.org) lastOf[String(r.date).slice(0, 7)] = Number(r.total_followers);
+      liLive[p.org] = {};
+      for (const m of [...prevFyMonths, ...fyMonths]) {
+        const prev = lastOf[addMonths(m, -1)];
+        if (lastOf[m] != null && prev != null) liLive[p.org][m] = lastOf[m] - prev;
+      }
+      liTotal[p.org] = lastOf[month] ?? null;
     }
-    followersTotal = lastOf[month] ?? null;
+    // The first page also feeds the generic metric machinery below.
+    live.linkedinFollowersGained = liLive[liPages[0].org] || {};
   });
 
   // ------------------------------------------------ History wins over a live recount
-  const valueFor = (metric, m) => {
-    const presented = inputs.history?.[metric]?.[m];
+  // LinkedIn history and targets are per page; older inputs kept them flat
+  // (one page). A flat object is read as the first page's.
+  const isFlat = (o) => o && Object.keys(o).some((k) => /^\d{4}-\d{2}$/.test(k) || k === 'default');
+  const liHistory = (org) => {
+    const h = inputs.history?.linkedinFollowersGained;
+    if (!h) return {};
+    if (isFlat(h)) return org === liPages[0].org ? h : {};
+    return h[org] || {};
+  };
+  const liTargetSpec = (org) => {
+    const t = inputs.targets?.[fyYear]?.linkedinFollowers;
+    if (!t) return null;
+    if (isFlat(t)) return org === liPages[0].org ? t : null;
+    return t[org] || null;
+  };
+
+  const valueFor = (metric, m, org) => {
+    const presented = metric === 'linkedinFollowersGained' ? liHistory(org || liPages[0].org)[m] : inputs.history?.[metric]?.[m];
     if (presented != null) return { value: Number(presented), source: 'presented' };
-    const v = live[metric]?.[m];
+    const v = metric === 'linkedinFollowersGained' ? liLive[org || liPages[0].org]?.[m] : live[metric]?.[m];
     if (v != null) return { value: round(v, metric === 'adSpendLakh' ? 2 : 1), source: 'live' };
     return { value: null, source: 'none' };
   };
-  const targetFor = (metric, m) => {
-    const t = inputs.targets?.[fyYear]?.[metric];
+  const targetFor = (metric, m, org) => {
+    const t = metric === 'linkedinFollowers' ? liTargetSpec(org || liPages[0].org) : inputs.targets?.[fyYear]?.[metric];
     if (!t) return null;
     return t[m] ?? t.default ?? null;
   };
 
-  const series = (metric, { withPrevious = true, target } = {}) => ({
+  const series = (metric, { withPrevious = true, target, org } = {}) => ({
     categories: fyMonths.map((m) => MONTHS[parseYm(m)[1] - 1]),
-    current: { name: fyLabel(fyStart), values: fyMonths.map((m) => (m <= month ? valueFor(metric, m).value : null)) },
+    current: { name: fyLabel(fyStart), values: fyMonths.map((m) => (m <= month ? valueFor(metric, m, org).value : null)) },
     previous: withPrevious
-      ? { name: fyLabel(prevFyStart), values: prevFyMonths.map((m) => valueFor(metric, m).value) }
+      ? { name: fyLabel(prevFyStart), values: prevFyMonths.map((m) => valueFor(metric, m, org).value) }
       : null,
     target: target
-      ? { name: 'Target', values: fyMonths.map((m) => (m <= month ? targetFor(target, m) : null)) }
+      ? { name: 'Target', values: fyMonths.map((m) => (m <= month ? targetFor(target, m, org) : null)) }
       : null,
-    sources: Object.fromEntries(elapsed.map((m) => [m, valueFor(metric, m).source])),
-    liveRecount: Object.fromEntries(elapsed.map((m) => [m, live[metric]?.[m] != null ? round(live[metric][m], 2) : null])),
+    sources: Object.fromEntries(elapsed.map((m) => [m, valueFor(metric, m, org).source])),
+    liveRecount: Object.fromEntries(
+      elapsed.map((m) => {
+        const v = metric === 'linkedinFollowersGained' ? liLive[org || liPages[0].org]?.[m] : live[metric]?.[m];
+        return [m, v != null ? round(v, 2) : null];
+      })
+    ),
   });
 
   const sumElapsed = (metric) => elapsed.reduce((s, m) => s + (valueFor(metric, m).value || 0), 0);
@@ -350,8 +384,65 @@ const buildMrm = async (month, viewerName) => {
   const exhibitions = await safely(
     'Exhibitions',
     async () => {
-      const list = (inputs.exhibitions || []).map((e) => ({ ...e }));
       const window = Number(S.exhibitionLeadWindowDays) || 0;
+
+      // Exhibitions are portal projects the team has ticked, plus any event
+      // entered by hand (older ones that never had a project). A project row
+      // takes its name, dates and status from the project unless overridden;
+      // status is the task completion, or Done once the event has passed.
+      const ex = inputs.exhibitions;
+      const projectRows = Array.isArray(ex) ? [] : ex?.projects || [];
+      const manualRows = Array.isArray(ex) ? ex : ex?.manual || [];
+
+      const { data: projects, error: projErr } = await supabase
+        .from('projects')
+        .select('id, name, status, target_date')
+        .order('target_date', { ascending: true });
+      if (projErr) throw new Error(projErr.message);
+      const projById = new Map((projects || []).map((p) => [p.id, p]));
+      const resolveProject = (r) =>
+        (r.projectId && projById.get(r.projectId)) ||
+        (r.projectMatch && (projects || []).find((p) => String(p.name).toLowerCase().includes(String(r.projectMatch).toLowerCase()))) ||
+        null;
+
+      const projectIds = projectRows.map((r) => resolveProject(r)?.id).filter(Boolean);
+      const taskStats = new Map();
+      if (projectIds.length) {
+        const tasks = await pageAll(
+          () => supabase.from('tickets').select('id, project_id, status').in('project_id', projectIds),
+          'id'
+        );
+        for (const t of tasks) {
+          const s = taskStats.get(t.project_id) || { total: 0, done: 0 };
+          s.total += 1;
+          if (/^(completed|closed)$/i.test(String(t.status || ''))) s.done += 1;
+          taskStats.set(t.project_id, s);
+        }
+      }
+
+      const list = [
+        ...projectRows.map((r) => {
+          const p = resolveProject(r);
+          if (!p) return null;
+          const st = taskStats.get(p.id) || { total: 0, done: 0 };
+          const pct = st.total ? Math.round((st.done / st.total) * 100) : 0;
+          const to = r.to || p.target_date || null;
+          const passed = to && to < monthEndDay && to <= new Date().toISOString().slice(0, 10);
+          const auto = passed || /^completed$/i.test(String(p.status || '')) || pct === 100 ? 'Done' : `${pct}%`;
+          return {
+            ...r,
+            name: r.name || p.name,
+            from: r.from || p.target_date || null,
+            to,
+            status: r.statusOverride || auto,
+            claimMatch: r.claimMatch?.length ? r.claimMatch : [String(p.name).split(/\s[-–]\s|\d{4}/)[0].trim()].filter(Boolean),
+            projectId: p.id,
+            tasksDone: st.done,
+            tasksTotal: st.total,
+          };
+        }).filter(Boolean),
+        ...manualRows.map((r) => ({ ...r })),
+      ].sort((a, b) => String(a.from || '9999').localeCompare(String(b.from || '9999')));
 
       // Spend from expense claims, matched on the claim title.
       const { data: claims, error: claimErr } = await supabase.from('expense_claims').select('id, title');
@@ -431,6 +522,10 @@ const buildMrm = async (month, viewerName) => {
         const started = e.from && e.from <= monthEndDay;
         return {
           name: e.name,
+          projectId: e.projectId || null,
+          from: e.from || null,
+          to: e.to || null,
+          tasks: e.tasksTotal != null ? `${e.tasksDone}/${e.tasksTotal}` : null,
           status: e.status || '',
           spendLakh: e.spendLakh != null ? Number(e.spendLakh) : spent ? round(spent / 1e5, 2) : null,
           claimedLakh: spent ? round(spent / 1e5, 2) : null,
@@ -607,22 +702,89 @@ const buildMrm = async (month, viewerName) => {
     { rows: [], totalUsdMn: 0 }
   );
 
-  // ------------------------------------------------ LinkedIn
-  const liTarget = Number(targetFor('linkedinFollowers', month)) || null;
-  const liActual = valueFor('linkedinFollowersGained', month).value;
+  // ------------------------------------------------ LinkedIn, one entry per page
+  const pages = liPages.map((p) => {
+    const target = Number(targetFor('linkedinFollowers', month, p.org)) || null;
+    const achieved = valueFor('linkedinFollowersGained', month, p.org).value;
+    return {
+      org: p.org,
+      label: p.label,
+      followersTotal: liTotal[p.org] ?? null,
+      series: series('linkedinFollowersGained', { withPrevious: false, target: 'linkedinFollowers', org: p.org }),
+      month: {
+        target,
+        achieved,
+        gap: target != null && achieved != null ? target - achieved : null,
+        achievedPct: target && achieved != null ? Math.round((achieved / target) * 100) : null,
+      },
+    };
+  });
+  const liActual = pages[0]?.month.achieved ?? null;
   const linkedin = {
-    org: S.linkedinOrg,
-    followersTotal,
-    series: series('linkedinFollowersGained', { withPrevious: false, target: 'linkedinFollowers' }),
-    month: {
-      target: liTarget,
-      achieved: liActual,
-      gap: liTarget != null && liActual != null ? liTarget - liActual : null,
-      achievedPct: liTarget && liActual != null ? Math.round((liActual / liTarget) * 100) : null,
-    },
+    pages,
+    // First page, for the tiles and tokens that talk about one figure.
+    org: pages[0]?.org,
+    followersTotal: pages[0]?.followersTotal ?? null,
+    series: pages[0]?.series,
+    month: pages[0]?.month,
     doneThisMonth: inputs.linkedin?.doneThisMonth || [],
     nextMonthPlan: inputs.linkedin?.nextMonthPlan || [],
   };
+
+  // ------------------------------------------------ Collaterals, from tickets
+  // The team ticks the tickets (videos, animations, collateral) that belong on
+  // the slide. Completed in the review month → left table; still open → right
+  // table with the ticket's status. Older inputs held two typed lists; those
+  // are used only while no ticket has been ticked.
+  const collaterals = await safely(
+    'Collaterals',
+    async () => {
+      const picked = inputs.collaterals?.tickets || {};
+      const ids = Object.keys(picked).filter((id) => picked[id]?.include !== false);
+      if (!ids.length) {
+        return { completed: inputs.collaterals?.completed || [], planned: inputs.collaterals?.planned || [], fromTickets: false };
+      }
+      const tickets = [];
+      for (const part of chunk(ids, 100)) {
+        const { data, error } = await supabase
+          .from('tickets')
+          .select('id, title, status, category, division, due_date, completed_date, created_at')
+          .in('id', part);
+        if (error) throw new Error(error.message);
+        tickets.push(...(data || []));
+      }
+      const statusLabel = (t) => {
+        const s = String(t.status || '');
+        if (/^(completed|closed)$/i.test(s)) return 'Completed';
+        if (/approval/i.test(s)) return 'Awaiting approval';
+        if (/progress/i.test(s)) return 'In progress';
+        return 'Planned';
+      };
+      const monthTag = (d) => (d ? MONTHS[Number(String(d).slice(5, 7)) - 1] : '');
+      const rows = tickets.map((t) => {
+        const c = picked[t.id] || {};
+        const done = /^(completed|closed)$/i.test(String(t.status || ''));
+        return {
+          project: c.label || t.title,
+          location: c.location || '',
+          month: monthTag(done ? t.completed_date : t.due_date),
+          type: c.type || t.category || 'Video',
+          status: statusLabel(t),
+          done,
+          completedMonth: done ? String(t.completed_date || '').slice(0, 7) : null,
+          due: t.due_date || null,
+        };
+      });
+      const completed = rows
+        .filter((r) => r.done && r.completedMonth === month)
+        .sort((a, b) => a.project.localeCompare(b.project));
+      const planned = rows
+        .filter((r) => !r.done)
+        .sort((a, b) => String(a.due || '9999').localeCompare(String(b.due || '9999')));
+      return { completed, planned, fromTickets: true, completedYtd: rows.filter((r) => r.done && r.completedMonth >= fyStart && r.completedMonth <= month).length };
+    },
+    { completed: [], planned: [], fromTickets: false }
+  );
 
   // ------------------------------------------------ ABP slide tokens
   const [, mNum] = parseYm(month);
@@ -637,6 +799,8 @@ const buildMrm = async (month, viewerName) => {
     wonCrYtd: wonCrYtd ?? '—',
     followersMonth: liActual ?? '—',
     followersYtd: sumElapsed('linkedinFollowersGained'),
+    collateralsMonth: collaterals.fromTickets ? collaterals.completed.length : '—',
+    collateralsYtd: collaterals.fromTickets ? collaterals.completedYtd : '—',
   };
   const fill = (text) => String(text ?? '').replace(/\{\{(\w+)\}\}/g, (m, k) => (k in tokens ? String(tokens[k]) : m));
   const abp = {
@@ -682,7 +846,7 @@ const buildMrm = async (month, viewerName) => {
     exhibitions,
     linkedin,
     inaugurations,
-    collaterals: inputs.collaterals || { completed: [], planned: [] },
+    collaterals,
     exportOpps,
     agents: inputs.agents || { title: 'Agents', items: [] },
   };
@@ -707,6 +871,7 @@ const lockMonth = async (month, userName) => {
     linkedinFollowersGained: model.linkedin.series,
   };
   for (const metric of LOCKABLE) {
+    if (metric === 'linkedinFollowersGained') continue;
     const s = seriesOf[metric];
     const idx = Object.keys(s.sources).indexOf(month);
     const value = idx >= 0 ? s.current.values[idx] : null;
@@ -715,6 +880,20 @@ const lockMonth = async (month, userName) => {
     history[metric][month] = value;
     written[metric] = value;
   }
+  // LinkedIn is kept per page. A flat (single-page) history from older inputs
+  // is folded under the first page's name on the way.
+  const pages = model.linkedin.pages || [];
+  let li = history.linkedinFollowersGained || {};
+  if (pages.length && Object.keys(li).some((k) => /^\d{4}-\d{2}$/.test(k))) li = { [pages[0].org]: li };
+  for (const p of pages) {
+    const idx = Object.keys(p.series.sources).indexOf(month);
+    const value = idx >= 0 ? p.series.current.values[idx] : null;
+    if (value == null) continue;
+    li[p.org] = li[p.org] || {};
+    li[p.org][month] = value;
+    written[`followers:${p.label}`] = value;
+  }
+  history.linkedinFollowersGained = li;
   if (!Object.keys(written).length) {
     const err = new Error('Nothing to lock: no figures could be computed for that month.');
     err.status = 400;
@@ -724,4 +903,59 @@ const lockMonth = async (month, userName) => {
   return { month, written };
 };
 
-module.exports = { buildMrm, loadInputs, saveInput, resetInput, lockMonth, DEFAULT_KEYS: Object.keys(DEFAULTS) };
+// For the editors: every project, with its task progress, so the team can tick
+// the ones that are exhibitions.
+const listProjects = async () => {
+  const { data: projects, error } = await supabase
+    .from('projects')
+    .select('id, name, status, target_date, division')
+    .order('target_date', { ascending: false });
+  if (error) throw new Error(error.message);
+  const tasks = await pageAll(() => supabase.from('tickets').select('id, project_id, status').not('project_id', 'is', null), 'id');
+  const stats = new Map();
+  for (const t of tasks) {
+    const s = stats.get(t.project_id) || { total: 0, done: 0 };
+    s.total += 1;
+    if (/^(completed|closed)$/i.test(String(t.status || ''))) s.done += 1;
+    stats.set(t.project_id, s);
+  }
+  return (projects || []).map((p) => ({ ...p, ...(stats.get(p.id) || { total: 0, done: 0 }) }));
+};
+
+// For the editors: tickets that could be collaterals — in the collateral
+// categories, and either completed inside the fiscal year or still open.
+const collateralCandidates = async (month) => {
+  const { inputs } = await loadInputs();
+  const S = inputs.settings;
+  const cats = S.collateralCategories?.length ? S.collateralCategories : ['Video', 'Animation', 'ANIMATION VIDEO', 'Collateral'];
+  const fyStart = fiscalStart(month, S.fiscalYearStartMonth);
+  const rows = await pageAll(
+    () =>
+      supabase
+        .from('tickets')
+        .select('id, title, status, category, division, due_date, completed_date, created_at, assigned_to_name')
+        .in('category', cats),
+    'id'
+  );
+  const monthEndDay = lastDayOf(month);
+  return rows
+    .filter((t) => {
+      const done = /^(completed|closed)$/i.test(String(t.status || ''));
+      if (done) return t.completed_date && t.completed_date >= `${fyStart}-01` && t.completed_date <= monthEndDay;
+      return true;
+    })
+    .map((t) => ({
+      id: t.id,
+      title: t.title,
+      status: t.status,
+      category: t.category,
+      division: t.division,
+      assignee: t.assigned_to_name,
+      due_date: t.due_date,
+      completed_date: t.completed_date,
+      done: /^(completed|closed)$/i.test(String(t.status || '')),
+    }))
+    .sort((a, b) => String(b.completed_date || b.due_date || '').localeCompare(String(a.completed_date || a.due_date || '')));
+};
+
+module.exports = { buildMrm, loadInputs, saveInput, resetInput, lockMonth, listProjects, collateralCandidates, DEFAULT_KEYS: Object.keys(DEFAULTS) };

@@ -5,7 +5,7 @@ const auth = require('../middleware/auth');
 const requireAccess = require('../middleware/requireAccess');
 const { isAdmin, isServiceTeam } = require('../utils/roles');
 const { rateLimit } = require('../utils/rateLimit');
-const { buildMrm, loadInputs, saveInput, resetInput, lockMonth, DEFAULT_KEYS } = require('../services/mrmData');
+const { buildMrm, loadInputs, saveInput, resetInput, lockMonth, listProjects, collateralCandidates, DEFAULT_KEYS } = require('../services/mrmData');
 const { renderMrm } = require('../services/mrmPpt');
 const DEFAULTS = require('../services/mrmDefaults');
 const { todayIST } = require('../utils/time');
@@ -69,6 +69,24 @@ router.get(
     }
   }
 );
+
+// Pick-lists for the editors: projects (to mark as exhibitions) and tickets
+// (to include as collaterals).
+router.get('/projects', async (req, res) => {
+  try {
+    res.json(await listProjects());
+  } catch (err) {
+    fail(res, err, 'Failed to list projects');
+  }
+});
+
+router.get('/collateral-candidates', async (req, res) => {
+  try {
+    res.json(await collateralCandidates(monthOf(req)));
+  } catch (err) {
+    fail(res, err, 'Failed to list collateral tickets');
+  }
+});
 
 // Inputs: what the deck cannot compute. GET returns the effective value of
 // every key (stored, or the built-in default) plus which ones are stored.

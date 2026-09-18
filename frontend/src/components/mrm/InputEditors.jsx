@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- shared editor pieces live beside the components that use them */
 import { Plus, Trash2, ArrowUp, ArrowDown } from "lucide-react";
 
 // =====================================================
@@ -7,15 +8,15 @@ import { Plus, Trash2, ArrowUp, ArrowDown } from "lucide-react";
 // with a complete replacement value; the page owns saving. Nobody should
 // have to read or write JSON to keep the deck current.
 
-const field =
+export const field =
   "w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white outline-none focus:ring-2 focus:ring-[#9b2423]/30 disabled:bg-gray-50";
-const label = "block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1";
-const th = "px-2 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 bg-gray-50 whitespace-nowrap";
-const smallBtn =
+export const label = "block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1";
+export const th = "px-2 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 bg-gray-50 whitespace-nowrap";
+export const smallBtn =
   "inline-flex items-center justify-center w-7 h-7 rounded-md border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-800 disabled:opacity-30";
 
-const MONTHS = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
-const fyMonths = (fyYear) => MONTHS.map((_, i) => {
+export const MONTHS = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
+export const fyMonths = (fyYear) => MONTHS.map((_, i) => {
   const m = ((3 + i) % 12) + 1;
   const y = m >= 4 ? Number(fyYear) : Number(fyYear) + 1;
   return `${y}-${String(m).padStart(2, "0")}`;
@@ -24,7 +25,7 @@ const fyMonths = (fyYear) => MONTHS.map((_, i) => {
 // ---------------------------------------------------------------
 // Generic table editor
 // ---------------------------------------------------------------
-function Cell({ col, value, onChange }) {
+export function Cell({ col, value, onChange }) {
   if (col.type === "checkbox") {
     return (
       // An unset checkbox shows the column's default (e.g. "count leads" is on
@@ -138,33 +139,7 @@ function LinesEditor({ title, hint, value, onChange }) {
 // ---------------------------------------------------------------
 // The editors, by input key
 // ---------------------------------------------------------------
-const STATUS_OPTIONS = ["Done", "5%", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "Planned", "Cancelled"];
-
-export function ExhibitionsEditor({ value, onChange }) {
-  return (
-    <div className="space-y-2">
-      <p className="text-sm text-gray-600">
-        One row per event for the fiscal year. Leads are counted from Salesforce (source Trade Show) between the dates, plus a few days for late entry.
-        Spend: leave blank to use approved expense claims whose title contains any of the words in “Claim match”; type a figure to override.
-      </p>
-      <RowsEditor
-        rows={value} onChange={onChange} addLabel="Add exhibition"
-        columns={[
-          { key: "name", label: "Exhibition", width: 220 },
-          { key: "from", label: "From", type: "date", width: 130 },
-          { key: "to", label: "To", type: "date", width: 130 },
-          { key: "status", label: "Status", type: "select", options: STATUS_OPTIONS, width: 100 },
-          { key: "budgetLakh", label: "Budget (L)", type: "number", width: 90 },
-          { key: "spendLakh", label: "Spend (L)", type: "number", width: 90 },
-          { key: "claimMatch", label: "Claim match", type: "list", placeholder: "Medicall Chennai, Medicall", width: 200 },
-          { key: "countLeads", label: "Count leads", type: "checkbox", default: true, width: 60 },
-          { key: "remarks", label: "Remarks", type: "textarea", width: 240 },
-        ]}
-        blank={() => ({ name: "", from: "", to: "", status: "Planned", budgetLakh: null, spendLakh: null, claimMatch: [], countLeads: true, remarks: "" })}
-      />
-    </div>
-  );
-}
+export const STATUS_OPTIONS = ["Done", "5%", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "Planned", "Cancelled"];
 
 export function InaugurationsEditor({ value, onChange }) {
   const v = value || { target: 0, items: [] };
@@ -185,31 +160,6 @@ export function InaugurationsEditor({ value, onChange }) {
         blank={() => ({ event: "", status: "", progress: 0, nextAction: "" })}
       />
       <p className="text-xs text-gray-500">“Completed” on the slide counts rows at 100%.</p>
-    </div>
-  );
-}
-
-const collateralCols = [
-  { key: "project", label: "Project", width: 220 },
-  { key: "location", label: "Location", width: 150 },
-  { key: "month", label: "Month", width: 90, placeholder: "Sep" },
-  { key: "type", label: "Type", type: "select", options: ["Video", "Video + Testimonial", "Testimonial", "Photos", "Drone video", "Animation"], width: 170 },
-  { key: "status", label: "Status", type: "select", options: ["Completed", "In progress", "Awaiting approval", "Planned"], width: 160 },
-];
-const blankCollateral = () => ({ project: "", location: "", month: "", type: "Video", status: "Planned" });
-
-export function CollateralsEditor({ value, onChange }) {
-  const v = value || { completed: [], planned: [] };
-  return (
-    <div className="space-y-5">
-      <div>
-        <h3 className="text-sm font-semibold text-gray-800 mb-2">Completed this month (left table on the slide)</h3>
-        <RowsEditor rows={v.completed} onChange={(completed) => onChange({ ...v, completed })} columns={collateralCols} blank={blankCollateral} addLabel="Add completed item" />
-      </div>
-      <div>
-        <h3 className="text-sm font-semibold text-gray-800 mb-2">Planned / in progress (right table)</h3>
-        <RowsEditor rows={v.planned} onChange={(planned) => onChange({ ...v, planned })} columns={collateralCols} blank={blankCollateral} addLabel="Add planned item" />
-      </div>
     </div>
   );
 }
@@ -314,122 +264,3 @@ export function AbpEditor({ value, onChange }) {
   );
 }
 
-const METRICS = [
-  ["leads", "Leads"],
-  ["convertedLeads", "Converted"],
-  ["pipelineMn", "Pipeline (Mn)"],
-  ["adSpendLakh", "Ad spend (L)"],
-  ["linkedinFollowersGained", "Followers gained"],
-];
-
-export function HistoryEditor({ value, onChange, fyYear }) {
-  const v = value || {};
-  const set = (metric, ym, raw) => {
-    const next = { ...v, [metric]: { ...(v[metric] || {}) } };
-    if (raw === "" || raw === null) delete next[metric][ym];
-    else next[metric][ym] = Number(raw);
-    onChange(next);
-  };
-  const years = [Number(fyYear) - 1, Number(fyYear)];
-  return (
-    <div className="space-y-3">
-      <p className="text-sm text-gray-600">
-        Figures already presented to management. A filled cell is shown exactly as it is here; an empty cell is read live. The “Lock month” button at the top fills the review month’s cells for you, so this grid rarely needs typing.
-      </p>
-      {years.map((y) => (
-        <div key={y} className="overflow-x-auto rounded-xl border border-gray-200">
-          <table className="w-full min-w-[820px]">
-            <thead>
-              <tr><th className={th}>FY{String(y).slice(2)}-{String(y + 1).slice(2)}</th>{fyMonths(y).map((ym, i) => <th key={ym} className={`${th} text-right`}>{MONTHS[i]}</th>)}</tr>
-            </thead>
-            <tbody>
-              {METRICS.map(([metric, name]) => (
-                <tr key={metric} className="border-t border-gray-100">
-                  <td className="px-2 py-1 text-sm text-gray-700 whitespace-nowrap">{name}</td>
-                  {fyMonths(y).map((ym) => (
-                    <td key={ym} className="px-1 py-1">
-                      <input type="number" step="any" value={v[metric]?.[ym] ?? ""} onChange={(e) => set(metric, ym, e.target.value)} className={`${field} text-right px-1.5 py-1 text-xs`} />
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-export function TargetsEditor({ value, onChange, fyYear }) {
-  const v = value || {};
-  const y = String(fyYear);
-  const t = v[y] || {};
-  const setDefault = (metric, raw) => onChange({ ...v, [y]: { ...t, [metric]: { ...(t[metric] || {}), default: raw === "" ? null : Number(raw) } } });
-  const setMonth = (ym, raw) => {
-    const m = { ...(t.convertedLeads || {}) };
-    if (raw === "") delete m[ym]; else m[ym] = Number(raw);
-    onChange({ ...v, [y]: { ...t, convertedLeads: m } });
-  };
-  return (
-    <div className="space-y-4">
-      <p className="text-sm text-gray-600">Targets for FY{y.slice(2)}-{String(Number(y) + 1).slice(2)}. A monthly target uses the “every month” figure unless a specific month is filled in.</p>
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 max-w-3xl">
-        {[["convertedLeads", "Converted leads (SQLs) / month"], ["pipelineMn", "Pipeline (₹ Mn) / month"], ["adSpendLakh", "Ad spend (₹ lakh) / month"], ["linkedinFollowers", "LinkedIn followers gained / month"]].map(([k, l]) => (
-          <div key={k}>
-            <label className={label}>{l}</label>
-            <input type="number" step="any" value={t[k]?.default ?? ""} onChange={(e) => setDefault(k, e.target.value)} className={field} />
-          </div>
-        ))}
-      </div>
-      <div>
-        <label className={label}>Converted leads target by month (optional overrides)</label>
-        <div className="overflow-x-auto rounded-xl border border-gray-200">
-          <table className="w-full min-w-[820px]">
-            <thead><tr>{fyMonths(y).map((ym, i) => <th key={ym} className={`${th} text-right`}>{MONTHS[i]}</th>)}</tr></thead>
-            <tbody><tr>{fyMonths(y).map((ym) => (
-              <td key={ym} className="px-1 py-1"><input type="number" value={t.convertedLeads?.[ym] ?? ""} onChange={(e) => setMonth(ym, e.target.value)} className={`${field} text-right px-1.5 py-1 text-xs`} /></td>
-            ))}</tr></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export function SettingsEditor({ value, onChange }) {
-  const v = value || {};
-  const set = (k, x) => onChange({ ...v, [k]: x });
-  const text = (k, l, hint) => (
-    <div key={k}>
-      <label className={label}>{l}</label>
-      <input type="text" value={v[k] ?? ""} onChange={(e) => set(k, e.target.value)} className={field} />
-      {hint ? <p className="text-xs text-gray-500 mt-1">{hint}</p> : null}
-    </div>
-  );
-  const list = (k, l, hint) => (
-    <div key={k}>
-      <label className={label}>{l}</label>
-      <input type="text" value={(v[k] || []).join(", ")} onChange={(e) => set(k, e.target.value.split(",").map((s) => s.trim()).filter(Boolean))} className={field} />
-      {hint ? <p className="text-xs text-gray-500 mt-1">{hint}</p> : null}
-    </div>
-  );
-  return (
-    <div className="space-y-4 max-w-3xl">
-      <p className="text-sm text-gray-600">How the computed figures are defined. Change these only if the business definition changes.</p>
-      <div className="grid md:grid-cols-2 gap-4">
-        {text("division", "Salesforce division", "Leads, opportunities and exhibition leads are filtered to this division.")}
-        {list("leadSources", "Lead sources counted as inbound", "Exactly as spelled in Salesforce, comma separated.")}
-        {list("tradeshowSources", "Lead sources counted as exhibition leads")}
-        <div>
-          <label className={label}>Days after an event to still count leads</label>
-          <input type="number" value={v.exhibitionLeadWindowDays ?? ""} onChange={(e) => set("exhibitionLeadWindowDays", Number(e.target.value) || 0)} className={field} />
-        </div>
-        {text("googleAdsAccount", "Google Ads account for the ad-spend chart")}
-        {text("linkedinOrg", "LinkedIn page for the followers slide")}
-        {text("siteBrandingProjectMatch", "Site branding: project name contains")}
-        {list("exportStages", "Export slide: opportunity stages shown")}
-      </div>
-    </div>
-  );
-}
