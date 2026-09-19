@@ -268,7 +268,9 @@ const renderMrm = async (model) => {
     ].forEach((t, i) => tile(s, { x: M + i * (tw + 0.3), y: TOP + 0.1, w: tw, h: 0.85, ...t }));
     const clip = (t, n) => (String(t || '').length > n ? `${String(t).slice(0, n - 1)}…` : String(t || ''));
     // Every cell is kept to one line so the table height stays predictable.
-    const MAX_ROWS = 12;
+    // Up to 12 accounts at the normal size; up to 16 with a tighter table.
+    const MAX_ROWS = 16;
+    const dense = a.rows.length > 12;
     const rows = a.rows.slice(0, MAX_ROWS).map((r) => [
       { text: clip(r.account, 24), align: 'left', bold: true }, clip(r.division, 15), clip(r.country, 13), r.tier, clip(r.owner, 15),
       { text: clip(r.status, 18), color: statusColor(r.status), bold: true },
@@ -282,7 +284,7 @@ const renderMrm = async (model) => {
       head: ['Account', 'Division', 'Country', 'Tier', 'Owner', 'Status', 'Opps', 'Quotation', 'Last activity', 'Action required'],
       colW: [1.9, 1.15, 1.0, 0.6, 1.15, 1.35, 0.5, 0.9, 1.85, 2.03],
       rows: rows.length ? rows : [['No accounts ticked yet – tick them under "ABM accounts" on the MRM page', '', '', '', '', '', '', '', '', '']],
-      fontSize: 8, rowH: 0.3,
+      fontSize: dense ? 7.5 : 8, rowH: dense ? 0.27 : 0.3,
     });
     footnote(s, `From the portal's ABM module: status, owner, opportunities and last activity. Quotation: the module's opportunities, else open quotes in Salesforce; * typed on the MRM page.${a.rows.length > MAX_ROWS ? ` Showing ${MAX_ROWS} of ${a.rows.length} accounts.` : ''}`);
   }
