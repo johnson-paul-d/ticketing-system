@@ -1,3 +1,6 @@
+import { useEffect, useState } from "react";
+import { Loader2 } from "lucide-react";
+import api from "../../services/api";
 import { RowsEditor, field, label, th, MONTHS, fyMonths } from "./InputEditors";
 
 // =====================================================
@@ -72,32 +75,94 @@ export function SpendEditor({ value, onChange, fyYear, settings }) {
 }
 
 // ---------------------------------------------------------------
-// ABM: the targeted accounts
+// ABM: tick the accounts from the ABM module that go on the slide
 // ---------------------------------------------------------------
-// Value: { accounts: [{ account, division, owner, status, quotationLakh, action }] }.
+// Value: { picked: { [accountId]: { include, action, quotationLakh } }, accounts: [typed rows] }.
 const ABM_STATUS = ["Identified", "Contacted", "Meeting done", "Site visit", "Quotation", "Negotiation", "Won", "Lost", "On hold"];
 
 export function AbmEditor({ value, onChange, settings }) {
-  const v = value || { accounts: [] };
+  const v = value || { picked: {}, accounts: [] };
+  const picked = v.picked || {};
   const divisions = divisionsOf(settings);
+  const [candidates, setCandidates] = useState(null);
+  const [error, setError] = useState("");
+  const [filter, setFilter] = useState("");
+
+  useEffect(() => {
+    api.get("/reports/mrm/abm-accounts").then((r) => setCandidates(r.data)).catch(() => setError("Could not load the ABM accounts"));
+  }, []);
+
+  const setAccount = (id, patch) => onChange({ ...v, picked: { ...picked, [id]: { ...(picked[id] || {}), ...patch } } });
+  const included = (a) => picked[a.id]?.include === true;
+  const shown = (candidates || []).filter((a) => !filter || `${a.name} ${a.division} ${a.owner} ${a.status}`.toLowerCase().includes(filter.toLowerCase()));
+  const tickedCount = (candidates || []).filter(included).length;
+
   return (
-    <div className="space-y-3">
-      <p className="text-sm text-gray-600">
-        The accounts marketing is working on. Open opportunities, stage and the quotation value are read from Salesforce by account name (the name only has to be
-        contained in the Salesforce account name); a typed quotation wins over the Salesforce figure.
-      </p>
-      <RowsEditor
-        rows={v.accounts} onChange={(accounts) => onChange({ ...v, accounts })} addLabel="Add account"
-        columns={[
-          { key: "account", label: "Account (as in Salesforce)", width: 220 },
-          { key: "division", label: "Division", type: "select", options: ["", ...divisions.map((d) => d.key)], width: 100 },
-          { key: "owner", label: "Owner", width: 140 },
-          { key: "status", label: "Status", type: "select", options: ABM_STATUS, width: 130 },
-          { key: "quotationLakh", label: "Quotation (₹ L, blank = Salesforce)", type: "number", width: 120 },
-          { key: "action", label: "Action required", type: "textarea", width: 260 },
-        ]}
-        blank={() => ({ account: "", division: "", owner: "", status: "Identified", quotationLakh: null, action: "" })}
-      />
+    <div className="space-y-5">
+      <div>
+        <h3 className="text-sm font-semibold text-gray-800">1. Accounts from the ABM module</h3>
+        <p className="text-xs text-gray-500 mb-2">
+          Tick the accounts to show. Status, owner, opportunities and last activity come from the ABM module; the quotation from its opportunities, else from
+          open quotes in Salesforce. Type an action or quotation only to override what the module says.
+        </p>
+        <div className="flex items-center gap-3 mb-2">
+          <input type="text" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter by name, division, owner, status" className={`${field} max-w-xs`} />
+          <span className="text-xs text-gray-500">{candidates ? `${tickedCount} ticked of ${candidates.length}` : ""}</span>
+        </div>
+        {error ? <p className="text-sm text-red-600">{error}</p> : null}
+        {!candidates && !error ? <p className="text-sm text-gray-400 flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Loading the ABM accounts…</p> : null}
+        {candidates ? (
+          <div className="overflow-x-auto border border-gray-100 rounded-xl">
+            <table className="min-w-full">
+              <thead>
+                <tr>
+                  <th className={th}>Show</th><th className={th}>Account</th><th className={th}>Division</th><th className={th}>Tier</th><th className={th}>Status</th>
+                  <th className={th}>Owner</th><th className={th}>Opps</th><th className={th}>Last activity</th><th className={th}>Action required (blank = module)</th><th className={th}>Quotation (₹ L, blank = auto)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.length === 0 ? <tr><td colSpan={10} className="px-3 py-4 text-sm text-gray-400 text-center">No accounts in the ABM module yet.</td></tr> : null}
+                {shown.map((a) => {
+                  const p = picked[a.id] || {};
+                  const on = included(a);
+                  return (
+                    <tr key={a.id} className={`border-t border-gray-100 align-top ${on ? "bg-[#9b2423]/[0.03]" : ""}`}>
+                      <td className="px-2 py-2"><input type="checkbox" checked={on} onChange={(e) => setAccount(a.id, { include: e.target.checked })} className="accent-[#9b2423] w-4 h-4" /></td>
+                      <td className="px-2 py-2 text-sm font-medium text-gray-800 whitespace-nowrap">{a.name}<span className="block text-[11px] text-gray-400 font-normal">{a.country || ""}</span></td>
+                      <td className="px-2 py-2 text-xs text-gray-600 whitespace-nowrap">{a.division || "—"}</td>
+                      <td className="px-2 py-2 text-xs text-gray-600 whitespace-nowrap">{a.tier || "—"}</td>
+                      <td className="px-2 py-2 text-xs text-gray-600 whitespace-nowrap">{a.status || "—"}</td>
+                      <td className="px-2 py-2 text-xs text-gray-600 whitespace-nowrap">{a.owner || "—"}</td>
+                      <td className="px-2 py-2 text-xs text-gray-600 whitespace-nowrap">{a.oppCount ? `${a.oppCount} · ${a.oppStages}${a.oppValueLakh ? ` · ${a.oppValueLakh} L` : ""}` : "—"}</td>
+                      <td className="px-2 py-2 text-xs text-gray-600 whitespace-nowrap">{a.lastActivity ? `${a.lastActivity.type || a.lastActivity.channel} – ${String(a.lastActivity.date).slice(0, 10)}` : "—"}</td>
+                      <td className="px-1.5 py-1.5 w-64"><input type="text" disabled={!on} value={p.action ?? ""} placeholder={a.nextAction || ""} onChange={(e) => setAccount(a.id, { action: e.target.value })} className={field} /></td>
+                      <td className="px-1.5 py-1.5 w-28"><input type="number" step="any" disabled={!on} value={p.quotationLakh ?? ""} placeholder={a.oppValueLakh ?? ""} onChange={(e) => setAccount(a.id, { quotationLakh: e.target.value === "" ? null : Number(e.target.value) })} className={`${field} text-right`} /></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </div>
+
+      <div>
+        <h3 className="text-sm font-semibold text-gray-800">2. Accounts not in the ABM module</h3>
+        <p className="text-xs text-gray-500 mb-2">For a one-off mention. Anything the team is actually working should be added to the ABM module instead.</p>
+        <RowsEditor
+          rows={v.accounts} onChange={(accounts) => onChange({ ...v, accounts })} addLabel="Add account"
+          columns={[
+            { key: "account", label: "Account (as in Salesforce)", width: 200 },
+            { key: "division", label: "Division", type: "select", options: ["", ...divisions.map((d) => d.key)], width: 100 },
+            { key: "country", label: "Country", width: 110 },
+            { key: "owner", label: "Owner", width: 130 },
+            { key: "status", label: "Status", type: "select", options: ABM_STATUS, width: 130 },
+            { key: "quotationLakh", label: "Quotation (₹ L, blank = Salesforce)", type: "number", width: 120 },
+            { key: "action", label: "Action required", type: "textarea", width: 240 },
+          ]}
+          blank={() => ({ account: "", division: "", country: "", owner: "", status: "Identified", quotationLakh: null, action: "" })}
+        />
+      </div>
     </div>
   );
 }

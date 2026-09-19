@@ -32,7 +32,7 @@ const fyYearOf = (ym) => {
 // The editable inputs, in the order a person would look for them.
 const INPUTS = [
   { key: "spend", label: "Marketing spend", hint: "Section 1: rupees lakh per division, source and month. Ads comes from Google Ads unless typed." },
-  { key: "abm", label: "ABM accounts", hint: "Section 2: the targeted accounts, their status and the action required." },
+  { key: "abm", label: "ABM accounts", hint: "Section 2: tick the accounts from the ABM module that go on the slide; override the action or quotation if needed." },
   { key: "exhibitions", label: "Exhibitions", hint: "Section 3: tick the projects that are exhibitions; strategic new exhibitions identified." },
   { key: "linkedin", label: "LinkedIn wording", hint: "Section 4: done this month, next month plan." },
   { key: "seo", label: "SEO keywords", hint: "Section 4: targeted keywords and their Google rank for the month." },
@@ -377,11 +377,11 @@ export default function MrmReport() {
             <div className="grid xl:grid-cols-2 gap-5">
               <Section title="2. Targeted ABM accounts" hint={`Slide ${3 + model.funnel.divisions.length}. ${model.abm.totals.accounts} accounts, ${model.abm.totals.quoted} with a quotation, ₹${money(model.abm.totals.quotationLakh)} L in total.`}>
                 <table className="w-full">
-                  <thead><tr><th className={th}>Account</th><th className={th}>Status</th><th className={`${th} text-right`}>Open opps</th><th className={th}>Stage</th><th className={`${th} text-right`}>Quotation (L)</th><th className={th}>Action</th></tr></thead>
+                  <thead><tr><th className={th}>Account</th><th className={th}>Division</th><th className={th}>Tier</th><th className={th}>Status</th><th className={`${th} text-right`}>Opps</th><th className={`${th} text-right`}>Quotation (L)</th><th className={th}>Last activity</th><th className={th}>Action</th></tr></thead>
                   <tbody>
-                    {model.abm.rows.length === 0 ? <tr><td colSpan={6} className={`${td} text-gray-400`}>No accounts yet. Add them under “ABM accounts” below.</td></tr> : null}
+                    {model.abm.rows.length === 0 ? <tr><td colSpan={8} className={`${td} text-gray-400`}>No accounts ticked yet. Tick them under “ABM accounts” below.</td></tr> : null}
                     {model.abm.rows.map((r, i) => (
-                      <tr key={i}><td className={td}>{r.account}</td><td className={td}>{r.status}</td><td className={num}>{r.openOpps ?? "—"}</td><td className={td}>{r.stage || "—"}</td><td className={num}>{r.quotationLakh != null ? `${money(r.quotationLakh)}${r.quotationSource === "typed" ? " *" : ""}` : "—"}</td><td className={td}>{r.action}</td></tr>
+                      <tr key={i}><td className={td}>{r.account}</td><td className={td}>{r.division || "—"}</td><td className={td}>{r.tier || "—"}</td><td className={td}>{r.status}</td><td className={num}>{r.openOpps ?? "—"}</td><td className={num}>{r.quotationLakh != null ? `${money(r.quotationLakh)}${r.quotationSource === "typed" ? " *" : ""}` : "—"}</td><td className={`${td} text-gray-500`}>{r.lastActivity || "—"}</td><td className={td}>{r.action}</td></tr>
                     ))}
                   </tbody>
                 </table>

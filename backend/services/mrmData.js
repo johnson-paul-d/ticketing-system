@@ -19,7 +19,7 @@
 const supabase = require('../config/supabase');
 const { salesforce, isConfigured: salesforceConfigured } = require('../config/salesforceDb');
 const DEFAULTS = require('./mrmDefaults');
-const { buildFunnel, buildAbm, buildEngagement, buildSeo } = require('./mrmFunnel');
+const { buildFunnel, buildAbm, abmCandidates, buildEngagement, buildSeo } = require('./mrmFunnel');
 
 const IST_MS = 330 * 60000;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -1019,4 +1019,6 @@ const collateralCandidates = async (month) => {
     .sort((a, b) => String(b.completed_date || b.due_date || '').localeCompare(String(a.completed_date || a.due_date || '')));
 };
 
-module.exports = { buildMrm, loadInputs, saveInput, resetInput, lockMonth, listProjects, collateralCandidates, DEFAULT_KEYS: Object.keys(DEFAULTS) };
+const listAbmAccounts = () => abmCandidates({ supabase, pageAll });
+
+module.exports = { buildMrm, loadInputs, saveInput, resetInput, lockMonth, listProjects, collateralCandidates, listAbmAccounts, DEFAULT_KEYS: Object.keys(DEFAULTS) };

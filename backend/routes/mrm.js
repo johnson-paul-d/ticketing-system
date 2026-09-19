@@ -5,7 +5,7 @@ const auth = require('../middleware/auth');
 const requireAccess = require('../middleware/requireAccess');
 const { isAdmin, isServiceTeam } = require('../utils/roles');
 const { rateLimit } = require('../utils/rateLimit');
-const { buildMrm, loadInputs, saveInput, resetInput, lockMonth, listProjects, collateralCandidates, DEFAULT_KEYS } = require('../services/mrmData');
+const { buildMrm, loadInputs, saveInput, resetInput, lockMonth, listProjects, collateralCandidates, listAbmAccounts, DEFAULT_KEYS } = require('../services/mrmData');
 const { renderMrm } = require('../services/mrmPpt');
 const DEFAULTS = require('../services/mrmDefaults');
 const { todayIST } = require('../utils/time');
@@ -77,6 +77,14 @@ router.get('/projects', async (req, res) => {
     res.json(await listProjects());
   } catch (err) {
     fail(res, err, 'Failed to list projects');
+  }
+});
+
+router.get('/abm-accounts', async (req, res) => {
+  try {
+    res.json(await listAbmAccounts());
+  } catch (err) {
+    fail(res, err, 'Failed to list ABM accounts');
   }
 });
 

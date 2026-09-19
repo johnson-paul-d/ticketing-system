@@ -308,7 +308,7 @@ the page, download the `.pptx`.
 | Section / slide | Source |
 |---|---|
 | 1. Marketing qualified pipeline (overview + one slide per division: CPS, ASTOR, TMD) | Salesforce mirror. Per marketing source (Website, Ads, Database/AI/Campaigns, Scouter, Expo; anything else is "sales-created"): leads created, leads converted, opportunities created, quotes raised, pipeline = open quotes (In Review / Presented / Negotiation) on those opportunities at Salesforce currency rates, and pipeline per lakh of spend. Spend: Google Ads for Ads (account per division in Definitions), everything else typed under Marketing spend |
-| 2. Targeted ABM accounts | Typed list; open opportunities, stage and open quotation read from Salesforce by account name |
+| 2. Targeted ABM accounts | Accounts ticked from the portal's ABM module (status, owner, opportunities, last activity from the module; quotation from its opportunities, else open quotes in Salesforce by account name); action and quotation can be overridden per account; hand-typed rows for accounts not in the module |
 | 3. Expo plan and actuals | Portal projects ticked as exhibitions plus hand-typed events; leads = Salesforce Trade Show leads in the event window; strategic new exhibitions typed in |
 | Exhibition leads by salesperson | Same leads by owner; visits = visit plans with a check-in |
 | 4. Brand visibility – LinkedIn | Portal LinkedIn sync, per page |

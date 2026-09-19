@@ -13,6 +13,7 @@
 // figures are the same counts over two ranges of months.
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const shortDay = (d) => { const s = String(d || '').slice(0, 10); return s ? `${Number(s.slice(8, 10))} ${MONTHS[Number(s.slice(5, 7)) - 1]}` : ''; };
 const round = (v, dp = 1) => (v == null ? null : Math.round(v * 10 ** dp) / 10 ** dp);
 
 // Which source a lead or opportunity belongs to, by its Salesforce LeadSource.
@@ -253,66 +254,147 @@ const buildFunnel = async (ctx) => {
   };
 };
 
-// Targeted ABM accounts: typed list, open quote value looked up by account name.
+// Targeted ABM accounts, from the portal's ABM module (abm_accounts and its
+// contacts, activities and opportunities). The team ticks on the MRM page
+// which accounts go on the slide; per ticked account the action required and
+// the quotation can be typed over what the module and Salesforce say.
+//   inputs.abm = { picked: { [accountId]: { include, action, quotationLakh } },
+//                  accounts: [ typed rows for accounts not in the module ] }
+const abmRollup = async ({ supabase, pageAll }) => {
+  const accounts = await pageAll(
+    () => supabase.from('abm_accounts').select('id, name, country, industry, division, tier, priority, status, owner_name, updated_at'),
+    'id'
+  );
+  const [contacts, activities, opps] = await Promise.all([
+    pageAll(() => supabase.from('abm_contacts').select('id, account_id, status, next_action, next_action_due, last_activity_at'), 'id'),
+    pageAll(() => supabase.from('abm_activities').select('id, account_id, activity_type, channel, result, activity_date'), 'id'),
+    pageAll(() => supabase.from('abm_opportunities').select('id, account_id, name, potential, expected_value, stage, probability'), 'id'),
+  ]);
+  const by = new Map(accounts.map((a) => [a.id, { ...a, contacts: 0, nextAction: null, nextActionDue: null, lastActivity: null, opps: [] }]));
+  for (const c of contacts) {
+    const r = by.get(c.account_id);
+    if (!r) continue;
+    r.contacts += 1;
+    if (c.next_action && (!r.nextActionDue || (c.next_action_due && c.next_action_due < r.nextActionDue))) {
+      r.nextAction = c.next_action;
+      r.nextActionDue = c.next_action_due || r.nextActionDue;
+    }
+  }
+  for (const x of activities) {
+    const r = by.get(x.account_id);
+    if (!r) continue;
+    if (!r.lastActivity || String(x.activity_date) > String(r.lastActivity.date)) {
+      r.lastActivity = { date: x.activity_date, type: x.activity_type, channel: x.channel, result: x.result };
+    }
+  }
+  for (const o of opps) by.get(o.account_id)?.opps.push(o);
+  return [...by.values()].map((r) => ({
+    ...r,
+    oppCount: r.opps.length,
+    oppStages: [...new Set(r.opps.map((o) => o.stage).filter(Boolean))].join(', '),
+    oppValueLakh: round(r.opps.reduce((s, o) => s + Number(o.expected_value || 0), 0) / 1e5, 1) || null,
+  }));
+};
+
+// For the editor: every account in the ABM module with its rollups.
+const abmCandidates = async (ctx) => {
+  const rows = await abmRollup(ctx);
+  return rows
+    .map((r) => ({
+      id: r.id, name: r.name, division: r.division, country: r.country, tier: r.tier, priority: r.priority, status: r.status,
+      owner: r.owner_name, contacts: r.contacts, lastActivity: r.lastActivity, nextAction: r.nextAction, nextActionDue: r.nextActionDue,
+      oppCount: r.oppCount, oppStages: r.oppStages, oppValueLakh: r.oppValueLakh,
+    }))
+    .sort((a, b) => String(a.tier || '').localeCompare(String(b.tier || '')) || String(a.name).localeCompare(String(b.name)));
+};
+
 const buildAbm = async (ctx) => {
   const { salesforce, salesforceConfigured, safely, inputs } = ctx;
   const S = inputs.settings;
   const openStatuses = new Set((S.openQuoteStatuses || ['In Review', 'Presented', 'Negotiation']).map((s) => String(s).toLowerCase()));
-  const list = inputs.abm?.accounts || [];
-  const rows = list.map((a) => ({
-    account: a.account || '',
-    division: a.division || '',
-    owner: a.owner || '',
-    status: a.status || '',
-    quotationLakh: a.quotationLakh != null && a.quotationLakh !== '' ? Number(a.quotationLakh) : null,
-    quotationSource: a.quotationLakh != null && a.quotationLakh !== '' ? 'typed' : 'none',
-    openOpps: null,
-    stage: '',
-    action: a.action || '',
-  }));
+  const picked = inputs.abm?.picked || {};
+  const pickedIds = Object.keys(picked).filter((id) => picked[id]?.include !== false);
+
+  const rows = [];
+  if (pickedIds.length) {
+    await safely('ABM accounts (portal)', async () => {
+      const all = await abmRollup(ctx);
+      for (const id of pickedIds) {
+        const a = all.find((x) => x.id === id);
+        if (!a) continue;
+        const p = picked[id] || {};
+        const typedQ = p.quotationLakh != null && p.quotationLakh !== '';
+        rows.push({
+          id,
+          account: a.name,
+          division: a.division || '',
+          country: a.country || '',
+          tier: a.tier || '',
+          owner: a.owner_name || '',
+          status: a.status || '',
+          openOpps: a.oppCount || null,
+          stage: a.oppStages || '',
+          quotationLakh: typedQ ? Number(p.quotationLakh) : a.oppValueLakh,
+          quotationSource: typedQ ? 'typed' : a.oppValueLakh ? 'abm' : 'none',
+          lastActivity: a.lastActivity ? `${a.lastActivity.type || a.lastActivity.channel || 'Activity'} · ${shortDay(a.lastActivity.date)}` : '',
+          action: p.action || a.nextAction || '',
+          fromPortal: true,
+        });
+      }
+    });
+  }
+  // Accounts typed by hand (not in the ABM module).
+  for (const a of inputs.abm?.accounts || []) {
+    if (!a.account) continue;
+    rows.push({
+      account: a.account, division: a.division || '', country: a.country || '', tier: '', owner: a.owner || '', status: a.status || '',
+      openOpps: null, stage: '',
+      quotationLakh: a.quotationLakh != null && a.quotationLakh !== '' ? Number(a.quotationLakh) : null,
+      quotationSource: a.quotationLakh != null && a.quotationLakh !== '' ? 'typed' : 'none',
+      lastActivity: '', action: a.action || '', fromPortal: false,
+    });
+  }
+
+  // Salesforce fills the stage and quotation where the account exists there
+  // and nothing better is known.
   if (salesforceConfigured && rows.length) {
-    await safely('ABM accounts', async () => {
+    await safely('ABM accounts (Salesforce)', async () => {
       const { data: rates } = await salesforce.from('currencytype').select('IsoCode, ConversionRate');
       const rateOf = Object.fromEntries((rates || []).map((r) => [r.IsoCode, Number(r.ConversionRate) || 1]));
       for (const r of rows) {
-        if (!r.account) continue;
-        const { data: accts, error } = await salesforce.from('account').select('Id, Name').ilike('Name', `%${r.account.replace(/[%_]/g, '')}%`).limit(20);
+        if (r.quotationSource === 'typed' && r.stage) continue;
+        const { data: accts, error } = await salesforce.from('account').select('Id, Name').ilike('Name', `%${String(r.account).replace(/[%_]/g, '')}%`).limit(20);
         if (error) throw new Error(error.message);
         const ids = (accts || []).map((a) => a.Id);
         if (!ids.length) continue;
-        const { data: opps, error: oErr } = await salesforce
-          .from('opportunity')
-          .select('Id, StageName, IsClosed')
-          .eq('IsDeleted', false)
-          .in('AccountId', ids);
+        const { data: opps, error: oErr } = await salesforce.from('opportunity').select('Id, StageName, IsClosed').eq('IsDeleted', false).in('AccountId', ids);
         if (oErr) throw new Error(oErr.message);
         const open = (opps || []).filter((o) => !o.IsClosed);
-        r.openOpps = open.length;
-        r.stage = [...new Set(open.map((o) => o.StageName))].join(', ');
-        if (open.length) {
-          const { data: quotes, error: qErr } = await salesforce
-            .from('quote')
-            .select('OpportunityId, Status, GrandTotal, CurrencyIsoCode')
-            .eq('IsDeleted', false)
-            .in('OpportunityId', open.map((o) => o.Id));
-          if (qErr) throw new Error(qErr.message);
-          const inr = (quotes || [])
-            .filter((q) => openStatuses.has(String(q.Status || '').toLowerCase()))
-            .reduce((s, q) => s + Number(q.GrandTotal || 0) / (rateOf[q.CurrencyIsoCode] || 1), 0);
-          if (r.quotationSource === 'none' && inr > 0) {
-            r.quotationLakh = round(inr / 1e5, 1);
-            r.quotationSource = 'salesforce';
-          }
+        if (!open.length) continue;
+        if (!r.stage) r.stage = [...new Set(open.map((o) => o.StageName))].join(', ');
+        if (r.openOpps == null) r.openOpps = open.length;
+        if (r.quotationSource === 'typed') continue;
+        const { data: quotes, error: qErr } = await salesforce.from('quote').select('OpportunityId, Status, GrandTotal, CurrencyIsoCode').eq('IsDeleted', false).in('OpportunityId', open.map((o) => o.Id));
+        if (qErr) throw new Error(qErr.message);
+        const inr = (quotes || [])
+          .filter((q) => openStatuses.has(String(q.Status || '').toLowerCase()))
+          .reduce((s, q) => s + Number(q.GrandTotal || 0) / (rateOf[q.CurrencyIsoCode] || 1), 0);
+        if (inr > 0) {
+          r.quotationLakh = round(inr / 1e5, 1);
+          r.quotationSource = 'salesforce';
         }
       }
     });
   }
+  const order = { 'tier 1': 0, 'tier 2': 1, 'tier 3': 2 };
+  rows.sort((a, b) => (order[String(a.tier).toLowerCase()] ?? 9) - (order[String(b.tier).toLowerCase()] ?? 9) || a.account.localeCompare(b.account));
   return {
     rows,
     totals: {
       accounts: rows.length,
       quoted: rows.filter((r) => r.quotationLakh).length,
       quotationLakh: round(rows.reduce((s, r) => s + (r.quotationLakh || 0), 0), 1),
+      meetings: rows.filter((r) => /meeting|proposal|negotiation/i.test(r.status)).length,
     },
   };
 };
@@ -415,4 +497,4 @@ const buildSeo = (ctx) => {
   };
 };
 
-module.exports = { buildFunnel, buildAbm, buildEngagement, buildSeo, sourceKeyFor, divisionKeyFor };
+module.exports = { buildFunnel, buildAbm, abmCandidates, buildEngagement, buildSeo, sourceKeyFor, divisionKeyFor };

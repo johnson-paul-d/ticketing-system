@@ -207,9 +207,13 @@ module.exports = {
   // ---------------------------------------------------------------
   // Targeted ABM accounts
   // ---------------------------------------------------------------
-  // The accounts marketing is working on. Status and action are typed; the
-  // open quote value is read from Salesforce by account name when blank.
+  // Ticked on the MRM page from the portal's ABM module:
+  //   picked: { [abmAccountId]: { include, action, quotationLakh } }
+  // plus accounts typed by hand that are not in the module. Status, owner,
+  // opportunities and last activity come from the module; the quotation from
+  // the module's opportunities, then Salesforce by account name, unless typed.
   abm: {
+    picked: {},
     accounts: [],
   },
 
