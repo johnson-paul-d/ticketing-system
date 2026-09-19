@@ -33,6 +33,8 @@ module.exports = {
     ],
     // A quote in these statuses is pipeline.
     openQuoteStatuses: ['In Review', 'Presented', 'Negotiation'],
+    // ABM accounts in these statuses are left off the list and the slide.
+    abmExcludeStatuses: ['Lost'],
     // Customer engagement activities. The team has no category for them:
     // campaigns and follow-ups carry a category, while association work
     // (RAI, CREDAI, IGCC, IHCC...) is only recognisable by the ticket title.

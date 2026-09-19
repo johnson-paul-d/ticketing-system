@@ -1019,6 +1019,9 @@ const collateralCandidates = async (month) => {
     .sort((a, b) => String(b.completed_date || b.due_date || '').localeCompare(String(a.completed_date || a.due_date || '')));
 };
 
-const listAbmAccounts = () => abmCandidates({ supabase, pageAll });
+const listAbmAccounts = async () => {
+  const { inputs } = await loadInputs();
+  return abmCandidates({ supabase, pageAll, settings: inputs.settings });
+};
 
 module.exports = { buildMrm, loadInputs, saveInput, resetInput, lockMonth, listProjects, collateralCandidates, listAbmAccounts, DEFAULT_KEYS: Object.keys(DEFAULTS) };

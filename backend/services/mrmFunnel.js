@@ -296,10 +296,16 @@ const abmRollup = async ({ supabase, pageAll }) => {
   }));
 };
 
+// Accounts in settings.abmExcludeStatuses (Lost, by default) are dropped
+// from the list and the slide, even if they were ticked earlier.
+const abmExcluded = (settings) => new Set((settings?.abmExcludeStatuses || ['Lost']).map((s) => String(s).toLowerCase()));
+
 // For the editor: every account in the ABM module with its rollups.
 const abmCandidates = async (ctx) => {
   const rows = await abmRollup(ctx);
+  const excluded = abmExcluded(ctx.settings);
   return rows
+    .filter((r) => !excluded.has(String(r.status || '').toLowerCase()))
     .map((r) => ({
       id: r.id, name: r.name, division: r.division, country: r.country, tier: r.tier, priority: r.priority, status: r.status,
       owner: r.owner_name, contacts: r.contacts, lastActivity: r.lastActivity, nextAction: r.nextAction, nextActionDue: r.nextActionDue,
@@ -314,6 +320,7 @@ const buildAbm = async (ctx) => {
   const openStatuses = new Set((S.openQuoteStatuses || ['In Review', 'Presented', 'Negotiation']).map((s) => String(s).toLowerCase()));
   const picked = inputs.abm?.picked || {};
   const pickedIds = Object.keys(picked).filter((id) => picked[id]?.include !== false);
+  const excluded = abmExcluded(S);
 
   const rows = [];
   if (pickedIds.length) {
@@ -321,7 +328,7 @@ const buildAbm = async (ctx) => {
       const all = await abmRollup(ctx);
       for (const id of pickedIds) {
         const a = all.find((x) => x.id === id);
-        if (!a) continue;
+        if (!a || excluded.has(String(a.status || '').toLowerCase())) continue;
         const p = picked[id] || {};
         const typedQ = p.quotationLakh != null && p.quotationLakh !== '';
         rows.push({
@@ -345,7 +352,7 @@ const buildAbm = async (ctx) => {
   }
   // Accounts typed by hand (not in the ABM module).
   for (const a of inputs.abm?.accounts || []) {
-    if (!a.account) continue;
+    if (!a.account || excluded.has(String(a.status || '').toLowerCase())) continue;
     rows.push({
       account: a.account, division: a.division || '', country: a.country || '', tier: '', owner: a.owner || '', status: a.status || '',
       openOpps: null, stage: '',

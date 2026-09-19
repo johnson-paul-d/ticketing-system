@@ -348,6 +348,7 @@ export function SettingsEditor({ value, onChange }) {
         {list("engagementExcludeCategories", "Engagement activities: categories never counted", "Exhibition and collateral work is reported on its own slides. Tickets inside an exhibition project are never counted either.")}
         {list("engagementExcludeKeywords", "Engagement activities: words in a title that rule a ticket out", "Production and admin tasks: payment, invoice, brochure, banner…")}
         {list("openQuoteStatuses", "Quote statuses that count as pipeline", "As spelled in Salesforce.")}
+        {list("abmExcludeStatuses", "ABM accounts in these statuses are left off the list", "As spelled in the ABM module, e.g. Lost.")}
         {list("exportStages", "Export slide: opportunity stages shown")}
       </div>
       <p className="text-xs text-gray-500">
