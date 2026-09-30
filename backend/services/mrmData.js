@@ -20,6 +20,7 @@ const supabase = require('../config/supabase');
 const { salesforce, isConfigured: salesforceConfigured } = require('../config/salesforceDb');
 const DEFAULTS = require('./mrmDefaults');
 const { buildFunnel, buildAbm, abmCandidates, buildEngagement, buildSeo } = require('./mrmFunnel');
+const { buildBrand } = require('./mrmBrand');
 
 const IST_MS = 330 * 60000;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -843,6 +844,30 @@ const buildMrm = async (month, viewerName) => {
   const engagement = await buildEngagement(ctx);
   const seo = buildSeo(ctx);
 
+  // ------------------------------------------------ Brand visibility index
+  // Typed figures plus what the portal already knows: followers across the
+  // LinkedIn pages on the deck, and marketing-source leads and opportunities.
+  // Total and gain are taken over the same pages: a gain is only quoted when
+  // every page that has a follower count also has its gain for the month.
+  const counted = pages.filter((p) => p.followersTotal !== null && p.followersTotal !== undefined);
+  const followersNow = counted.length ? counted.reduce((s, p) => s + p.followersTotal, 0) : null;
+  const gainKnown = counted.length > 0 && counted.every((p) => p.month.achieved !== null && p.month.achieved !== undefined);
+  const followersGained = gainKnown ? counted.reduce((s, p) => s + p.month.achieved, 0) : null;
+  const prevMonth = addMonths(month, -1);
+  const brand = buildBrand(ctx, {
+    [month]: {
+      enquiries: funnel.marketingByMonth?.[month]?.leads ?? null,
+      opportunities: funnel.marketingByMonth?.[month]?.opps ?? null,
+      linkedinFollowers: followersNow,
+      followersGained,
+    },
+    [prevMonth]: {
+      enquiries: funnel.marketingByMonth?.[prevMonth]?.leads ?? null,
+      opportunities: funnel.marketingByMonth?.[prevMonth]?.opps ?? null,
+      linkedinFollowers: gainKnown ? followersNow - followersGained : null,
+    },
+  });
+
   // ------------------------------------------------ ABP slide tokens
   const [, mNum] = parseYm(month);
   const tokens = {
@@ -902,6 +927,7 @@ const buildMrm = async (month, viewerName) => {
     abm,
     engagement,
     seo,
+    brand,
     mql,
     siteBranding,
     exhibitions,

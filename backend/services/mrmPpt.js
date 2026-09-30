@@ -351,6 +351,129 @@ const renderMrm = async (model) => {
   }
 
   // =====================================================
+  // Brand visibility – the index
+  // =====================================================
+  {
+    const b = model.brand;
+    const SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const prevName = SHORT[Number(String(b.prevMonth).slice(5, 7)) - 1];
+    const n = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN', { maximumFractionDigits: 1 }));
+    const s = chrome('Sieger Brand Visibility Index', `${model.meta.monthName} ${model.meta.year} · how visible the brand was, as one number out of 100, and the figures behind it`);
+
+    // Left: the index, then how it is made up.
+    const lw = 4.75;
+    const cardH = 2.0;
+    s.addShape(pres.ShapeType.roundRect, { x: M, y: TOP + 0.1, w: lw, h: cardH, rectRadius: 0.08, fill: { color: COVER }, line: { color: COVER } });
+    s.addText('BRAND VISIBILITY INDEX', {
+      x: M, y: TOP + 0.2, w: lw, h: 0.28, fontFace: FONT, fontSize: 10, bold: true, color: 'E4D9D9', align: 'center', charSpacing: 1.2, isTextBox: true, margin: 0,
+    });
+    s.addText(
+      [
+        { text: b.index == null ? '–' : String(b.index), options: { fontSize: b.index == null ? 40 : 62, bold: true, color: WHITE } },
+        { text: ' / 100', options: { fontSize: 20, color: 'D9C3C3' } },
+      ],
+      { x: M, y: TOP + 0.48, w: lw, h: 1.05, fontFace: FONT, align: 'center', valign: 'middle', isTextBox: true, margin: 0 }
+    );
+    const trend =
+      b.index == null
+        ? { text: 'Enter the month’s figures on the MRM page', color: 'E4D9D9' }
+        : b.change == null
+          ? {
+              text: b.prevIndex == null || !b.prevScored
+                ? `No index for ${prevName} to compare with`
+                : `${prevName} not comparable: ${b.prevScored} of ${b.totalComponents} components scored`,
+              color: 'E4D9D9',
+            }
+          : b.change > 0
+            ? { text: `▲ up ${b.change} from ${b.prevIndex} in ${prevName}`, color: '9BE0A8' }
+            : b.change < 0
+              ? { text: `▼ down ${Math.abs(b.change)} from ${b.prevIndex} in ${prevName}`, color: 'F5B5AE' }
+              : { text: `Unchanged from ${b.prevIndex} in ${prevName}`, color: 'E4D9D9' };
+    s.addText(trend.text, {
+      x: M, y: TOP + 1.58, w: lw, h: 0.32, fontFace: FONT, fontSize: 12, bold: true, color: trend.color, align: 'center', isTextBox: true, margin: 0,
+    });
+
+    const rows = b.components.map((c) => [
+      { text: c.label, align: 'left', bold: true },
+      `${c.weight}%`,
+      n(c.value),
+      n(c.target),
+      c.score == null ? '—' : { text: String(c.score), bold: true, color: c.score >= 80 ? GOOD : c.score >= 50 ? WARN : BAD },
+    ]);
+    rows.push(['Index', `${b.weightTotal}%`, '', '', b.index == null ? '—' : String(b.index)]);
+    table(s, {
+      x: M, y: TOP + 0.1 + cardH + 0.2, w: lw,
+      head: ['Index component', 'Weight', 'Actual', 'Full marks at', 'Score'],
+      colW: [1.7, 0.62, 0.86, 0.95, 0.62],
+      rows, fontSize: 8.5, rowH: 0.3, boldLast: true,
+    });
+
+    // Right: the figures, in three groups of tiles.
+    const rx = M + lw + 0.35;
+    const rw = W - M - rx;
+    const gap = 0.15;
+    const cols = 4;
+    const tw = (rw - gap * (cols - 1)) / cols;
+    const bandH = 0.3;
+    const tileH = 1.18;
+    const groupH = bandH + 0.1 + tileH + 0.22;
+    const bandColor = { digital: HEAD, social: HEAD_GREY, business: HEAD_GREEN };
+    b.groups.forEach((g, gi) => {
+      const gy = TOP + 0.1 + gi * groupH;
+      s.addShape(pres.ShapeType.rect, { x: rx, y: gy, w: rw, h: bandH, fill: { color: bandColor[g.key] || HEAD }, line: { color: bandColor[g.key] || HEAD } });
+      s.addText(g.title.toUpperCase(), {
+        x: rx + 0.12, y: gy, w: rw - 0.24, h: bandH, fontFace: FONT, fontSize: 10.5, bold: true, color: WHITE, valign: 'middle', charSpacing: 0.8, isTextBox: true, margin: 0,
+      });
+      // A group with fewer figures than columns spreads its tiles over the row.
+      const span = g.items.length < cols ? cols / g.items.length : 1;
+      g.items.slice(0, cols).forEach((it, i) => {
+        const w = tw * span + gap * (span - 1);
+        const x = rx + i * (w + gap);
+        const y = gy + bandH + 0.1;
+        s.addShape(pres.ShapeType.roundRect, { x, y, w, h: tileH, rectRadius: 0.06, fill: { color: BAND }, line: { color: RULE, width: 0.75 } });
+        s.addText(n(it.value), {
+          x, y: y + 0.08, w, h: 0.48, fontFace: FONT, fontSize: 20, bold: true, color: it.value == null ? MUTED : INK, align: 'center', valign: 'middle', isTextBox: true, margin: 0,
+        });
+        s.addText(it.label.toUpperCase(), {
+          x: x + 0.06, y: y + 0.56, w: w - 0.12, h: 0.3, fontFace: FONT, fontSize: 7.5, bold: true, color: MUTED, align: 'center', valign: 'middle', charSpacing: 0.5, isTextBox: true, margin: 0,
+        });
+        const note =
+          it.gained != null
+            ? { text: `${it.gained >= 0 ? '+' : '−'}${n(Math.abs(it.gained))} this month`, color: it.gained >= 0 ? GOOD : BAD }
+            : it.value == null
+              ? { text: 'not entered', color: MUTED }
+              : it.prev == null
+                ? { text: `no ${prevName} figure`, color: MUTED }
+                : it.prev === 0
+                  // A percentage from zero is undefined; say what happened instead.
+                  ? it.value > 0
+                    ? { text: `▲ from 0 in ${prevName}`, color: GOOD }
+                    : { text: `same as ${prevName}`, color: MUTED }
+                  : it.changePct > 0
+                    ? { text: `▲ ${it.changePct}% vs ${prevName}`, color: GOOD }
+                    : it.changePct < 0
+                      ? { text: `▼ ${Math.abs(it.changePct)}% vs ${prevName}`, color: BAD }
+                      : { text: `same as ${prevName}`, color: MUTED };
+        s.addText(note.text, {
+          x, y: y + 0.86, w, h: 0.26, fontFace: FONT, fontSize: 9, bold: note.color !== MUTED, color: note.color, align: 'center', valign: 'middle', isTextBox: true, margin: 0,
+        });
+      });
+    });
+
+    const coverage =
+      b.index == null
+        ? 'No component could be scored yet: a component needs the month’s figure and its full-marks level.'
+        : b.scored < b.totalComponents
+          ? `Index based on ${b.scored} of ${b.totalComponents} components; not scored – ${['no figure for the month', 'no target set']
+              .map((r) => [r, b.missing.filter((m) => m.reason === r).map((m) => m.label)])
+              .filter(([, labels]) => labels.length)
+              .map(([r, labels]) => `${r}: ${labels.join(', ')}`)
+              .join('; ')}.`
+          : `All ${b.totalComponents} components scored.`;
+    footnote(s, `Score = actual ÷ full-marks level × 100, capped at 100; the index is the weighted average. ${coverage} Followers from the LinkedIn sync; enquiries and opportunities from Salesforce (marketing sources); other figures entered monthly.`);
+  }
+
+  // =====================================================
   // 9. Brand visibility – LinkedIn
   // =====================================================
   {

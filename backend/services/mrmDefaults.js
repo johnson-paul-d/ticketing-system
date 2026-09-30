@@ -220,6 +220,24 @@ module.exports = {
   },
 
   // ---------------------------------------------------------------
+  // Sieger Brand Visibility Index
+  // ---------------------------------------------------------------
+  // months:  the visibility figures typed for each month, by figure key
+  //          (websiteVisitors, searchImpressions, organicTraffic,
+  //          brandedSearches, linkedinImpressions, videoViews, prMentions;
+  //          enquiries / opportunities / linkedinFollowers only to override
+  //          what the portal reads from Salesforce and LinkedIn).
+  // targets: the level of each scored figure that counts as full marks.
+  // weights: percent per scored figure; blank = the defaults in
+  //          services/mrmBrand.js (Google 25, website 20, LinkedIn 15, video
+  //          10, branded searches 10, PR 10, enquiries 10).
+  brand: {
+    weights: {},
+    targets: {},
+    months: {},
+  },
+
+  // ---------------------------------------------------------------
   // SEO: targeted keywords and their Google rank, typed in monthly
   // ---------------------------------------------------------------
   seo: {

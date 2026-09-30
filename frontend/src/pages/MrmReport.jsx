@@ -5,6 +5,7 @@ import { FileDown, Loader2, AlertCircle, RefreshCw, Save, RotateCcw, Presentatio
 import { LinkedinEditor } from "../components/mrm/InputEditors";
 import { ExhibitionsEditor, CollateralsEditor, HistoryEditor, TargetsEditor, SettingsEditor } from "../components/mrm/PickerEditors";
 import { SpendEditor, AbmEditor, SeoEditor } from "../components/mrm/FunnelEditors";
+import { BrandEditor } from "../components/mrm/BrandEditor";
 
 // =====================================================
 // MRM REPORT
@@ -34,6 +35,7 @@ const INPUTS = [
   { key: "spend", label: "Marketing spend", hint: "Section 1: rupees lakh per division, source and month. Ads comes from Google Ads unless typed." },
   { key: "abm", label: "ABM accounts", hint: "Section 2: tick the accounts from the ABM module that go on the slide; override the action or quotation if needed." },
   { key: "exhibitions", label: "Exhibitions", hint: "Section 3: tick the projects that are exhibitions; strategic new exhibitions identified." },
+  { key: "brand", label: "Brand visibility index", hint: "Section 4: the month's visibility figures (impressions, visitors, views), the level that counts as full marks, and the weights." },
   { key: "linkedin", label: "LinkedIn wording", hint: "Section 4: done this month, next month plan." },
   { key: "seo", label: "SEO keywords", hint: "Section 4: targeted keywords and their Google rank for the month." },
   { key: "collaterals", label: "Collaterals & videos", hint: "Section 5: tick the tickets to list on the slide." },
@@ -267,6 +269,7 @@ export default function MrmReport() {
       case "collaterals": return <CollateralsEditor {...p} />;
       case "linkedin": return <LinkedinEditor {...p} />;
       case "seo": return <SeoEditor {...p} />;
+      case "brand": return <BrandEditor {...p} />;
       case "targets": return <TargetsEditor {...p} />;
       case "history": return <HistoryEditor {...p} />;
       case "settings": return <SettingsEditor {...p} />;
@@ -412,6 +415,34 @@ export default function MrmReport() {
                   </tbody>
                 </table>
               </Section>
+
+              {model.brand ? (
+              <Section
+                title={`4. Brand visibility index – ${model.brand.index ?? "—"} / 100${model.brand.change != null ? ` (${model.brand.change >= 0 ? "▲" : "▼"} ${Math.abs(model.brand.change)} from ${model.brand.prevIndex})` : ""}`}
+                hint={model.brand.index == null
+                  ? "Enter the month's figures and full-marks levels under “Brand visibility index” below."
+                  : `${model.brand.scored} of ${model.brand.totalComponents} components scored${model.brand.missing.length ? `; not scored: ${model.brand.missing.map((m) => `${m.label} (${m.reason})`).join(", ")}` : ""}.${model.brand.change == null && model.brand.prevScored > 0 ? ` No trend shown: last month was scored on ${model.brand.prevScored} of ${model.brand.totalComponents} components, so the two are not comparable. Fill in last month's column to get one.` : ""} ${model.brand.formula}`}
+              >
+                <table className="w-full">
+                  <thead><tr><th className={th}>Component</th><th className={`${th} text-right`}>Weight</th><th className={`${th} text-right`}>Actual</th><th className={`${th} text-right`}>Prev month</th><th className={`${th} text-right`}>Full marks at</th><th className={`${th} text-right`}>Score</th><th className={`${th} text-right`}>Points</th></tr></thead>
+                  <tbody>
+                    {model.brand.components.map((c) => (
+                      <tr key={c.key}>
+                        <td className={td}>{c.label}<span className="block text-[11px] text-gray-400">{c.metricLabel}{c.source === "auto" ? " · from the portal" : ""}</span></td>
+                        <td className={num}>{c.weight}%</td><td className={num}>{money(c.value)}</td><td className={`${num} text-gray-400`}>{money(c.prevValue)}</td>
+                        <td className={num}>{money(c.target)}</td><td className={`${num} font-semibold`}>{c.score ?? "—"}</td><td className={`${num} text-gray-500`}>{c.points ?? "—"}</td>
+                      </tr>
+                    ))}
+                    {model.brand.groups.flatMap((g) => g.items).filter((it) => !model.brand.components.some((c) => c.key === it.key)).map((it) => (
+                      <tr key={it.key} className="bg-gray-50/60">
+                        <td className={`${td} text-gray-500`}>{it.label}<span className="block text-[11px] text-gray-400">on the slide, not in the index{it.source === "auto" ? " · from the portal" : ""}</span></td>
+                        <td className={num}>—</td><td className={num}>{money(it.value)}</td><td className={`${num} text-gray-400`}>{money(it.prev)}</td><td className={num}>—</td><td className={num}>—</td><td className={num}>—</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </Section>
+              ) : null}
 
               <Section title="4. Brand visibility – LinkedIn" hint="Followers gained per month, per page. Past months keep the presented figure; the live recount is beside it.">
                 <table className="w-full">

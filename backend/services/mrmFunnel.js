@@ -46,8 +46,14 @@ const buildFunnel = async (ctx) => {
   const divisions = Array.isArray(S.divisions) && S.divisions.length ? S.divisions : [];
   const sources = Array.isArray(S.sources) && S.sources.length ? S.sources : [];
   const openStatuses = new Set((S.openQuoteStatuses || ['In Review', 'Presented', 'Negotiation']).map((s) => String(s).toLowerCase()));
-  const rangeStartUtc = monthStartUtc(fyStart);
+  // Read from one month before the fiscal year, so that the first month of
+  // the year still has a previous month to compare with. Year-to-date figures
+  // are unaffected: they add up the fiscal months only.
+  const firstMonth = addMonths(fyStart, -1);
+  const rangeStartUtc = monthStartUtc(firstMonth);
   const rangeEndUtc = monthStartUtc(addMonths(month, 1));
+  let leadsLoaded = false;
+  let oppsLoaded = false;
 
   // counts[division][source][month] = { leads, converted, opps, quotes, pipelineInr }
   const counts = {};
@@ -85,13 +91,14 @@ const buildFunnel = async (ctx) => {
             .select('Id, LeadSource, Divisions__c, ConvertedDate')
             .eq('IsDeleted', false)
             .eq('IsConverted', true)
-            .gte('ConvertedDate', `${fyStart}-01`)
+            .gte('ConvertedDate', `${firstMonth}-01`)
             .lte('ConvertedDate', monthEndDay),
         'Id'
       );
       for (const r of conv) {
         bump(divisionKeyFor(divisions, r.Divisions__c), sourceKeyFor(sources, r.LeadSource), String(r.ConvertedDate).slice(0, 7), 'converted');
       }
+      leadsLoaded = true;
     });
 
     await safely('Pipeline: opportunities and quotes', async () => {
@@ -133,6 +140,7 @@ const buildFunnel = async (ctx) => {
           if (openStatuses.has(String(q.Status || '').toLowerCase())) bump(k[0], k[1], k[2], 'pipelineInr', toInr(q.GrandTotal, q.CurrencyIsoCode));
         }
       }
+      oppsLoaded = true;
     });
   }
 
@@ -229,8 +237,21 @@ const buildFunnel = async (ctx) => {
     };
   });
 
+  // Marketing sources across the divisions, month by month (null where
+  // Salesforce could not be read, so a failure is not mistaken for zero).
+  const marketingByMonth = {};
+  for (const m of [firstMonth, ...fyMonths.filter((x) => x <= month)]) {
+    const sum = (field) => divisions.reduce((t, d) => t + sources.reduce((s, x) => s + (counts[d.key]?.[x.key]?.[m]?.[field] || 0), 0), 0);
+    marketingByMonth[m] = {
+      leads: leadsLoaded ? sum('leads') : null,
+      converted: leadsLoaded ? sum('converted') : null,
+      opps: oppsLoaded ? sum('opps') : null,
+    };
+  }
+
   return {
     divisions: divisionModels,
+    marketingByMonth,
     sources: [...sources.map((s) => ({ key: s.key, label: s.label })), OTHER],
     overall: {
       marketing: {
