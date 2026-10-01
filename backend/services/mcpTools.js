@@ -1069,6 +1069,11 @@ const tools = [
 // permission boundary is the route handlers rather than anything here.
 tools.push(...writes.tools, ...require('./mcpFullAccess').tools);
 
+// The MRM report page: the month's figures, and the inputs the deck is built
+// from. Reads and edits, through the same /api/reports/mrm routes as the page,
+// so only Marketing admins get past them.
+tools.push(...require('./mcpMrm').tools);
+
 const byName = new Map(tools.map((t) => [t.name, t]));
 
 // What tools/list returns: the handler is ours, the rest is the wire format.

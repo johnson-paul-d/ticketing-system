@@ -318,6 +318,17 @@ the page, download the `.pptx`.
 
 The divisions and sources are records under Definitions (Advanced view): each division names its Salesforce division values and Google Ads account, each source the Salesforce lead sources it collects.
 
+**The same page over MCP.** The portal's MCP endpoint (`/mcp`, API key or
+sign-in, see `backend/routes/mcp.js`) carries twelve `mrm_` tools
+(`backend/services/mcpMrm.js`): `mrm_report`, `mrm_inputs` and `mrm_pick_list`
+read; `mrm_set_spend`, `mrm_set_brand_figures`, `mrm_set_seo_ranks`, the three
+`mrm_tick_*` tools, `mrm_update_input`, `mrm_lock_month` and `mrm_reset_input`
+edit. They call the same `/api/reports/mrm` routes as the page, so only
+Marketing admins get past them and a read-only key or sign-in cannot edit. The
+deck file is not offered over MCP; it is downloaded from the page. Division
+and source keys in Definitions must be plain names (letters, digits, spaces,
+`-`, `_`); the save route refuses anything else.
+
 **Presented figures are kept.** Salesforce keeps moving after a month closes
 (leads get re-tagged, merged, dropped), so a recount of an old month drifts
 from what the meeting saw. Months under **Presented figures** are shown

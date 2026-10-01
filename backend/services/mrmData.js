@@ -101,7 +101,32 @@ const loadInputs = async () => {
   return { inputs: merged, meta };
 };
 
+// Division and source keys become property names in the pipeline maps and in
+// the saved spend. A key such as "__proto__" would write into every object in
+// the process, so only plain names are accepted, wherever the save comes from.
+const SAFE_KEY = /^[A-Za-z0-9][A-Za-z0-9 _-]{0,39}$/;
+const RESERVED_KEYS = new Set(Object.getOwnPropertyNames(Object.prototype));
+const checkSettings = (value) => {
+  for (const [list, what] of [['divisions', 'division'], ['sources', 'source']]) {
+    const rows = value?.[list];
+    if (rows === undefined) continue;
+    const fail = (message) => {
+      const err = new Error(message);
+      err.status = 400;
+      throw err;
+    };
+    if (!Array.isArray(rows)) fail(`"${list}" must be a list.`);
+    for (const row of rows) {
+      const k = row?.key;
+      if (typeof k !== 'string' || !SAFE_KEY.test(k) || RESERVED_KEYS.has(k)) {
+        fail(`Every ${what} needs a short key made of letters, digits, spaces, "-" or "_" (got ${JSON.stringify(k)}).`);
+      }
+    }
+  }
+};
+
 const saveInput = async (key, value, userName) => {
+  if (key === 'settings') checkSettings(value);
   if (!(key in DEFAULTS)) {
     const err = new Error(`Unknown input "${key}"`);
     err.status = 400;

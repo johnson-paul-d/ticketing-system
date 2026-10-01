@@ -43,8 +43,11 @@ const emptyCell = () => ({ spendLakh: null, leads: 0, converted: 0, opps: 0, quo
 const buildFunnel = async (ctx) => {
   const { salesforce, salesforceConfigured, supabase, pageAll, chunk, safely, istMonth, inputs, month, fyStart, fyMonths, elapsed, monthStartUtc, addMonths, monthEndDay } = ctx;
   const S = inputs.settings;
-  const divisions = Array.isArray(S.divisions) && S.divisions.length ? S.divisions : [];
-  const sources = Array.isArray(S.sources) && S.sources.length ? S.sources : [];
+  // Keys become property names below, so anything that is not a plain name is dropped.
+  const usable = (list) =>
+    (Array.isArray(list) ? list : []).filter((x) => x && typeof x.key === 'string' && x.key && !Object.prototype.hasOwnProperty.call(Object.prototype, x.key));
+  const divisions = usable(S.divisions);
+  const sources = usable(S.sources);
   const openStatuses = new Set((S.openQuoteStatuses || ['In Review', 'Presented', 'Negotiation']).map((s) => String(s).toLowerCase()));
   // Read from one month before the fiscal year, so that the first month of
   // the year still has a previous month to compare with. Year-to-date figures
@@ -496,7 +499,7 @@ const buildEngagement = async (ctx) => {
 const buildSeo = (ctx) => {
   const { inputs, month, addMonths } = ctx;
   const prev = addMonths(month, -1);
-  const kws = inputs.seo?.keywords || [];
+  const kws = (Array.isArray(inputs.seo?.keywords) ? inputs.seo.keywords : []).filter((k) => k && typeof k === 'object');
   const rows = kws
     .filter((k) => k.keyword)
     .map((k) => {
