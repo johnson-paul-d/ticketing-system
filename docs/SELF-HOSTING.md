@@ -360,6 +360,46 @@ review, press **Lock <month> figures** on the page so they stay fixed
 `LINKEDIN_AUTO_SYNC=on` refreshes LinkedIn analytics once a day, so the
 month-end follower count exists without anyone pressing Sync.
 
+## Ticket categories
+
+Each team has one list of ticket categories, and it is held twice: in
+`backend\utils\categories.js` (the server checks against it) and in
+`frontend\src\constants\categories.js` (the dropdowns are filled from it). To
+add, rename or remove a category, edit both. `scripts\ship.ps1` compares the
+two (`node scripts\check-category-lists.js`) and refuses to commit when they
+differ.
+
+A ticket belongs to its assignee's team, otherwise its creator's, and takes
+that team's list. Whatever is sent is stored in the list's spelling: letter
+case and spacing do not matter, and the names people typed before the lists
+existed ("ANIMATION VIDEO", "graphic design", "Expo", "Other") are mapped by the
+`LEGACY` table in the same two files. A name on neither the list nor the table
+is refused.
+
+When a category is renamed, add the old name to `LEGACY` pointing at the new
+one. At start-up the app renames stored tickets that still carry a legacy name
+and writes the old name into each ticket's timeline; it logs what it changed
+and what it left alone (a name the ticket's team has no category for). After
+the first run there is nothing left for it to do. `CATEGORY_STANDARDISE=off` in
+`backend\.env` switches that pass off; while it is off, the MRM collateral and
+engagement figures do not see tickets that still carry a legacy name.
+
+The MRM deck counts collaterals and engagement activities by category, so a
+rename moves the renamed tickets into or out of those counts for every month of
+the fiscal year, including months already presented (a "Graphic Design" ticket
+from July becomes Collateral and is counted from then on). Those two figures are
+not part of what locking a month freezes.
+
+A reassignment to the other team carries a category over only where both teams
+have a name for the same work (Salesforce / Sales Force, Reports / Reports /
+MIS). Any other category stays as it was, shown as an extra option on the
+ticket, until an admin picks one from the new team's list.
+
+Tickets without a category are shown as "Uncategorised". The Create Ticket form
+and a project's Add task form both ask for one whenever the ticket's team is
+known; a Super Admin's unassigned ticket has no team yet, so there the category
+is optional.
+
 ## Caveats found after the first migration (12 Sep 2026)
 
 - **The server runs in Indian time; Render ran in UTC.** Any code that turns a

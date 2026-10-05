@@ -3,7 +3,23 @@ const getISTTime = require('../utils/time');
 const { addInterval, occurrenceTitle } = require('../utils/recurrence');
 const { notifyUser } = require('./notificationService');
 const { emitScoped } = require('../utils/realtime');
-const { ticketAudience } = require('../utils/ticketTeam');
+const { ticketAudience, resolvedTicketTeam } = require('../utils/ticketTeam');
+const { standardStored } = require('../utils/categories');
+const { TEAM } = require('../utils/roles');
+
+// Each occurrence is copied from the one before it, so a legacy category on a
+// recurring ticket would be handed down for ever. The copy takes the canonical
+// name where there is one and keeps the stored value where there is not.
+const carriedCategory = async (template) => {
+  if (!template.category) return null;
+  try {
+    const known = await resolvedTicketTeam(template);
+    const std = standardStored(known || TEAM.MARKETING, template.category, Boolean(known));
+    return std.ok ? std.value : template.category;
+  } catch {
+    return template.category;
+  }
+};
 
 const { todayIST } = require('../utils/time');
 
@@ -52,7 +68,7 @@ async function generateDueRecurrences(io) {
           title: occurrenceTitle(baseTitle, periodDate, interval),
           description: template.description,
           priority: template.priority || 'Medium',
-          category: template.category || null,
+          category: await carriedCategory(template),
           division: template.division || null,
           assigned_to: template.assigned_to || null,
           assigned_to_name: template.assigned_to_name || null,

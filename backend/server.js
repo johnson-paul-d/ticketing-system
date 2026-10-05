@@ -380,4 +380,7 @@ server.listen(PORT, () => {
   console.log(`Salesforce mirror: ${process.env.SALESFORCE_DB_URL || 'not configured'}`);
   require('./services/linkedinScheduler').startLinkedInScheduler(PORT);
   startRecurrenceScheduler(io);
+  // Renames legacy ticket categories to the canonical lists. Idempotent: after
+  // the first pass there is nothing left for it to do.
+  require('./services/categoryStandardiser').standardiseOnBoot();
 });

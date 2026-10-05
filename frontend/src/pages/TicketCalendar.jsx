@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
+import { UNCATEGORISED } from "../constants/categories";
 
 import {
   Calendar,
@@ -217,8 +218,6 @@ export default function TicketCalendar() {
   // Built from the tickets actually on the calendar rather than the fixed
   // team list, so the dropdown never offers a category with nothing behind it,
   // and Super Admins see both teams' categories side by side.
-
-  const UNCATEGORISED = "Uncategorised";
 
   const categoryOptions = useMemo(() => {
     const seen = new Set();

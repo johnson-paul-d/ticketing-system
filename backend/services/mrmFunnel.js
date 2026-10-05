@@ -12,7 +12,9 @@
 // Everything is computed for the fiscal year to date; the month and the YTD
 // figures are the same counts over two ranges of months.
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const { storedNames, fold } = require('../utils/categories');
+
+const MONTHS =['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const shortDay = (d) => { const s = String(d || '').slice(0, 10); return s ? `${Number(s.slice(8, 10))} ${MONTHS[Number(s.slice(5, 7)) - 1]}` : ''; };
 const round = (v, dp = 1) => (v == null ? null : Math.round(v * 10 ** dp) / 10 ** dp);
 
@@ -439,12 +441,14 @@ const escapeRe = (k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const buildEngagement = async (ctx) => {
   const { supabase, pageAll, safely, inputs, month, fyStart, monthEndDay, exhibitionProjectIds = [] } = ctx;
   const S = inputs.settings;
-  const cats = new Set((S.engagementCategories || []).map((c) => String(c).toLowerCase()));
+  // The category lists in the settings are typed by hand; they are read in the
+  // spelling tickets store, and compared without regard to case or spacing.
+  const cats = new Set(storedNames(S.engagementCategories).map(fold));
   const exhibitionProjects = new Set(exhibitionProjectIds);
   const stopWords = (S.engagementExcludeKeywords || []).map((k) => String(k).trim()).filter(Boolean);
   // Stop words match as prefixes too (invoice → invoices, design → designs).
   const stop = stopWords.length ? new RegExp(`(^|[^a-z0-9])(${stopWords.map(escapeRe).join('|')})`, 'i') : null;
-  const excluded = new Set((S.engagementExcludeCategories || []).map((c) => String(c).toLowerCase()));
+  const excluded = new Set(storedNames(S.engagementExcludeCategories).map(fold));
   const words = (S.engagementKeywords || []).map((k) => String(k).trim()).filter(Boolean);
   const kw = words.length ? new RegExp(`(^|[^a-z0-9])(${words.map(escapeRe).join('|')})(?=$|[^a-z0-9])`, 'i') : null;
   const describe = `categories ${(S.engagementCategories || []).join(', ') || 'none'}; titles mentioning ${words.join(', ') || 'none'}`;
@@ -462,7 +466,7 @@ const buildEngagement = async (ctx) => {
         'id'
       );
       const isEngagement = (t) => {
-        const cat = String(t.category || '').toLowerCase();
+        const cat = fold(t.category);
         if (excluded.has(cat)) return false;
         if (t.project_id && exhibitionProjects.has(t.project_id)) return false;
         if (stop && stop.test(String(t.title || ''))) return false;

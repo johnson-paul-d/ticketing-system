@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { isAdmin as isAdminRole } from "../constants/roles";
+import { getTeam, isAdmin as isAdminRole } from "../constants/roles";
+import { categoriesForTeam } from "../constants/categories";
 import {
   ArrowLeft,
   Plus,
@@ -112,6 +113,9 @@ export default function ProjectDetails() {
   const [tDesc, setTDesc] = useState("");
   const [tAssignee, setTAssignee] = useState("");
   const [tPriority, setTPriority] = useState("Medium");
+  // Kept between tasks: a project's tasks are mostly one kind of work, so the
+  // last choice is the likeliest next one.
+  const [tCategory, setTCategory] = useState("");
   const [tDue, setTDue] = useState("");
   const [tDays, setTDays] = useState(0);
   const [tHours, setTHours] = useState(0);
@@ -290,9 +294,29 @@ export default function ProjectDetails() {
   };
 
   // ============ ADD TASK ============
+  // A task belongs to its assignee's team, otherwise its creator's, and the
+  // server checks the category against that team's list. Only an admin's
+  // choice of assignee counts; anyone else's task is assigned to themselves.
+  // taskTeam is null when it cannot be told yet: a Super Admin has no team of
+  // their own, so their unassigned task has none until someone is assigned.
+  // The Marketing list is offered then (it is what the server would check
+  // against), but a choice is not demanded, so nobody has to file a Service
+  // task under a Marketing name just to get the form to submit.
+  const taskTeam =
+    (isAdmin && getTeam(assigneeOptions.find((u) => u.id === tAssignee))) || getTeam(user);
+  const taskCategories = categoriesForTeam(taskTeam);
+  // The remembered choice, where the list on offer has it. A name from the
+  // other team's list is not sent, but it is not forgotten either: it comes
+  // back when an assignee from that team is picked again.
+  const taskCategory = taskCategories.includes(tCategory) ? tCategory : "";
+
   const addTask = async () => {
     if (!tTitle.trim() || !tDesc.trim()) {
       setTaskError("Title and description are required");
+      return;
+    }
+    if (taskTeam && !taskCategory) {
+      setTaskError("Please choose a category");
       return;
     }
     if (tDue && project?.target_date && tDue > project.target_date && !isAdmin) {
@@ -313,7 +337,7 @@ export default function ProjectDetails() {
         allotted_minutes: allotted,
         project_id: project.id,
         division: project.division || null,
-        category: null,
+        category: taskCategory || null,
       });
       setShowAdd(false);
       setTTitle(""); setTDesc(""); setTAssignee(""); setTPriority("Medium"); setTDue("");
@@ -1238,6 +1262,26 @@ export default function ProjectDetails() {
                   placeholder="What exactly needs to be delivered?"
                   className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 outline-none focus:ring-2 focus:ring-[#9b2423]/40 resize-vertical"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                  Category {taskTeam && <span className="text-red-500">*</span>}
+                </label>
+                <select
+                  value={taskCategory}
+                  onChange={(e) => setTCategory(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 outline-none"
+                >
+                  <option value="">Select category</option>
+                  {taskCategories.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+                {!taskTeam && (
+                  <p className="text-xs text-gray-400 mt-1.5">
+                    These are the Marketing categories. For a Service task, choose the assignee first.
+                  </p>
+                )}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>

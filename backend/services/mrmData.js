@@ -21,6 +21,11 @@ const { salesforce, isConfigured: salesforceConfigured } = require('../config/sa
 const DEFAULTS = require('./mrmDefaults');
 const { buildFunnel, buildAbm, abmCandidates, buildEngagement, buildSeo } = require('./mrmFunnel');
 const { buildBrand } = require('./mrmBrand');
+const { storedNames } = require('../utils/categories');
+
+// The collateral categories, spelt the way tickets store them.
+const collateralCategoryNames = (S) =>
+  storedNames(S.collateralCategories?.length ? S.collateralCategories : DEFAULTS.settings.collateralCategories);
 
 const IST_MS = 330 * 60000;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -778,7 +783,7 @@ const buildMrm = async (month, viewerName) => {
       // Plan vs actual over every ticket in the collateral categories: due in
       // the month is the plan, completed in the month is the actual. The
       // ticked tickets only decide which rows are listed on the slide.
-      const cats = S.collateralCategories?.length ? S.collateralCategories : ['Video', 'Animation', 'ANIMATION VIDEO', 'Collateral'];
+      const cats = collateralCategoryNames(S);
       const all = await pageAll(
         () => supabase.from('tickets').select('id, title, status, category, division, due_date, completed_date').in('category', cats).eq('deleted', false),
         'id'
@@ -1039,14 +1044,15 @@ const listProjects = async () => {
 const collateralCandidates = async (month) => {
   const { inputs } = await loadInputs();
   const S = inputs.settings;
-  const cats = S.collateralCategories?.length ? S.collateralCategories : ['Video', 'Animation', 'ANIMATION VIDEO', 'Collateral'];
+  const cats = collateralCategoryNames(S);
   const fyStart = fiscalStart(month, S.fiscalYearStartMonth);
   const rows = await pageAll(
     () =>
       supabase
         .from('tickets')
         .select('id, title, status, category, division, due_date, completed_date, created_at, assigned_to_name')
-        .in('category', cats),
+        .in('category', cats)
+        .eq('deleted', false),
     'id'
   );
   const monthEndDay = lastDayOf(month);

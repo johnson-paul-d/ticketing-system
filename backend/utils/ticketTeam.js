@@ -9,19 +9,21 @@
 const supabase = require('../config/supabase');
 const { TEAM, teamFromRole } = require('./roles');
 
-const ticketTeam = async (ticket) => {
+// The team somebody on the ticket actually belongs to, or null when nobody
+// resolves to one (no assignee or creator, a Super Admin, a user who no longer
+// exists). Code that would change the ticket because of its team, renaming a
+// category for instance, uses this to tell a known team from the default.
+const resolvedTicketTeam = async (ticket) => {
   const ids = [ticket?.assigned_to, ticket?.created_by].filter(Boolean);
-  if (!ids.length) return TEAM.MARKETING;
+  if (!ids.length) return null;
 
   const { data: users } = await supabase.from('users').select('id, role').in('id', ids);
   const roleOf = (id) => users?.find((u) => u.id === id)?.role;
 
-  return (
-    teamFromRole(roleOf(ticket.assigned_to)) ||
-    teamFromRole(roleOf(ticket.created_by)) ||
-    TEAM.MARKETING
-  );
+  return teamFromRole(roleOf(ticket.assigned_to)) || teamFromRole(roleOf(ticket.created_by)) || null;
 };
+
+const ticketTeam = async (ticket) => (await resolvedTicketTeam(ticket)) || TEAM.MARKETING;
 
 // Who may receive realtime updates about this ticket — the same rule
 // canAccessTicket applies, expressed as socket rooms.
@@ -30,4 +32,4 @@ const ticketAudience = async (ticket) => ({
   userIds: [ticket?.assigned_to, ticket?.created_by],
 });
 
-module.exports = { ticketTeam, ticketAudience };
+module.exports = { ticketTeam, resolvedTicketTeam, ticketAudience };

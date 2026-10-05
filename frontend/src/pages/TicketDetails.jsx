@@ -5,7 +5,7 @@ import api from "../services/api";
 import useAuthStore from "../store/authStore";
 import socket from "../services/socket";
 import moment from "moment";
-import { categoryOptions } from "../constants/categories";
+import { categoryOptions, standardCategory, UNCATEGORISED } from "../constants/categories";
 import { TICKET_DIVISIONS } from "../constants/divisions";
 import { TICKET_STATUSES } from "../constants/statuses";
 import { isAdmin as isAdminRole, getTeam } from "../constants/roles";
@@ -136,7 +136,11 @@ export default function TicketDetails() {
   // Categories follow the ticket's team, not the viewer's, so an admin editing
   // a Service ticket gets the Service list. `team` comes from GET /tickets/:id;
   // the viewer's own team is the fallback for responses that predate it.
-  const ticketCategories = categoryOptions(ticket?.team || getTeam(user), ticket?.category);
+  const categoryTeam = ticket?.team || getTeam(user);
+  const ticketCategories = categoryOptions(categoryTeam, ticket?.category);
+  // What the dropdown shows for the stored value: its name on the team's list
+  // where it has one, the stored value itself where it does not.
+  const shownCategory = standardCategory(categoryTeam, ticket?.category) ?? ticket?.category ?? "";
 
   // Mirrors canModifyEntry on the server: the person who logged the time, or an
   // admin. Showing Edit on someone else's entry only leads to a 403. Both names
@@ -603,7 +607,7 @@ export default function TicketDetails() {
               {isAdmin ? (
                 <div className="flex gap-4 mt-3">
                   <select
-                    value={ticket.category || ""}
+                    value={shownCategory}
                     onChange={(e) =>
                       setTicket({
                         ...ticket,
@@ -612,7 +616,7 @@ export default function TicketDetails() {
                     }
                     className="border rounded-2xl px-4 py-3 w-full"
                   >
-                    <option value="">Select Category</option>
+                    <option value="">{UNCATEGORISED}</option>
                     {ticketCategories.map((category) => (
                       <option key={category} value={category}>
                         {category}
@@ -623,7 +627,7 @@ export default function TicketDetails() {
                     onClick={async () => {
                       try {
                         await api.put(`/tickets/${ticket.id}`, {
-                          category: ticket.category,
+                          category: shownCategory || null,
                         });
                         alert("Category updated");
                         fetchTicket();
@@ -638,7 +642,9 @@ export default function TicketDetails() {
                   </button>
                 </div>
               ) : (
-                <p className="text-lg font-medium mt-2">{ticket.category}</p>
+                <p className={`text-lg font-medium mt-2 ${ticket.category ? "" : "text-gray-400"}`}>
+                  {ticket.category || UNCATEGORISED}
+                </p>
               )}
             </div>
 

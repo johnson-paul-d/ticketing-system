@@ -28,6 +28,14 @@
 
 const portal = require('./portalApi');
 const { todayIST } = require('../utils/time');
+const { MARKETING_CATEGORIES, SERVICE_CATEGORIES } = require('../utils/categories');
+
+// The route stores the canonical name and refuses anything that is on neither
+// list, so the lists are spelt out here rather than left for the model to guess.
+const CATEGORY_HELP =
+  "Work type, from the list of the ticket's team (the assignee's team, otherwise the creator's). " +
+  `Marketing: ${MARKETING_CATEGORIES.join('; ')}. Service: ${SERVICE_CATEGORIES.join('; ')}. ` +
+  'Any letter case is accepted and stored as spelt here; a name on neither list is refused.';
 
 // Refused before anything is called, and worded so the model relays a fix
 // rather than retrying the same call.
@@ -93,10 +101,7 @@ const tools = [
         title: { type: 'string', description: 'Short summary of the work.' },
         description: { type: 'string', description: 'What actually needs doing.' },
         priority: { type: 'string', enum: ['Low', 'Medium', 'High', 'Urgent'] },
-        category: {
-          type: 'string',
-          description: 'Work type. Marketing and Service have different lists — read one off an existing ticket if unsure.',
-        },
+        category: { type: 'string', description: CATEGORY_HELP },
         division: { type: 'string', enum: ['ASTOR', 'CPS', 'TMD', 'All User'] },
         assigned_to: {
           type: 'string',
@@ -151,7 +156,7 @@ const tools = [
           enum: ['Open', 'In Progress', 'Waiting For Sources', 'Completed', 'Closed'],
         },
         priority: { type: 'string', enum: ['Low', 'Medium', 'High', 'Urgent'] },
-        category: { type: 'string' },
+        category: { type: 'string', description: `${CATEGORY_HELP} An empty string clears it.` },
         division: { type: 'string', enum: ['ASTOR', 'CPS', 'TMD', 'All User'] },
         due_date: { type: 'string', description: 'YYYY-MM-DD.' },
         allotted_minutes: { type: 'number', description: 'Time budget in minutes.' },

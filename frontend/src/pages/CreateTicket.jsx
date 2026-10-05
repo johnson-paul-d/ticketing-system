@@ -16,15 +16,12 @@ export default function CreateTicket() {
   // what is sent — these two just keep the form honest about that.
   const isAdmin = isAdminRole(user);
 
-  // A ticket is raised into the creator's team, so it takes that team's
-  // categories. Super Admins have no team of their own and get the Marketing
-  // list, which is what categoriesForTeam falls back to.
-  const categories = categoriesForTeam(getTeam(user));
-
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("Medium");
-  const [category, setCategory] = useState(categories[0]);
+  // Nothing is chosen until the person chooses: a default here used to file
+  // every untouched ticket under the first name on the list.
+  const [category, setCategory] = useState("");
   const [division, setDivision] = useState("CPS");
   const [dueDate, setDueDate] = useState("");
   const [givenBy, setGivenBy] = useState("");
@@ -51,6 +48,23 @@ export default function CreateTicket() {
   }, []);
 
   const selectedProject = projects.find((p) => p.id === projectId);
+
+  // A ticket belongs to its assignee's team, otherwise its creator's, and the
+  // server checks the category against that team's list. The dropdown follows
+  // the same rule, so an admin assigning to the other team is offered names
+  // the server will accept.
+  //
+  // ticketTeam is null when it cannot be told yet: a Super Admin has no team of
+  // their own, so their unassigned ticket has none until someone is assigned.
+  // The Marketing list is offered then (it is what the server would check
+  // against), but a choice is not demanded, so nobody has to file a Service
+  // ticket under a Marketing name just to get the form to submit.
+  const assignee = teamMembers.find((m) => m.id === assignedTo);
+  const ticketTeam = getTeam(assignee) || getTeam(user);
+  const categories = categoriesForTeam(ticketTeam);
+  // The choice, where the list on offer has it. A name from the other team's
+  // list is not sent, and comes back if the assignee is switched back.
+  const chosenCategory = categories.includes(category) ? category : "";
 
   // --- Recurring-task preview (mirrors backend/utils/recurrence.js) ---
   const intervalWord =
@@ -84,6 +98,10 @@ export default function CreateTicket() {
       setError("Please fill in both title and description");
       return;
     }
+    if (ticketTeam && !chosenCategory) {
+      setError("Please choose a category");
+      return;
+    }
     setError("");
     setLoading(true);
     try {
@@ -91,7 +109,7 @@ export default function CreateTicket() {
         title,
         description,
         priority,
-        category,
+        category: chosenCategory || null,
         division,
         due_date: isRecurring ? null : dueDate || null,
         given_by: givenBy,
@@ -166,20 +184,26 @@ export default function CreateTicket() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                Category
+                Category {ticketTeam && <span className="text-red-500">*</span>}
               </label>
               <select
                 className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm sm:text-base focus:ring-2 focus:ring-[#9b2423]/40 bg-gray-50 outline-none cursor-pointer"
-                value={category}
+                value={chosenCategory}
                 onChange={(e) => setCategory(e.target.value)}
                 disabled={loading}
               >
+                <option value="">Select category</option>
                 {categories.map((cat) => (
                   <option key={cat} value={cat}>
                     {cat}
                   </option>
                 ))}
               </select>
+              {!ticketTeam && (
+                <p className="text-xs text-gray-400 mt-1.5">
+                  These are the Marketing categories. For a Service ticket, choose the assignee first.
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1.5">

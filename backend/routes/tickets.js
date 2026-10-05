@@ -6,8 +6,8 @@ const auth = require('../middleware/auth');
 const getISTTime = require('../utils/time');
 const { TEAM, isAdmin, isSuperAdmin, teamFromRole, getUserTeam } = require('../utils/roles');
 const { isValidInterval, addInterval, occurrenceTitle } = require('../utils/recurrence');
-const { isValidCategory } = require('../utils/categories');
-const { ticketTeam, ticketAudience } = require('../utils/ticketTeam');
+const { standardCategory, categoriesForTeam } = require('../utils/categories');
+const { ticketTeam, resolvedTicketTeam, ticketAudience } = require('../utils/ticketTeam');
 
 const { sendMail } = require('../services/mailService');
 
@@ -430,9 +430,13 @@ router.post('/', auth, async (req, res) => {
       }
     }
 
-    if (!isValidCategory(newTicketTeam, category)) {
+    // Stored as the canonical name whatever case or legacy spelling arrived.
+    const newCategory = standardCategory(newTicketTeam, category);
+    if (!newCategory.ok) {
       return res.status(400).json({
-        message: `"${category}" is not a valid category for the ${newTicketTeam} team`,
+        message:
+          `"${category}" is not a category for the ${newTicketTeam} team. ` +
+          `Use one of: ${categoriesForTeam(newTicketTeam).join(', ')}`,
       });
     }
 
@@ -440,7 +444,7 @@ router.post('/', auth, async (req, res) => {
       title,
       description,
       priority: priority || 'Medium',
-      category: category || null,
+      category: newCategory.value,
       // Tasks inside a project inherit the project's division
       division: division || project?.division || null,
       assigned_to: effectiveAssignee || null,
@@ -836,12 +840,29 @@ router.put('/:id', auth, async (req, res) => {
     if (division !== undefined) updateData.division = division;
 
     if (category !== undefined && category !== existing.category) {
-      if (!isValidCategory(await ticketTeam(existing), category)) {
+      const team = await ticketTeam(existing);
+      const next = standardCategory(team, category);
+      if (!next.ok) {
         return res.status(400).json({
-          message: `"${category}" is not a valid category for this ticket's team`,
+          message:
+            `"${category}" is not a category for the ${team} team. ` +
+            `Use one of: ${categoriesForTeam(team).join(', ')}`,
         });
       }
-      updateData.category = category;
+      // The canonical name is what is stored, and "no category" is always
+      // null: an empty string used to be written as it came, which left two
+      // spellings of nothing in the column.
+      if (next.value !== existing.category) {
+        updateData.category = next.value;
+        if ((existing.category || null) !== next.value) {
+          timeline.push({
+            type: 'category',
+            action: `Category changed from ${existing.category ? `"${existing.category}"` : 'none'} to ${next.value ? `"${next.value}"` : 'none'}`,
+            user: req.user.name,
+            created_at: getISTTime(),
+          });
+        }
+      }
     }
 
     if (isAdmin(req.user)) {
@@ -1191,6 +1212,43 @@ router.put('/:id/assign', auth, async (req, res) => {
 
     if (error) {
       return res.status(500).json({ message: 'Assignment failed' });
+    }
+
+    // A reassignment can move a ticket to the other team, whose list names the
+    // same work differently ("Salesforce" / "Sales Force", "Reports" /
+    // "Reports / MIS"). Only those pairs are carried over: the new name has to
+    // read straight back as the old one on the team the ticket left, which
+    // keeps one-way legacy names out ("Training" is a Service category that
+    // Marketing has no name for). Anything else stays as it is for an admin to
+    // choose, and nothing is renamed on the strength of the Marketing default.
+    if (data?.category) {
+      try {
+        const [fromTeam, toTeam] = await Promise.all([ticketTeam(existing), resolvedTicketTeam(data)]);
+        const moved = toTeam && toTeam !== fromTeam ? standardCategory(toTeam, data.category) : null;
+        const back = moved?.ok && moved.value ? standardCategory(fromTeam, moved.value) : null;
+        if (moved?.ok && moved.value !== data.category && back?.ok && back.value === data.category) {
+          const movedTimeline = Array.isArray(data.timeline) ? [...data.timeline] : [];
+          movedTimeline.push({
+            type: 'category',
+            action: `Category changed from "${data.category}" to "${moved.value}" on reassignment to the ${toTeam} team`,
+            user: req.user.name,
+            created_at: getISTTime(),
+          });
+          const { data: renamed, error: renameError } = await supabase
+            .from('tickets')
+            .update({ category: moved.value, timeline: movedTimeline })
+            .eq('id', req.params.id)
+            .eq('category', data.category)
+            .select()
+            .maybeSingle();
+          if (renameError) {
+            console.error('Category follow-up after assignment failed:', renameError.message || renameError.code);
+          }
+          if (renamed) Object.assign(data, renamed);
+        }
+      } catch (err) {
+        console.error('Category follow-up after assignment failed:', err.message || err);
+      }
     }
 
     if (assignee) {

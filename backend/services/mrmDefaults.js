@@ -41,9 +41,9 @@ module.exports = {
     // A ticket counts when its category is listed here OR its title contains
     // one of the keywords, unless its category is in the exclusion list
     // (exhibition and collateral work is reported on other slides).
-    engagementCategories: ['Email Campaign', 'Campaign', 'Customer Follow up', 'Customer Engagement'],
+    engagementCategories: ['Email Campaign', 'Campaign', 'Customer Follow up'],
     engagementKeywords: ['CREDAI', 'RAI', 'ARCHON', 'IDAC', 'Medicall', 'CHAI', 'IGCC', 'IHCC', 'AGM', 'seminar', 'webinar', 'conference', 'VC', 'partner', 'MoU', 'ABM'],
-    engagementExcludeCategories: ['Exhibition', 'Social Media', 'Video', 'Animation', 'ANIMATION VIDEO', 'Collateral', 'Branding', 'Salesforce', 'Reports', 'Reports / MIS', 'Website'],
+    engagementExcludeCategories: ['Exhibition', 'Social Media', 'Video', 'Animation', 'Collateral', 'Branding', 'Salesforce', 'Sales Force', 'Reports', 'Reports / MIS', 'Website'],
     // Tickets that belong to a project ticked as an exhibition are never
     // engagement activities, nor are production and admin tasks whose title
     // contains one of these words.
@@ -62,7 +62,7 @@ module.exports = {
       { org: 'Sieger', label: 'Sieger Global' },
     ],
     // Ticket categories offered on the collaterals slide.
-    collateralCategories: ['Video', 'Animation', 'ANIMATION VIDEO', 'Collateral'],
+    collateralCategories: ['Video', 'Animation', 'Collateral'],
     siteBrandingProjectMatch: 'Site Branding',
     // Export slide: open opportunities in a foreign currency, in these stages.
     exportStages: ['Design', 'Costing', 'Proposal'],

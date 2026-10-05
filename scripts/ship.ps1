@@ -16,6 +16,12 @@ Set-Location (Split-Path -Parent $PSScriptRoot)
 $branch = git rev-parse --abbrev-ref HEAD
 if ($branch -ne 'main') { throw "On branch '$branch'. Switch to main before shipping." }
 
+# The server and the browser each hold a copy of the ticket category lists.
+# A name on only one side is either offered and then refused, or accepted and
+# never offered, so the two are compared before anything is committed.
+node scripts\check-category-lists.js
+if ($LASTEXITCODE -ne 0) { throw 'The ticket category lists differ between backend and frontend. Nothing was committed.' }
+
 git add -A
 $staged = git diff --cached --name-only
 if (-not $staged) { Write-Host 'Nothing to commit.'; exit 0 }

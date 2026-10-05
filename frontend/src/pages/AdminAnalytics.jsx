@@ -6,6 +6,7 @@ import api from "../services/api";
 import { excludeDisabledUsers } from "../utils/reportFilters";
 import useAuthStore from "../store/authStore";
 import { isAdmin as isAdminRole } from "../constants/roles";
+import { UNCATEGORISED } from "../constants/categories";
 import { saveAs } from "file-saver";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -472,7 +473,7 @@ export default function AdminAnalytics() {
     filtered.forEach((ticket) => {
       const groupName =
         groupBy === "user"     ? (ticket.assigned_to_name || "Unassigned") :
-        groupBy === "category" ? (ticket.category         || "Uncategorized") :
+        groupBy === "category" ? (ticket.category         || UNCATEGORISED) :
                                   (ticket.given_by         || "Unknown");
 
       const monthLabel = getMonthLabel(ticket.due_date);
