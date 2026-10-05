@@ -7,6 +7,7 @@ const getISTTime = require('../utils/time');
 const { TEAM, isAdmin, isSuperAdmin, teamFromRole, getUserTeam } = require('../utils/roles');
 const { isValidInterval, addInterval, occurrenceTitle } = require('../utils/recurrence');
 const { standardCategory, categoriesForTeam } = require('../utils/categories');
+const { standardDivision, divisionError } = require('../utils/divisions');
 const { ticketTeam, resolvedTicketTeam, ticketAudience } = require('../utils/ticketTeam');
 
 const { sendMail } = require('../services/mailService');
@@ -440,13 +441,20 @@ router.post('/', auth, async (req, res) => {
       });
     }
 
+    // Stored in the list's spelling whatever case or old spelling arrived.
+    const newDivision = standardDivision(division);
+    if (!newDivision.ok) {
+      return res.status(400).json({ message: divisionError(division) });
+    }
+    const projectDivision = standardDivision(project?.division);
+
     const insertData = {
       title,
       description,
       priority: priority || 'Medium',
       category: newCategory.value,
       // Tasks inside a project inherit the project's division
-      division: division || project?.division || null,
+      division: newDivision.value || (projectDivision.ok ? projectDivision.value : null),
       assigned_to: effectiveAssignee || null,
       assigned_to_name: assignedUser?.name || null,
       due_date: due_date || null,
@@ -590,9 +598,17 @@ router.put('/:id', auth, async (req, res) => {
           created_at: getISTTime(),
         });
       }
-      // Linked tasks take on the project's division
-      if (projectContext.division && division === undefined) {
-        updateData.division = projectContext.division;
+      // Linked tasks take on the project's division, in the list's spelling.
+      // A project whose own value is not a division hands nothing down.
+      const inherited = division === undefined ? standardDivision(projectContext.division) : null;
+      if (inherited?.ok && inherited.value && inherited.value !== existing.division) {
+        updateData.division = inherited.value;
+        timeline.push({
+          type: 'division',
+          action: `Division changed from ${existing.division ? `"${existing.division}"` : 'none'} to "${inherited.value}", the division of the project`,
+          user: req.user.name,
+          created_at: getISTTime(),
+        });
       }
       // Linking an existing ticket: its due date must respect the project
       // target date (admins extend the timeline instead)
@@ -837,7 +853,35 @@ router.put('/:id', auth, async (req, res) => {
     if (title !== undefined) updateData.title = title;
     if (description !== undefined) updateData.description = description;
     if (priority !== undefined) updateData.priority = priority;
-    if (division !== undefined) updateData.division = division;
+
+    // Only a changed division is checked, so a client that sends back what is
+    // stored can still save a ticket whose value is not on the list. What is
+    // stored is the list's spelling, and "no division" is always null.
+    if (division !== undefined && division !== existing.division) {
+      const next = standardDivision(division);
+      if (!next.ok) {
+        return res.status(400).json({ message: divisionError(division) });
+      }
+      // As on create: a task with no division of its own carries its project's.
+      // projectContext is null when the ticket has no project or is being
+      // taken out of one.
+      const fromProject = next.value === null ? standardDivision(projectContext?.division) : null;
+      const inheritedValue = fromProject?.ok ? fromProject.value : null;
+      const value = next.value ?? inheritedValue;
+      if (value !== existing.division) {
+        updateData.division = value;
+        if ((existing.division || null) !== value) {
+          timeline.push({
+            type: 'division',
+            action:
+              `Division changed from ${existing.division ? `"${existing.division}"` : 'none'} to ${value ? `"${value}"` : 'none'}` +
+              (next.value === null && inheritedValue ? ', the division of the project' : ''),
+            user: req.user.name,
+            created_at: getISTTime(),
+          });
+        }
+      }
+    }
 
     if (category !== undefined && category !== existing.category) {
       const team = await ticketTeam(existing);

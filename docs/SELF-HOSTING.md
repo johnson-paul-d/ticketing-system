@@ -366,7 +366,7 @@ Each team has one list of ticket categories, and it is held twice: in
 `backend\utils\categories.js` (the server checks against it) and in
 `frontend\src\constants\categories.js` (the dropdowns are filled from it). To
 add, rename or remove a category, edit both. `scripts\ship.ps1` compares the
-two (`node scripts\check-category-lists.js`) and refuses to commit when they
+two (`node scripts\check-shared-lists.js`) and refuses to commit when they
 differ.
 
 A ticket belongs to its assignee's team, otherwise its creator's, and takes
@@ -399,6 +399,38 @@ Tickets without a category are shown as "Uncategorised". The Create Ticket form
 and a project's Add task form both ask for one whenever the ticket's team is
 known; a Super Admin's unassigned ticket has no team yet, so there the category
 is optional.
+
+## Divisions
+
+Tickets, projects, users and expense claims share one division list: ASTOR,
+CPS, TMD and All User. Like the categories it is held twice, in
+`backend\utils\divisions.js` and `frontend\src\constants\divisions.js`, and
+`scripts\ship.ps1` refuses to commit when the two differ. ABM accounts and the
+MRM report have division lists of their own, which this does not touch.
+
+Whatever is sent is stored in the list's spelling: letter case and spacing do
+not matter, and the `LEGACY` table in the same two files maps what older
+records hold ("ALL" is All User; "WELKER" is TMD). A name on neither is refused.
+No division is always stored as empty, never as a blank string, and shown as
+"No division".
+
+A project's tasks carry the project's division. A task created or linked
+without one takes the project's, a task cannot be left without one while its
+project has one, and changing a project's division changes every task in it,
+with a line in each task's timeline. Clearing a project's division leaves its
+tasks as they are.
+
+At start-up the app puts stored values right: old spellings are renamed on
+tickets, projects and users, and a task with no division is given its
+project's. Each change to a ticket is written into its timeline, and the app
+logs what it changed and what it left alone (a value that is not a division).
+After the first run there is nothing left for it to do.
+`DIVISION_STANDARDISE=off` in `backend\.env` switches that pass off. Expense
+claims are not touched by it; their division has always been checked.
+
+The Create Ticket form asks for a division and no longer starts on CPS. A
+ticket raised from Salesforce whose division is not on the list is created
+without one, and the name Salesforce sent is kept in its timeline.
 
 ## Caveats found after the first migration (12 Sep 2026)
 

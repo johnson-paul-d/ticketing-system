@@ -25,6 +25,7 @@ const portal = require('./portalApi');
 const tables = require('./mcpTables');
 const writes = require('./mcpWrites');
 const { todayIST } = require('../utils/time');
+const { DIVISIONS, standardDivision } = require('../utils/divisions');
 
 const APP_URL = (process.env.FRONTEND_URL || 'https://mkttickets.siegerspintech.com').replace(
   /\/$/,
@@ -49,6 +50,19 @@ const exact = (value, filter) => {
   if (filter === undefined || filter === null || filter === '') return true;
   return lc(value) === lc(filter);
 };
+
+// A division filter is read the way divisions are stored: any letter case, and
+// the old spellings too ("ALL" for All User), so a filter learnt before the
+// stored values were renamed still finds the same tickets.
+const listedDivision = (value) => {
+  const std = standardDivision(value);
+  return lc(std.ok && std.value ? std.value : value);
+};
+const divisionIs = (value, filter) => {
+  if (filter === undefined || filter === null || filter === '') return true;
+  return listedDivision(value) === listedDivision(filter);
+};
+const DIVISION_FILTER_HELP = `${DIVISIONS.slice(0, -1).join(', ')} or ${DIVISIONS[DIVISIONS.length - 1]}.`;
 
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 const round2 = (v) => Math.round(num(v) * 100) / 100;
@@ -200,7 +214,7 @@ const TICKET_FILTER_SCHEMA = {
   },
   assignee: { type: 'string', description: 'Assignee name or part of one. Case-insensitive.' },
   created_by: { type: 'string', description: 'Name of whoever raised it, or part of one.' },
-  division: { type: 'string', description: 'ASTOR, CPS, TMD or All User.' },
+  division: { type: 'string', description: DIVISION_FILTER_HELP },
   team: { type: 'string', enum: ['Marketing', 'Service'], description: 'Which team owns the work.' },
   category: { type: 'string', description: 'Work type, e.g. Campaign or Breakdown Support.' },
   priority: { type: 'string', description: 'Low, Medium, High or Urgent.' },
@@ -219,7 +233,7 @@ const applyTicketFilters = (tickets, a = {}) => {
     if (!exact(t.status, a.status)) return false;
     if (!loose(t.assigned_to_name, a.assignee)) return false;
     if (!loose(t.created_by_name, a.created_by)) return false;
-    if (!exact(t.division, a.division)) return false;
+    if (!divisionIs(t.division, a.division)) return false;
     if (!exact(t.team, a.team)) return false;
     if (!loose(t.category, a.category)) return false;
     if (!exact(t.priority, a.priority)) return false;
@@ -474,7 +488,7 @@ const tools = [
           description: '"overdue" means unfinished with tasks past their due date.',
         },
         status: { type: 'string', description: 'Exact project status.' },
-        division: { type: 'string', description: 'ASTOR, CPS, TMD or All User.' },
+        division: { type: 'string', description: DIVISION_FILTER_HELP },
         query: {
           type: 'string',
           description: 'Free text matched against the name and description.',
@@ -492,7 +506,7 @@ const tools = [
       const all = await portal.get(ctx.credential, '/projects');
       const rows = (Array.isArray(all) ? all : []).filter((p) => {
         if (!exact(p.status, args.status)) return false;
-        if (!exact(p.division, args.division)) return false;
+        if (!divisionIs(p.division, args.division)) return false;
         if (args.query && !lc(`${p.name || ''} ${p.description || ''}`).includes(lc(args.query))) {
           return false;
         }
@@ -567,7 +581,7 @@ const tools = [
             'either, so this narrows to approved on its own.',
         },
         category: { type: 'string', description: 'Expense category, or part of one.' },
-        division: { type: 'string', description: 'ASTOR, CPS, TMD or All User.' },
+        division: { type: 'string', description: DIVISION_FILTER_HELP },
         claimant: { type: 'string', description: 'Claimant name, or part of one.' },
         include_lines: {
           type: 'boolean',
@@ -594,7 +608,7 @@ const tools = [
             : lc(args.payment) === 'unpaid' ? (l.approval_status === 'Approved' && !l.paid)
             : true) &&
           loose(l.category, args.category) &&
-          exact(l.division, args.division) &&
+          divisionIs(l.division, args.division) &&
           loose(l.claimant_name, args.claimant)
       );
 

@@ -7,6 +7,59 @@ const getISTTime = require('../utils/time');
 const { notifyUser, insertNotifications } = require('../services/notificationService');
 const { isAdmin, isSuperAdmin, isTeamMember, teamFromRole } = require('../utils/roles');
 const { emitScoped } = require('../utils/realtime');
+const { standardDivision, divisionError } = require('../utils/divisions');
+
+// A project's division is its tasks' division. When the project's changes,
+// every task that holds something else is given the new one, and the change is
+// written into that task's timeline. Each task's timeline is read again just
+// before its own write, so the window in which a comment or time log added by
+// someone else could be overwritten is one round trip, not the whole run; and
+// the write is conditional on the task's division still being what was read.
+// Returns how many tasks changed.
+const carryDivisionToTasks = async (projectId, division, userName) => {
+  const { data: tasks, error } = await supabase
+    .from('tickets')
+    .select('id, division')
+    .eq('project_id', projectId);
+  if (error) {
+    console.error('Project division not carried to its tasks:', error.message || error.code);
+    return 0;
+  }
+  const stale = (tasks || []).filter((t) => t.division !== division);
+  let done = 0;
+  for (let i = 0; i < stale.length; i += 10) {
+    const results = await Promise.all(
+      stale.slice(i, i + 10).map(async (t) => {
+        const { data: row, error: readError } = await supabase
+          .from('tickets')
+          .select('division, timeline')
+          .eq('id', t.id)
+          .maybeSingle();
+        if (readError) return { error: readError };
+        if (!row || (row.division ?? null) !== (t.division ?? null)) return { data: [] };
+        const patch = {
+          division,
+          timeline: [
+            ...(Array.isArray(row.timeline) ? row.timeline : []),
+            {
+              type: 'division',
+              action: `Division changed from ${t.division ? `"${t.division}"` : 'none'} to "${division}", the division of the project`,
+              user: userName,
+              created_at: getISTTime(),
+            },
+          ],
+        };
+        const update = supabase.from('tickets').update(patch).eq('id', t.id);
+        return (t.division === null ? update.is('division', null) : update.eq('division', t.division)).select('id');
+      })
+    );
+    for (const r of results) {
+      if (r.error) console.error('Project division not carried to a task:', r.error.message || r.error.code);
+      else if (r.data?.length) done += 1;
+    }
+  }
+  return done;
+};
 
 // A project belongs to the team of whoever created it (falling back to its
 // owner). Used to keep team admins scoped to their own team's projects.
@@ -223,6 +276,11 @@ router.post('/', auth, async (req, res) => {
     if (!name?.trim()) {
       return res.status(400).json({ message: 'Project name is required' });
     }
+    // Stored in the list's spelling; none is allowed and stored as null.
+    const newDivision = standardDivision(division);
+    if (!newDivision.ok) {
+      return res.status(400).json({ message: divisionError(division) });
+    }
 
     const insertRow = {
       name: name.trim(),
@@ -230,7 +288,7 @@ router.post('/', auth, async (req, res) => {
       status: 'Active',
       target_date: target_date || null,
       color: color || null,
-      division: division || null,
+      division: newDivision.value,
       owner: owner || null,
       members: Array.isArray(members) ? members : [],
       created_by: req.user.id,
@@ -399,8 +457,18 @@ router.put('/:id', auth, async (req, res) => {
     if (status !== undefined) updateData.status = status;
     if (color !== undefined) updateData.color = color;
     if (members !== undefined) updateData.members = members;
-    if (division !== undefined) updateData.division = division;
     if (owner !== undefined) updateData.owner = owner;
+
+    // Only a changed division is checked: the edit form sends every field
+    // back, and a project whose stored value is not on the list must still be
+    // saveable. What is stored is the list's spelling, and none is null.
+    if (division !== undefined && division !== existing.division) {
+      const next = standardDivision(division);
+      if (!next.ok) {
+        return res.status(400).json({ message: divisionError(division) });
+      }
+      if (next.value !== existing.division) updateData.division = next.value;
+    }
 
     // Target date cannot shrink below the latest task due date —
     // the project timeline depends on its tasks
@@ -461,12 +529,10 @@ router.put('/:id', auth, async (req, res) => {
       }
     }
 
-    // Division maps to all tasks in the project — propagate changes
-    if (division !== undefined && division && division !== existing.division) {
-      await supabase
-        .from('tickets')
-        .update({ division, updated_at: getISTTime() })
-        .eq('project_id', existing.id);
+    // Division maps to all tasks in the project — propagate changes. Clearing
+    // a project's division leaves its tasks as they are.
+    if (updateData.division && data.division === updateData.division) {
+      await carryDivisionToTasks(existing.id, updateData.division, req.user.name);
     }
 
     // Notify newly added members

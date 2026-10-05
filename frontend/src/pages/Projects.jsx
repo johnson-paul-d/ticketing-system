@@ -15,7 +15,7 @@ import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
 import socket from "../services/socket";
 import useAuthStore from "../store/authStore";
-import { TICKET_DIVISIONS } from "../constants/divisions";
+import { TICKET_DIVISIONS, NO_DIVISION } from "../constants/divisions";
 
 // Deterministic pastel per name for member avatars
 export const avatarColor = (name = "") => {
@@ -476,7 +476,7 @@ export default function Projects() {
                     onChange={(e) => setDivision(e.target.value)}
                     className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 outline-none"
                   >
-                    <option value="">— None —</option>
+                    <option value="">{NO_DIVISION}</option>
                     {TICKET_DIVISIONS.map((d) => (
                       <option key={d} value={d}>{d}</option>
                     ))}

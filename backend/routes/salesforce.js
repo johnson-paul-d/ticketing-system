@@ -7,6 +7,7 @@ const getISTTime = require("../utils/time");
 const { rateLimit } = require("../utils/rateLimit");
 const { emitScoped } = require("../utils/realtime");
 const { ticketAudience } = require("../utils/ticketTeam");
+const { standardDivision } = require("../utils/divisions");
 
 // =====================================================
 // SALESFORCE WEBHOOK
@@ -70,6 +71,13 @@ router.post(
 
       const now = getISTTime();
 
+      // Stored in the portal list's spelling. Salesforce names its divisions
+      // differently, and refusing the request over that would lose the ticket,
+      // so a name the list does not have leaves the ticket without a division
+      // and is kept in the first timeline entry for whoever picks it up.
+      const division = standardDivision(Division__c);
+      const unlisted = division.ok ? "" : ` (division "${String(Division__c).slice(0, 80)}" is not on the portal's list, so none was set)`;
+
       const { data, error } = await supabase
         .from("tickets")
         .insert([
@@ -77,7 +85,7 @@ router.post(
             title: String(Title__c).slice(0, 500),
             description: Description__c ? String(Description__c) : null,
             priority: Priority__c || "Medium",
-            division: Division__c || null,
+            division: division.ok ? division.value : null,
             due_date: Due_Date__c || null,
             // Match the shape POST /api/tickets produces, so Salesforce rows
             // aren't a second-class variant the rest of the app mishandles.
@@ -90,7 +98,7 @@ router.post(
             timeline: [
               {
                 type: "created",
-                action: "Ticket created from Salesforce",
+                action: `Ticket created from Salesforce${unlisted}`,
                 user: "Salesforce",
                 timestamp: now,
               },

@@ -380,7 +380,11 @@ server.listen(PORT, () => {
   console.log(`Salesforce mirror: ${process.env.SALESFORCE_DB_URL || 'not configured'}`);
   require('./services/linkedinScheduler').startLinkedInScheduler(PORT);
   startRecurrenceScheduler(io);
-  // Renames legacy ticket categories to the canonical lists. Idempotent: after
-  // the first pass there is nothing left for it to do.
-  require('./services/categoryStandardiser').standardiseOnBoot();
+  // Renames legacy ticket categories and divisions to the canonical lists.
+  // Idempotent: after the first pass there is nothing left for either to do.
+  // One after the other, because both append to ticket timelines.
+  (async () => {
+    await require('./services/categoryStandardiser').standardiseOnBoot();
+    await require('./services/divisionStandardiser').standardiseOnBoot();
+  })();
 });

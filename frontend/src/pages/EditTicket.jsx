@@ -18,7 +18,6 @@ export default function EditTicket() {
     title: "",
     description: "",
     priority: "Medium",
-    division: "",
     status: "Open",
     due_date: "",
   });
@@ -41,7 +40,6 @@ export default function EditTicket() {
         title: ticket.title || "",
         description: ticket.description || "",
         priority: ticket.priority || "Medium",
-        division: ticket.division || "",
         status: ticket.status || "Open",
         due_date: ticket.due_date || "",
       });

@@ -21,7 +21,7 @@
 // stays a thing a person does at a keyboard.
 
 const portal = require('./portalApi');
-const { requireWrite, given } = require('./mcpWrites');
+const { requireWrite, given, DIVISION_FIELD, DIVISION_FIELD_CLEARABLE } = require('./mcpWrites');
 
 const destructive = { readOnlyHint: false, destructiveHint: true, idempotentHint: true };
 const changes = { readOnlyHint: false, destructiveHint: false, idempotentHint: true };
@@ -164,7 +164,7 @@ const tools = [
     annotations: creates,
     schema: {
       title: { type: 'string', description: 'What the claim is for.' },
-      division: { type: 'string', enum: ['ASTOR', 'CPS', 'TMD', 'All User'] },
+      division: DIVISION_FIELD,
       currency: { type: 'string', description: 'Three-letter code. Defaults to INR.' },
     },
     required: ['title', 'division'],
@@ -190,7 +190,7 @@ const tools = [
     schema: {
       id: { type: 'string', description: 'The claim id.' },
       title: { type: 'string' },
-      division: { type: 'string', enum: ['ASTOR', 'CPS', 'TMD', 'All User'] },
+      division: DIVISION_FIELD_CLEARABLE,
       currency: { type: 'string', description: 'Three-letter code.' },
     },
     required: ['id'],
@@ -452,7 +452,7 @@ const tools = [
           'e.g. "Team Member - MKTG", "User - Service", "Admin - Marketing". The team is part of ' +
           'the label. A team admin cannot create a role outside their own team.',
       },
-      division: { type: 'string', enum: ['ASTOR', 'CPS', 'TMD', 'All User'] },
+      division: DIVISION_FIELD,
       designation: { type: 'string', description: 'Job title, printed under the signature on approved expenses.' },
     },
     required: ['name', 'email', 'password', 'role'],
@@ -488,7 +488,7 @@ const tools = [
       email: { type: 'string' },
       password: { type: 'string', description: 'A new password. Omit to leave it alone.' },
       role: { type: 'string', description: 'e.g. "Admin - Marketing". Cannot move someone outside your team.' },
-      division: { type: 'string', enum: ['ASTOR', 'CPS', 'TMD', 'All User'] },
+      division: DIVISION_FIELD_CLEARABLE,
       designation: { type: 'string' },
       active: { type: 'boolean', description: 'false switches the account off.' },
     },

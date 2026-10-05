@@ -9,7 +9,7 @@ const { TEAM, isAdmin, isSuperAdmin, getUserTeam, teamFromRole } = require('../u
 const { expenseCategoriesForTeam, isValidExpenseCategory } = require('../utils/expenseCategories');
 const { detectFileType, safeFileName, validateFileStructure } = require('../utils/fileType');
 const { probePdf } = require('../utils/pdfProbe');
-const { isValidDivision } = require('../utils/divisions');
+const { standardDivision, divisionError } = require('../utils/divisions');
 const fileStore = require('../services/fileStore');
 const { notifyAdmins, notifyUser } = require('../services/notificationService');
 const {
@@ -464,10 +464,13 @@ router.post('/', async (req, res) => {
     const title = (req.body.title || '').trim();
     if (!title) return res.status(400).json({ message: 'Title is required' });
 
-    const { currency, division } = req.body;
-    if (!isValidDivision(division)) {
-      return res.status(400).json({ message: `"${division}" is not a valid division` });
+    const { currency } = req.body;
+    // Stored in the list's spelling; none is allowed and stored as null.
+    const newDivision = standardDivision(req.body.division);
+    if (!newDivision.ok) {
+      return res.status(400).json({ message: divisionError(req.body.division) });
     }
+    const division = newDivision.value;
 
     const now = getISTTime();
 
@@ -608,11 +611,13 @@ router.put('/:id', async (req, res) => {
       if (!title) return res.status(400).json({ message: 'Title is required' });
       updateData.title = title;
     }
-    if (req.body.division !== undefined) {
-      if (!isValidDivision(req.body.division)) {
-        return res.status(400).json({ message: `"${req.body.division}" is not a valid division` });
+    // Only a changed division is checked: the form sends it with every save.
+    if (req.body.division !== undefined && req.body.division !== claim.division) {
+      const next = standardDivision(req.body.division);
+      if (!next.ok) {
+        return res.status(400).json({ message: divisionError(req.body.division) });
       }
-      updateData.division = req.body.division || null;
+      updateData.division = next.value;
     }
 
     if (req.body.currency !== undefined) {

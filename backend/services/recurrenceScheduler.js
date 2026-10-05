@@ -5,6 +5,7 @@ const { notifyUser } = require('./notificationService');
 const { emitScoped } = require('../utils/realtime');
 const { ticketAudience, resolvedTicketTeam } = require('../utils/ticketTeam');
 const { standardStored } = require('../utils/categories');
+const { standardDivision } = require('../utils/divisions');
 const { TEAM } = require('../utils/roles');
 
 // Each occurrence is copied from the one before it, so a legacy category on a
@@ -19,6 +20,13 @@ const carriedCategory = async (template) => {
   } catch {
     return template.category;
   }
+};
+
+// The same for the division: the list's spelling where the stored value has
+// one, the stored value where it does not.
+const carriedDivision = (template) => {
+  const std = standardDivision(template.division);
+  return std.ok ? std.value : template.division || null;
 };
 
 const { todayIST } = require('../utils/time');
@@ -69,7 +77,7 @@ async function generateDueRecurrences(io) {
           description: template.description,
           priority: template.priority || 'Medium',
           category: await carriedCategory(template),
-          division: template.division || null,
+          division: carriedDivision(template),
           assigned_to: template.assigned_to || null,
           assigned_to_name: template.assigned_to_name || null,
           due_date: newNext,

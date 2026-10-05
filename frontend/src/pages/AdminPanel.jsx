@@ -5,6 +5,7 @@ import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
 import useAuthStore from "../store/authStore";
 import { ROLE_OPTIONS, ALL_ROLES, isSuperAdmin, getTeam } from "../constants/roles";
+import { TICKET_DIVISIONS } from "../constants/divisions";
 
 const roleChipClass = (role = "") => {
   if (role === "Super Admin") return "bg-purple-100 text-purple-700";
@@ -250,10 +251,9 @@ export default function AdminPanel() {
           <div>
             <label className="block text-xs font-semibold text-gray-500 mb-1.5">Division</label>
             <select value={division} onChange={(e) => setDivision(e.target.value)} className={inputCls}>
-              <option>CPS</option>
-              <option>TMD</option>
-              <option>ASTOR</option>
-              <option>All User</option>
+              {TICKET_DIVISIONS.map((d) => (
+                <option key={d}>{d}</option>
+              ))}
             </select>
           </div>
           <div className="sm:col-span-2">

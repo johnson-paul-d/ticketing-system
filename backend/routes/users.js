@@ -9,6 +9,7 @@ const fileStore = require('../services/fileStore');
 const getISTTime = require('../utils/time');
 const { detectFileType, safeFileName } = require('../utils/fileType');
 const { isSuperAdmin, teamFromRole, getUserTeam } = require('../utils/roles');
+const { standardDivision, divisionError } = require('../utils/divisions');
 
 // Every query names its columns so the password hash can never leak to a client.
 // signature_path is deliberately absent: it is a per-user secret handle and has
@@ -110,11 +111,17 @@ router.post('/', auth, admin, async (req, res) => {
       return res.status(403).json({ message: 'You can only create users on your own team' });
     }
 
+    // Stored in the list's spelling; none is allowed and stored as null.
+    const newDivision = standardDivision(division);
+    if (!newDivision.ok) {
+      return res.status(400).json({ message: divisionError(division) });
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
     // Built inside the builder so a retry after "no such column" drops
     // designation from the row as well as from the returned columns.
     const { data, error } = await selectUsers((cols) => {
-      const row = { name, email, password: hashedPassword, role, division, active: true };
+      const row = { name, email, password: hashedPassword, role, division: newDivision.value, active: true };
       if (hasDesignation && isNonEmptyString(designation)) row.designation = designation.trim();
       return supabase.from('users').insert([row]).select(cols);
     });
@@ -156,6 +163,16 @@ router.put('/:id', auth, admin, async (req, res) => {
     const updateData = {};
     for (const field of EDITABLE_FIELDS) {
       if (field in req.body) updateData[field] = req.body[field];
+    }
+
+    // Only a changed division is checked, for the same reason as the role
+    // above. What is stored is the list's spelling, and none is null.
+    if ('division' in updateData && updateData.division !== target.division) {
+      const next = standardDivision(updateData.division);
+      if (!next.ok) {
+        return res.status(400).json({ message: divisionError(updateData.division) });
+      }
+      updateData.division = next.value;
     }
 
     if ('password' in updateData) {

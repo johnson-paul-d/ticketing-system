@@ -6,7 +6,7 @@ import useAuthStore from "../store/authStore";
 import socket from "../services/socket";
 import moment from "moment";
 import { categoryOptions, standardCategory, UNCATEGORISED } from "../constants/categories";
-import { TICKET_DIVISIONS } from "../constants/divisions";
+import { divisionOptions, standardDivision, NO_DIVISION } from "../constants/divisions";
 import { TICKET_STATUSES } from "../constants/statuses";
 import { isAdmin as isAdminRole, getTeam } from "../constants/roles";
 
@@ -141,6 +141,9 @@ export default function TicketDetails() {
   // What the dropdown shows for the stored value: its name on the team's list
   // where it has one, the stored value itself where it does not.
   const shownCategory = standardCategory(categoryTeam, ticket?.category) ?? ticket?.category ?? "";
+  // The same for the division, which has one list for every team.
+  const ticketDivisions = divisionOptions(ticket?.division);
+  const shownDivision = standardDivision(ticket?.division) ?? ticket?.division ?? "";
 
   // Mirrors canModifyEntry on the server: the person who logged the time, or an
   // admin. Showing Edit on someone else's entry only leads to a 403. Both names
@@ -667,7 +670,7 @@ export default function TicketDetails() {
               {isAdmin ? (
                 <div className="flex gap-4 mt-3">
                   <select
-                    value={ticket.division || ""}
+                    value={shownDivision}
                     onChange={(e) =>
                       setTicket({
                         ...ticket,
@@ -676,8 +679,8 @@ export default function TicketDetails() {
                     }
                     className="border rounded-2xl px-4 py-3 w-full"
                   >
-                    <option value="">Select Division</option>
-                    {TICKET_DIVISIONS.map((division) => (
+                    <option value="">{NO_DIVISION}</option>
+                    {ticketDivisions.map((division) => (
                       <option key={division} value={division}>
                         {division}
                       </option>
@@ -686,14 +689,20 @@ export default function TicketDetails() {
                   <button
                     onClick={async () => {
                       try {
-                        await api.put(`/tickets/${ticket.id}`, {
-                          division: ticket.division,
+                        const res = await api.put(`/tickets/${ticket.id}`, {
+                          division: shownDivision || null,
                         });
-                        alert("Division updated");
+                        // A task in a project cannot be left without a
+                        // division: the server gives it the project's.
+                        alert(
+                          !shownDivision && res.data?.division
+                            ? `A project task takes its project's division: ${res.data.division}`
+                            : "Division updated"
+                        );
                         fetchTicket();
                       } catch (err) {
                         console.error(err);
-                        alert("Failed to update division");
+                        alert(err.response?.data?.message || "Failed to update division");
                       }
                     }}
                     className="bg-[#9b2423] hover:bg-[#7d1d1c] text-white px-5 py-3 rounded-2xl"
@@ -702,7 +711,9 @@ export default function TicketDetails() {
                   </button>
                 </div>
               ) : (
-                <p className="text-lg font-medium mt-2">{ticket.division}</p>
+                <p className={`text-lg font-medium mt-2 ${ticket.division ? "" : "text-gray-400"}`}>
+                  {ticket.division || NO_DIVISION}
+                </p>
               )}
             </div>
 

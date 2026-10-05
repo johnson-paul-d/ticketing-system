@@ -16,11 +16,12 @@ Set-Location (Split-Path -Parent $PSScriptRoot)
 $branch = git rev-parse --abbrev-ref HEAD
 if ($branch -ne 'main') { throw "On branch '$branch'. Switch to main before shipping." }
 
-# The server and the browser each hold a copy of the ticket category lists.
-# A name on only one side is either offered and then refused, or accepted and
-# never offered, so the two are compared before anything is committed.
-node scripts\check-category-lists.js
-if ($LASTEXITCODE -ne 0) { throw 'The ticket category lists differ between backend and frontend. Nothing was committed.' }
+# The server and the browser each hold a copy of the ticket category lists and
+# of the division list. A name on only one side is either offered and then
+# refused, or accepted and never offered, so each pair is compared before
+# anything is committed.
+node scripts\check-shared-lists.js
+if ($LASTEXITCODE -ne 0) { throw 'The category or division lists differ between backend and frontend. Nothing was committed.' }
 
 git add -A
 $staged = git diff --cached --name-only
@@ -33,6 +34,10 @@ if ($secrets) { git reset -q; throw "Refusing to commit files that look like sec
 Write-Host "Committing $($staged.Count) file(s):" -ForegroundColor Cyan
 $staged | ForEach-Object { "  $_" }
 git commit -q -m $Message
+# A message containing double quotes is split into several arguments by Windows
+# PowerShell and the commit fails; without this check the script went on to say
+# it had pushed.
+if ($LASTEXITCODE -ne 0) { throw 'git commit failed (avoid double quotes in the message). Nothing was pushed.' }
 git pull --rebase --quiet origin main
 git push origin main
 Write-Host "Pushed $(git rev-parse --short HEAD). The server deploys it within a minute or two; watch the Actions tab." -ForegroundColor Green

@@ -33,7 +33,7 @@ import api from "../services/api";
 import socket from "../services/socket";
 import useAuthStore from "../store/authStore";
 import { avatarColor, daysLeft, TargetChip, ProgressBar, MemberAvatars } from "./Projects";
-import { TICKET_DIVISIONS } from "../constants/divisions";
+import { divisionOptions, standardDivision, NO_DIVISION } from "../constants/divisions";
 
 // Hours and minutes only, matching how allotted time is entered.
 const fmtMinutes = (mins) => {
@@ -236,12 +236,16 @@ export default function ProjectDetails() {
   );
   const filtersActive = !!(q || fPriority || fAssignee || myOnly);
 
-  // Activity feed: flattened task timelines, newest first
+  // Activity feed: flattened task timelines, newest first. A division handed
+  // down from the project is on each task's own timeline; here it would be the
+  // same line once per task, pushing everything else out of the feed.
   const activity = useMemo(() => {
+    const fromProject = (e) =>
+      e.type === "division" && (e.user === "System" || /the division of (its|the) project$/.test(e.action || ""));
     const items = [];
     filteredTasks.forEach((t) => {
       (Array.isArray(t.timeline) ? t.timeline : []).forEach((e) => {
-        if (e?.created_at)
+        if (e?.created_at && !fromProject(e))
           items.push({ ...e, taskTitle: t.title, taskId: t.id, key: taskKey(t) });
       });
     });
@@ -335,8 +339,8 @@ export default function ProjectDetails() {
         assigned_to: tAssignee || null,
         due_date: tDue || null,
         allotted_minutes: allotted,
+        // No division is sent: the server gives a task its project's.
         project_id: project.id,
-        division: project.division || null,
         category: taskCategory || null,
       });
       setShowAdd(false);
@@ -357,7 +361,8 @@ export default function ProjectDetails() {
     setEDesc(project.description || "");
     setEStatus(project.status || "Active");
     setETarget(dstr(project.target_date) || "");
-    setEDivision(project.division || "");
+    // The name on the list where the stored value has one, else what is stored.
+    setEDivision(standardDivision(project.division) ?? project.division ?? "");
     setEOwner(project.owner || "");
     setEMembers(project.members || []);
     setEditError("");
@@ -1354,9 +1359,9 @@ export default function ProjectDetails() {
                     </div>
                   ))}
                 </div>
-                {project.division && (
+                {standardDivision(project.division) && (
                   <p className="text-xs text-gray-400 mt-2">
-                    Division <span className="font-semibold text-gray-500">{project.division}</span> is applied automatically from the project
+                    Division <span className="font-semibold text-gray-500">{standardDivision(project.division)}</span> is applied automatically from the project
                   </p>
                 )}
               </div>
@@ -1445,8 +1450,8 @@ export default function ProjectDetails() {
                   onChange={(e) => setEDivision(e.target.value)}
                   className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 outline-none"
                 >
-                  <option value="">— None —</option>
-                  {TICKET_DIVISIONS.map((d) => (
+                  <option value="">{NO_DIVISION}</option>
+                  {divisionOptions(project.division).map((d) => (
                     <option key={d} value={d}>{d}</option>
                   ))}
                 </select>

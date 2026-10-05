@@ -2,7 +2,7 @@
 // Ticket categories, per team
 // =====================================================
 // Keep in sync with backend/utils/categories.js, which validates what the
-// client sends (scripts/check-category-lists.js compares the two before every
+// client sends (scripts/check-shared-lists.js compares the two before every
 // ship). A ticket's category list follows the ticket's team, not the viewer's:
 // an admin opening a Service ticket sees the Service list.
 

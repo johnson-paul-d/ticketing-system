@@ -27,7 +27,7 @@ import api from "../services/api";
 import useAuthStore from "../store/authStore";
 import { getTeam } from "../constants/roles";
 import { expenseCategoriesForTeam } from "../constants/expenseCategories";
-import { TICKET_DIVISIONS } from "../constants/divisions";
+import { divisionOptions, NO_DIVISION } from "../constants/divisions";
 
 const CURRENCIES = ["INR", "USD", "EUR", "GBP", "AED"];
 const CURRENCY_SYMBOL = { INR: "₹", USD: "$", EUR: "€", GBP: "£" };
@@ -1579,8 +1579,8 @@ export default function ExpenseDetails() {
                 disabled={!editable || saving}
                 className={`${inputCls} ${headerErrors.division ? errorCls : ""}`}
               >
-                <option value="">— No division —</option>
-                {TICKET_DIVISIONS.map((d) => (
+                <option value="">{NO_DIVISION}</option>
+                {divisionOptions(form.division).map((d) => (
                   <option key={d} value={d}>
                     {d}
                   </option>

@@ -22,6 +22,10 @@ const SERVER_URL =
   process.env.PUBLIC_API_URL || 'https://mkttickets.siegerspintech.com/api';
 
 const str = (description, extra = {}) => ({ type: 'string', description, ...extra });
+
+// The one division list (utils/divisions.js), so this text cannot fall behind it.
+const { DIVISIONS } = require('../utils/divisions');
+const DIVISION_DOC = `Business division: ${DIVISIONS.slice(0, -1).join(', ')} or ${DIVISIONS[DIVISIONS.length - 1]}.`;
 const num = (description) => ({ type: 'number', description });
 
 const TICKET = {
@@ -32,7 +36,7 @@ const TICKET = {
     description: str('Full detail, including any closure note appended when the ticket was closed.'),
     category: str('Work type. Marketing and Service teams use different lists.'),
     priority: str('Low, Medium, High or Urgent.'),
-    division: str('Business division: ASTOR, CPS, TMD or All User.'),
+    division: str(DIVISION_DOC),
     status: str('Open, In Progress, Completed, Closed or similar.'),
     team: str('Marketing or Service, derived from who the ticket is assigned to.'),
     assigned_to: str('User id of the assignee.'),
@@ -78,7 +82,7 @@ const PROJECT = {
     name: str('Project name.'),
     description: str('What the project is for.'),
     status: str('Project status.'),
-    division: str('Business division: ASTOR, CPS, TMD or All User.'),
+    division: str(DIVISION_DOC),
     target_date: str('Date the project is meant to finish.', { format: 'date' }),
     owner: str('User id of the project owner.'),
     created_by_name: str('Who created it.'),
@@ -110,7 +114,7 @@ const EXPENSE_CLAIM = {
     claimant_id: str('User id of whoever raised it.'),
     claimant_name: str('Display name of the claimant.'),
     team: str('Marketing or Service.'),
-    division: str('Business division: ASTOR, CPS, TMD or All User.'),
+    division: str(DIVISION_DOC),
     currency: str('Currency code, e.g. INR.'),
     total_amount: num('Sum of every line on the claim.'),
     status: str('Draft, Submitted, Partially Approved, Approved or Rejected.'),
@@ -132,7 +136,7 @@ const EXPENSE_LINE = {
     title: str('Title of the parent claim.'),
     claimant_name: str('Who is claiming it.'),
     team: str('Marketing or Service.'),
-    division: str('Business division: ASTOR, CPS, TMD or All User.'),
+    division: str(DIVISION_DOC),
     currency: str('Currency code, e.g. INR.'),
     expense_date: str('Date the money was spent.', { format: 'date' }),
     category: str('Expense category, e.g. Exhibition or Print Collaterals.'),
@@ -166,7 +170,7 @@ const USER = {
     email: str('Work email address.'),
     role: str('Permission role, e.g. Admin - Marketing or Team Member - MKTG.'),
     designation: str('Job title, e.g. General Manager - Marketing.'),
-    division: str('Business division: ASTOR, CPS, TMD or All User.'),
+    division: str(DIVISION_DOC),
     active: { type: 'boolean', description: 'False when the account has been disabled.' },
   },
 };

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
 import { categoriesForTeam } from "../constants/categories";
-import { TICKET_DIVISIONS } from "../constants/divisions";
+import { TICKET_DIVISIONS, standardDivision } from "../constants/divisions";
 import { getTeam, isAdmin as isAdminRole } from "../constants/roles";
 import useAuthStore from "../store/authStore";
 
@@ -22,7 +22,9 @@ export default function CreateTicket() {
   // Nothing is chosen until the person chooses: a default here used to file
   // every untouched ticket under the first name on the list.
   const [category, setCategory] = useState("");
-  const [division, setDivision] = useState("CPS");
+  // The same for the division: no default, so an untouched ticket is not
+  // quietly filed under whichever division happens to be first.
+  const [division, setDivision] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [givenBy, setGivenBy] = useState("");
   const [projectId, setProjectId] = useState("");
@@ -90,7 +92,9 @@ export default function CreateTicket() {
 
   // Tasks in a project take the project's division
   useEffect(() => {
-    if (selectedProject?.division) setDivision(selectedProject.division);
+    // Only a division on the list is copied: anything else the server refuses.
+    const fromProject = standardDivision(selectedProject?.division);
+    if (fromProject) setDivision(fromProject);
   }, [projectId]);
 
   const handleSubmit = async () => {
@@ -100,6 +104,10 @@ export default function CreateTicket() {
     }
     if (ticketTeam && !chosenCategory) {
       setError("Please choose a category");
+      return;
+    }
+    if (!division) {
+      setError("Please choose a division");
       return;
     }
     setError("");
@@ -258,7 +266,7 @@ export default function CreateTicket() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                Division
+                Division <span className="text-red-500">*</span>
               </label>
               <select
                 className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm sm:text-base focus:ring-2 focus:ring-[#9b2423]/40 bg-gray-50 outline-none cursor-pointer"
@@ -266,11 +274,12 @@ export default function CreateTicket() {
                 onChange={(e) => setDivision(e.target.value)}
                 disabled={loading}
               >
-{TICKET_DIVISIONS.map((division) => (
-  <option key={division} value={division}>
-    {division}
-  </option>
-))}
+                <option value="">Select division</option>
+                {TICKET_DIVISIONS.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
               </select>
             </div>
             <div>

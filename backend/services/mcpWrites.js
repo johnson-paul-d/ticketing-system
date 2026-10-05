@@ -29,6 +29,19 @@
 const portal = require('./portalApi');
 const { todayIST } = require('../utils/time');
 const { MARKETING_CATEGORIES, SERVICE_CATEGORIES } = require('../utils/categories');
+const { DIVISIONS } = require('../utils/divisions');
+
+// One division list for tickets, projects, users and expense claims, taken
+// from where the routes validate so the two cannot drift apart.
+const DIVISION_LIST = `Division: ${DIVISIONS.join(', ')}.`;
+// When creating: a pick from the list, or left out for none.
+const DIVISION_FIELD = { type: 'string', enum: [...DIVISIONS], description: DIVISION_LIST };
+// When updating: a plain string, as category is, so that it can be cleared.
+// (An empty string inside an enum is refused by some clients' schema checks.)
+const DIVISION_FIELD_CLEARABLE = {
+  type: 'string',
+  description: `${DIVISION_LIST} Any letter case is accepted and stored as spelt here; an empty string clears it.`,
+};
 
 // The route stores the canonical name and refuses anything that is on neither
 // list, so the lists are spelt out here rather than left for the model to guess.
@@ -102,7 +115,7 @@ const tools = [
         description: { type: 'string', description: 'What actually needs doing.' },
         priority: { type: 'string', enum: ['Low', 'Medium', 'High', 'Urgent'] },
         category: { type: 'string', description: CATEGORY_HELP },
-        division: { type: 'string', enum: ['ASTOR', 'CPS', 'TMD', 'All User'] },
+        division: DIVISION_FIELD,
         assigned_to: {
           type: 'string',
           description: 'User id of the assignee. Admins only; ignored for anyone else. Use list_users to find the id.',
@@ -157,7 +170,7 @@ const tools = [
         },
         priority: { type: 'string', enum: ['Low', 'Medium', 'High', 'Urgent'] },
         category: { type: 'string', description: `${CATEGORY_HELP} An empty string clears it.` },
-        division: { type: 'string', enum: ['ASTOR', 'CPS', 'TMD', 'All User'] },
+        division: DIVISION_FIELD_CLEARABLE,
         due_date: { type: 'string', description: 'YYYY-MM-DD.' },
         allotted_minutes: { type: 'number', description: 'Time budget in minutes.' },
         given_by: { type: 'string' },
@@ -326,7 +339,7 @@ const tools = [
         name: { type: 'string', description: 'Project name.' },
         description: { type: 'string' },
         target_date: { type: 'string', description: 'YYYY-MM-DD. Tasks cannot be due after this.' },
-        division: { type: 'string', enum: ['ASTOR', 'CPS', 'TMD', 'All User'] },
+        division: DIVISION_FIELD,
         owner: { type: 'string', description: 'User id of the owner.' },
         members: {
           type: 'array',
@@ -368,7 +381,7 @@ const tools = [
         description: { type: 'string' },
         status: { type: 'string' },
         target_date: { type: 'string', description: 'YYYY-MM-DD.' },
-        division: { type: 'string', enum: ['ASTOR', 'CPS', 'TMD', 'All User'] },
+        division: DIVISION_FIELD_CLEARABLE,
         owner: { type: 'string', description: 'User id of the owner.' },
         members: { type: 'array', items: { type: 'string' }, description: 'Replaces the member list.' },
       },
@@ -396,4 +409,4 @@ const tools = [
   },
 ];
 
-module.exports = { tools, requireWrite, given, summarise };
+module.exports = { tools, requireWrite, given, summarise, DIVISION_FIELD, DIVISION_FIELD_CLEARABLE };
