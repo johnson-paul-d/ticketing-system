@@ -65,7 +65,14 @@ socket.on("connect_error", (err) => {
   }
 });
 
-// A page refresh never runs login(), so re-establish from the stored token.
-if (localStorage.getItem("token")) connectSocket();
+// A page refresh never runs login(), so re-establish from the stored token —
+// unless the session is one that began with a temporary password, which gets
+// no feed until a new password is set.
+try {
+  const storedUser = JSON.parse(localStorage.getItem("user") || "null");
+  if (localStorage.getItem("token") && !storedUser?.mustChangePassword) connectSocket();
+} catch {
+  if (localStorage.getItem("token")) connectSocket();
+}
 
 export default socket;

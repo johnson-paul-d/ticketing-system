@@ -1,4 +1,4 @@
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import useAuthStore from "../store/authStore";
 import { isAdmin, isTeamMember } from "../constants/roles";
 
@@ -13,7 +13,11 @@ const roleMatchers = {
 
 export default function ProtectedRoute({ children, allowedRoles, requireAdmin, allow }) {
   const user = useAuthStore((state) => state.user);
+  const { pathname } = useLocation();
   if (!user) return <Navigate to="/" />;
+  // A sign-in with a temporary password goes to one page until a password of
+  // the person's own is set; the server refuses everything else anyway.
+  if (user.mustChangePassword && pathname !== "/change-password") return <Navigate to="/change-password" />;
   if (allow && !allow(user)) return <Navigate to="/dashboard" />;
   if (requireAdmin && !isAdmin(user)) return <Navigate to="/dashboard" />;
   if (allowedRoles) {

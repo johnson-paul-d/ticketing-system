@@ -74,6 +74,71 @@ export default function AdminPanel() {
   // would not change either, and a title nobody saved would sit there looking
   // saved.
   const [designationTick, setDesignationTick] = useState(0);
+  // Reset every password (Super Admin only): the temporary password is typed
+  // here and nowhere else in the app; the server stores only its hash. The
+  // Super Admin's own account gets the new password of their own typed here,
+  // not the shared one, and their current password is asked for again.
+  const [resetAllCurrent, setResetAllCurrent] = useState("");
+  const [resetAllPassword, setResetAllPassword] = useState("");
+  const [resetAllConfirm, setResetAllConfirm] = useState("");
+  const [resetAllOwn, setResetAllOwn] = useState("");
+  const [resetAllOwnConfirm, setResetAllOwnConfirm] = useState("");
+  const [resetAllAck, setResetAllAck] = useState(false);
+  const [resetAllError, setResetAllError] = useState("");
+  const [resettingAll, setResettingAll] = useState(false);
+  const othersCount = Math.max(0, users.length - 1);
+
+  const resetAllPasswords = async () => {
+    setResetAllError("");
+    if (!resetAllCurrent) {
+      setResetAllError("Enter your current password");
+      return;
+    }
+    if (resetAllPassword.trim().length < 8) {
+      setResetAllError("The temporary password must be at least 8 characters");
+      return;
+    }
+    if (resetAllPassword !== resetAllConfirm) {
+      setResetAllError("The two temporary password entries do not match");
+      return;
+    }
+    if (resetAllOwn.trim().length < 8) {
+      setResetAllError("Your own new password must be at least 8 characters");
+      return;
+    }
+    if (resetAllOwn !== resetAllOwnConfirm) {
+      setResetAllError("The two entries of your own new password do not match");
+      return;
+    }
+    if (resetAllOwn.trim() === resetAllPassword.trim()) {
+      setResetAllError("Your own new password must differ from the temporary one");
+      return;
+    }
+    if (!resetAllAck) {
+      setResetAllError("Tick the box to confirm you understand what this does");
+      return;
+    }
+    if (!window.confirm(`Reset the password of the other ${othersCount} users and set your own? This cannot be undone.`)) return;
+    setResettingAll(true);
+    try {
+      const res = await api.post("/users/reset-all-passwords", {
+        currentPassword: resetAllCurrent,
+        password: resetAllPassword,
+        ownPassword: resetAllOwn,
+      });
+      setNotice(res.data?.message || `${res.data?.reset} passwords reset`);
+      setResetAllCurrent("");
+      setResetAllPassword("");
+      setResetAllConfirm("");
+      setResetAllOwn("");
+      setResetAllOwnConfirm("");
+      setResetAllAck(false);
+    } catch (err) {
+      setResetAllError(err?.response?.data?.message || "Could not reset the passwords");
+    } finally {
+      setResettingAll(false);
+    }
+  };
 
   const fetchUsers = async () => {
     try {
@@ -286,6 +351,113 @@ export default function AdminPanel() {
         <div className="mb-4 bg-blue-50 text-blue-700 text-sm px-4 py-3 rounded-xl border border-blue-200 flex items-center justify-between gap-3">
           <span>{notice}</span>
           <button onClick={() => setNotice("")} className="text-blue-400 hover:text-blue-600 font-bold flex-shrink-0">✕</button>
+        </div>
+      )}
+
+      {/* RESET EVERY PASSWORD — Super Admin only */}
+      {isSuperAdmin(me) && (
+        <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm mb-6 border border-red-100">
+          <h2 className="text-base font-semibold mb-1 flex items-center gap-2">
+            <KeyRound size={18} className="text-[#9b2423]" /> Reset every password
+          </h2>
+          <p className="text-sm text-gray-500 mb-4">
+            For when passwords may have leaked. Every other account gets the temporary password you type here, and each
+            person must set their own the first time they sign in with it; the temporary password works for 72 hours.
+            Your own account is not put on the shared password: set a new one of your own below. Hand the temporary
+            password out yourself; the app never shows or e-mails it. Anyone already signed in stays signed in until
+            their session expires (up to seven days; a connected MCP app is cut off until its owner sets a new password).
+          </p>
+
+          {resetAllError && (
+            <div className="mb-4 bg-red-50 text-red-700 text-sm px-4 py-3 rounded-xl border border-red-200">
+              {resetAllError}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+            <div className="sm:col-span-2">
+              <label htmlFor="reset-all-current" className="block text-xs font-semibold text-gray-500 mb-1.5">Your current password</label>
+              <input
+                id="reset-all-current"
+                type="password"
+                autoComplete="current-password"
+                value={resetAllCurrent}
+                onChange={(e) => setResetAllCurrent(e.target.value)}
+                className={inputCls}
+                disabled={resettingAll}
+              />
+            </div>
+            <div>
+              <label htmlFor="reset-all-password" className="block text-xs font-semibold text-gray-500 mb-1.5">Temporary password for everyone else (at least 8 characters)</label>
+              <input
+                id="reset-all-password"
+                type="password"
+                autoComplete="new-password"
+                value={resetAllPassword}
+                onChange={(e) => setResetAllPassword(e.target.value)}
+                className={inputCls}
+                disabled={resettingAll}
+              />
+            </div>
+            <div>
+              <label htmlFor="reset-all-confirm" className="block text-xs font-semibold text-gray-500 mb-1.5">Temporary password again</label>
+              <input
+                id="reset-all-confirm"
+                type="password"
+                autoComplete="new-password"
+                value={resetAllConfirm}
+                onChange={(e) => setResetAllConfirm(e.target.value)}
+                className={inputCls}
+                disabled={resettingAll}
+              />
+            </div>
+            <div>
+              <label htmlFor="reset-all-own" className="block text-xs font-semibold text-gray-500 mb-1.5">Your own new password (at least 8 characters)</label>
+              <input
+                id="reset-all-own"
+                type="password"
+                autoComplete="new-password"
+                value={resetAllOwn}
+                onChange={(e) => setResetAllOwn(e.target.value)}
+                className={inputCls}
+                disabled={resettingAll}
+              />
+            </div>
+            <div>
+              <label htmlFor="reset-all-own-confirm" className="block text-xs font-semibold text-gray-500 mb-1.5">Your own new password again</label>
+              <input
+                id="reset-all-own-confirm"
+                type="password"
+                autoComplete="new-password"
+                value={resetAllOwnConfirm}
+                onChange={(e) => setResetAllOwnConfirm(e.target.value)}
+                className={inputCls}
+                disabled={resettingAll}
+              />
+            </div>
+          </div>
+          <label className="flex items-start gap-3 mt-4 text-sm text-gray-700 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={resetAllAck}
+              onChange={(e) => setResetAllAck(e.target.checked)}
+              className="mt-0.5 w-4 h-4 accent-[#9b2423]"
+              disabled={resettingAll}
+            />
+            <span>
+              I understand that {users.length ? `the other ${othersCount} users` : "every other user"} will have to sign in
+              with this temporary password and set a new one, that my own password becomes the one I typed above, and
+              that current passwords cannot be recovered.
+            </span>
+          </label>
+          <button
+            onClick={resetAllPasswords}
+            disabled={resettingAll || loading || users.length === 0}
+            className="inline-flex items-center justify-center gap-2 bg-[#9b2423] hover:bg-[#7d1d1c] disabled:opacity-60 text-white font-semibold text-sm px-6 py-3 rounded-xl mt-5 w-full sm:w-auto"
+          >
+            {resettingAll ? <Loader2 size={16} className="animate-spin" /> : <KeyRound size={16} />}
+            Reset every password
+          </button>
         </div>
       )}
 

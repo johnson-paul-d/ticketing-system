@@ -22,6 +22,16 @@ let sessionExpired = false;
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // A temporary-password session may only set a new password; the server
+    // says so on every other request. Send the person to that page.
+    if (
+      error.response?.status === 403 &&
+      error.response?.data?.code === 'PASSWORD_CHANGE_REQUIRED' &&
+      window.location.pathname !== '/change-password'
+    ) {
+      window.location.href = '/change-password';
+      return Promise.reject(error);
+    }
     if (error.response?.status === 401) {
       const isPublic = error.config?.url?.includes('/linkedin/status') ||
                        error.config?.url?.includes('/auth/');

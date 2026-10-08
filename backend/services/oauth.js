@@ -24,6 +24,7 @@
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const supabase = require('../config/supabase');
+const { isTemporary } = require('../utils/passwords');
 
 // ---------------------------------------------------------------
 // Key separation
@@ -224,13 +225,15 @@ const loadUser = async (id) => {
 
   const { data, error } = await supabase
     .from('users')
-    .select('id, name, email, role, active')
+    .select('id, name, email, role, active, password')
     .eq('id', id)
     .maybeSingle();
   if (error) throw error;
 
-  userCache.set(id, { expiresAt: Date.now() + USER_CACHE_TTL_MS, user: data || null });
-  return data || null;
+  // Only whether the password is temporary is kept, never the hash itself.
+  const user = data ? { id: data.id, name: data.name, email: data.email, role: data.role, active: data.active, passwordTemporary: isTemporary(data.password) } : null;
+  userCache.set(id, { expiresAt: Date.now() + USER_CACHE_TTL_MS, user });
+  return user;
 };
 
 /**
@@ -253,6 +256,11 @@ const verifyAccessToken = async (token) => {
   const user = await loadUser(claims.sub);
   if (!user) return { error: 'The account behind this token no longer exists', status: 401 };
   if (!user.active) return { error: 'The account behind this token is disabled', status: 401 };
+  // A temporary password opens the portal's change-password page and nothing
+  // else; a connected app waits until the owner has set a password of their own.
+  if (user.passwordTemporary) {
+    return { error: 'The account behind this token must set a new password in the portal first', status: 401 };
+  }
 
   return {
     user: { id: user.id, name: user.name, email: user.email, role: user.role },

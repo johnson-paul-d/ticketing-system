@@ -400,6 +400,38 @@ and a project's Add task form both ask for one whenever the ticket's team is
 known; a Super Admin's unassigned ticket has no team yet, so there the category
 is optional.
 
+## Passwords
+
+Passwords are stored only as bcrypt hashes; there is no way to read one back,
+for anyone. The ways a password is set: an admin creates the user or types a
+new password for them in the Admin Panel; the person uses "Forgot password" on
+the sign-in page (a code is e-mailed); or the person changes it themselves at
+`/change-password`.
+
+**Reset every password** (Admin Panel, Super Admin only) is for when passwords
+may have leaked. Every other account gets the one temporary password typed
+there, stored as a hash marked temporary with the time it was set; the Super
+Admin's own account gets the new password of their own typed in the same form,
+so the most powerful account is never on the shared password. The Super
+Admin's current password is asked for again, so a stolen admin session alone
+cannot do this.
+
+Signing in with the temporary password opens the change-password page and
+nothing else: the API, the live ticket feed and connected MCP apps all refuse
+the account until the person sets a password of their own. The temporary
+password stops working 72 hours after the reset; someone who misses that
+window needs the reset run again (or an admin to set their password in the
+Admin Panel). Sign-in attempts are limited per caller and per account. The
+Super Admin hands the temporary password out in person; the app never shows
+or e-mails it.
+
+What it does not do: sessions already signed in keep working until their
+token expires (seven days for the app; a connected MCP app's refresh token
+lasts thirty days, but is refused while the account's password is temporary).
+To end every session at once, change `JWT_SECRET` in `backend\.env` and
+restart the app. API keys are not passwords and are not touched; revoke them
+in Admin Panel → API Keys if they may have leaked too.
+
 ## Divisions
 
 Tickets, projects, users and expense claims share one division list: ASTOR,

@@ -17,7 +17,7 @@
 // data — only URLs of this same app.
 
 const express = require('express');
-const bcrypt = require('bcryptjs');
+const { checkPassword, isTemporary } = require('../utils/passwords');
 const router = express.Router();
 
 const supabase = require('../config/supabase');
@@ -346,8 +346,13 @@ router.post(
     if (!user || !user.password) return retry('Those details were not recognised.');
     if (!user.active) return retry('That account is disabled.');
 
-    const valid = await bcrypt.compare(password.trim(), String(user.password).trim());
+    const valid = await checkPassword(password, user.password);
     if (!valid) return retry('Those details were not recognised.');
+    // A temporary password opens the portal's change-password page and nothing
+    // else; it does not open the door to a connected app.
+    if (isTemporary(user.password)) {
+      return retry('Your password is temporary. Sign in to the portal, set a new one, then connect again.');
+    }
 
     const code = oauth.issueCode({
       userId: user.id,
@@ -436,7 +441,7 @@ router.post(
       try {
         const { data, error } = await supabase
           .from('users')
-          .select('id, name, email, role, active')
+          .select('id, name, email, role, active, password')
           .eq('id', claims.sub)
           .maybeSingle();
         if (error) throw error;
@@ -447,8 +452,14 @@ router.post(
       }
 
       // The refresh token outlives any single access token, so this is the check
-      // that actually ends a disabled person's connection.
+      // that actually ends a disabled person's connection — and the connection
+      // of an account whose password was reset to a temporary one, until its
+      // owner has set a new password.
       if (!user || !user.active) return fail('invalid_grant', 'That account is no longer active');
+      if (isTemporary(user.password)) {
+        return fail('invalid_grant', 'This account must set a new password in the portal before connecting again');
+      }
+      delete user.password;
 
       return res.json(
         oauth.issueTokens({

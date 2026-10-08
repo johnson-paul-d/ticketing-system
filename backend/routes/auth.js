@@ -8,6 +8,7 @@ const requireAuth = require('../middleware/auth');
 const { isAdmin, isSuperAdmin, teamFromRole, getUserTeam } = require('../utils/roles');
 const { sendMail } = require('../services/mailService');
 const { rateLimit } = require('../utils/rateLimit');
+const { checkPassword, hashPassword, isTemporary, temporaryExpired, passwordProblem } = require('../utils/passwords');
 
 // =====================================================
 // PASSWORD RESET — OTP (in-memory, short-lived)
@@ -53,8 +54,20 @@ const sendOtpEmail = async (to, name, otp) =>
       `,
   });
 
+// Sign-in attempts are limited per caller and, separately, per account, so a
+// caller who keeps changing address still gets only so many guesses at one
+// account's password.
+const loginIpLimit = rateLimit({ name: 'login', windowMs: 15 * 60 * 1000, max: 20 });
+const loginAccountLimit = rateLimit({
+  name: 'login-account',
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  byKeyOnly: true,
+  keyOn: (req) => String(req.body?.email || '').trim().toLowerCase(),
+});
+
 // LOGIN
-router.post('/login', rateLimit({ name: 'login', windowMs: 15 * 60 * 1000, max: 20 }), async (req, res) => {
+router.post('/login', loginIpLimit, loginAccountLimit, async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -89,15 +102,33 @@ router.post('/login', rateLimit({ name: 'login', windowMs: 15 * 60 * 1000, max: 
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    const validPassword = await bcrypt.compare(password.trim(), user.password.trim());
+    const validPassword = await checkPassword(password, user.password);
     if (!validPassword) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
+    // A temporary password (set for everyone by a Super Admin) signs in to one
+    // place only: the page where a password of one's own is set. The token says
+    // so, and middleware/auth.js refuses everything else while it does; it is
+    // also short-lived, since it exists to be replaced. And it works for a
+    // limited time: a password a whole office knows must not stay live for an
+    // account whose owner is away.
+    const mustChangePassword = isTemporary(user.password);
+    if (mustChangePassword && temporaryExpired(user.password)) {
+      return res.status(401).json({
+        message: 'This temporary password has expired. Ask your Super Admin to reset the passwords again.',
+      });
+    }
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role, name: user.name },
+      {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        name: user.name,
+        ...(mustChangePassword ? { must_change_password: true } : {}),
+      },
       process.env.JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: mustChangePassword ? '1h' : '7d' }
     );
 
     const safeUser = {
@@ -107,12 +138,81 @@ router.post('/login', rateLimit({ name: 'login', windowMs: 15 * 60 * 1000, max: 
       role: user.role,
       division: user.division,
       active: user.active,
+      ...(mustChangePassword ? { mustChangePassword: true } : {}),
     };
 
-    res.json({ success: true, token, user: safeUser });
+    res.json({ success: true, token, user: safeUser, mustChangePassword });
   } catch (err) {
     console.error('LOGIN ERROR:', err);
     res.status(500).json({ success: false, message: 'Login failed' });
+  }
+});
+
+// =====================================================
+// CHANGE PASSWORD — the signed-in person sets their own
+// =====================================================
+// The only route a temporary-password session may call (middleware/auth.js).
+// Also usable by anyone signed in normally. Returns a fresh 7-day token, so a
+// session that began with a temporary password carries on without the mark.
+//
+// Limited per account, like sign-in: a stolen session must not be a way to
+// guess the current password at leisure. A wrong current password is a 400,
+// not a 401, so the browser can tell it from a token that has run out.
+const changePasswordLimit = rateLimit({
+  name: 'change-password',
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  byKeyOnly: true,
+  keyOn: (req) => String(req.user?.id || ''),
+});
+router.post('/change-password', requireAuth, changePasswordLimit, async (req, res) => {
+  try {
+    // A key or a connected app stands for a machine acting as the person; it
+    // does not get to change the person's password.
+    if (req.apiKey || req.user?.agent) return res.status(403).json({ message: 'Sign in to change a password' });
+
+    const { currentPassword, newPassword } = req.body || {};
+    if (typeof currentPassword !== 'string' || !currentPassword) {
+      return res.status(400).json({ message: 'Enter your current password' });
+    }
+    const problem = passwordProblem(newPassword);
+    if (problem) return res.status(400).json({ message: problem });
+
+    const { data: users, error } = await supabase
+      .from('users')
+      .select('id, name, email, role, division, active, password')
+      .eq('id', req.user.id)
+      .limit(1);
+    if (error) throw error;
+    const user = users?.[0];
+    if (!user || !user.active) return res.status(403).json({ message: 'Account disabled' });
+
+    if (!(await checkPassword(currentPassword, user.password))) {
+      return res.status(400).json({ message: 'Current password is not right' });
+    }
+    if (await checkPassword(newPassword, user.password)) {
+      return res.status(400).json({ message: 'Choose a password different from the current one' });
+    }
+
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({ password: await hashPassword(newPassword) })
+      .eq('id', user.id);
+    if (updateError) throw updateError;
+
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role, name: user.name },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    res.json({
+      success: true,
+      token,
+      user: { id: user.id, name: user.name, email: user.email, role: user.role, division: user.division, active: user.active },
+    });
+  } catch (err) {
+    console.error('CHANGE PASSWORD ERROR:', err);
+    res.status(500).json({ message: 'Could not change the password' });
   }
 });
 
@@ -196,8 +296,8 @@ router.post('/reset-password', resetLimit, async (req, res) => {
 
     if (!email || !otp || !newPassword)
       return res.status(400).json({ message: 'Email, code and new password are required' });
-    if (newPassword.length < 6)
-      return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    const problem = passwordProblem(newPassword);
+    if (problem) return res.status(400).json({ message: problem });
 
     const entry = otpStore.get(email);
     if (!entry || entry.expires < Date.now()) {
@@ -215,7 +315,7 @@ router.post('/reset-password', resetLimit, async (req, res) => {
       return res.status(400).json({ message: 'Incorrect reset code.' });
     }
 
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    const hashedPassword = await hashPassword(newPassword);
     const { error } = await supabase.from('users').update({ password: hashedPassword }).eq('id', entry.userId);
     if (error) {
       console.error('reset-password update error:', error);

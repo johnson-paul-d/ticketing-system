@@ -37,6 +37,7 @@ const AbmAccounts        = lazy(() => import("./pages/AbmAccounts"));
 const AbmAccountDetails  = lazy(() => import("./pages/AbmAccountDetails"));
 const AbmToday           = lazy(() => import("./pages/AbmToday"));
 const SignatureSettings  = lazy(() => import("./pages/SignatureSettings"));
+const ChangePassword     = lazy(() => import("./pages/ChangePassword"));
 const Verify             = lazy(() => import("./pages/Verify"));
 
 function PageFallback() {
@@ -59,6 +60,18 @@ function App() {
           {/* Public on purpose — this is reached from a printed claim by people
               who have no account here, so it must not sit behind ProtectedRoute. */}
           <Route path="/verify/:code" element={<Verify />} />
+
+          {/* Where a sign-in with a temporary password lands (ProtectedRoute
+              sends it here, and the API refuses everything else until a new
+              password is set). Anyone signed in may use it too. */}
+          <Route
+            path="/change-password"
+            element={
+              <ProtectedRoute>
+                <ChangePassword />
+              </ProtectedRoute>
+            }
+          />
 
           <Route
             path="/dashboard"

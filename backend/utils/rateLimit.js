@@ -13,14 +13,12 @@ setInterval(() => {
   for (const [key, b] of buckets) if (b.resetAt < now) buckets.delete(key);
 }, 60 * 1000).unref();
 
-// Requests share a window per (route, client). Proxies put the real client IP
-// in x-forwarded-for; Render and Vercel both do, so prefer it over the socket
-// address, which would otherwise bucket every user behind the proxy together.
-const clientKey = (req) => {
-  const fwd = req.headers['x-forwarded-for'];
-  if (typeof fwd === 'string' && fwd.length) return fwd.split(',')[0].trim();
-  return req.ip || req.socket?.remoteAddress || 'unknown';
-};
+// Requests share a window per (route, client). req.ip is what Express works
+// out from x-forwarded-for under the app's trust-proxy setting: the address the
+// proxy saw, not whatever a caller chose to put in the header themselves. The
+// raw header's first entry used to be taken, which let a caller open a fresh
+// bucket per request by sending a different one each time.
+const clientKey = (req) => req.ip || req.socket?.remoteAddress || 'unknown';
 
 /**
  * @param {object} opts
@@ -28,10 +26,13 @@ const clientKey = (req) => {
  * @param {number} opts.max       requests allowed per window
  * @param {string} opts.name      bucket namespace, so two routes don't share a counter
  * @param {(req: object) => string} [opts.keyOn]  extra key part (e.g. the target email)
+ * @param {boolean} [opts.byKeyOnly]  bucket on keyOn alone, ignoring the client:
+ *   a limit per account rather than per caller, so changing address does not
+ *   buy more attempts against the same account
  */
-const rateLimit = ({ windowMs, max, name, keyOn }) => (req, res, next) => {
+const rateLimit = ({ windowMs, max, name, keyOn, byKeyOnly = false }) => (req, res, next) => {
   const now = Date.now();
-  const key = `${name}:${clientKey(req)}:${keyOn ? keyOn(req) : ''}`;
+  const key = byKeyOnly ? `${name}::${keyOn(req)}` : `${name}:${clientKey(req)}:${keyOn ? keyOn(req) : ''}`;
 
   let bucket = buckets.get(key);
   if (!bucket || bucket.resetAt < now) {

@@ -1,5 +1,4 @@
 const express = require('express');
-const bcrypt = require('bcryptjs');
 const multer = require('multer');
 const router = express.Router();
 const supabase = require('../config/supabase');
@@ -10,6 +9,8 @@ const getISTTime = require('../utils/time');
 const { detectFileType, safeFileName } = require('../utils/fileType');
 const { isSuperAdmin, teamFromRole, getUserTeam } = require('../utils/roles');
 const { standardDivision, divisionError } = require('../utils/divisions');
+const { hashPassword, hashTemporaryPassword, checkPassword, passwordProblem, TEMPORARY_TTL_MS } = require('../utils/passwords');
+const { insertNotifications } = require('../services/notificationService');
 
 // Every query names its columns so the password hash can never leak to a client.
 // signature_path is deliberately absent: it is a per-user secret handle and has
@@ -117,7 +118,7 @@ router.post('/', auth, admin, async (req, res) => {
       return res.status(400).json({ message: divisionError(division) });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await hashPassword(password);
     // Built inside the builder so a retry after "no such column" drops
     // designation from the row as well as from the returned columns.
     const { data, error } = await selectUsers((cols) => {
@@ -130,6 +131,97 @@ router.post('/', auth, admin, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to create user' });
+  }
+});
+
+// =====================================================
+// RESET EVERY PASSWORD (Super Admin only)
+// =====================================================
+// For when passwords may have leaked: every other account gets the one
+// temporary password typed here, and each person must set a password of their
+// own the first time they sign in with it (see utils/passwords.js and
+// middleware/auth.js). The Super Admin's own account is not put on the shared
+// password: they set a new one of their own in the same request, so the most
+// powerful account is never open to everyone who was handed the temporary one.
+// The temporary password is handed out by the Super Admin outside the app, is
+// never e-mailed or shown, and stops working after TEMPORARY_TTL_MS.
+//
+// The Super Admin's current password is asked for again, so a stolen session
+// alone cannot hand every account a password the thief knows.
+//
+// Sessions already signed in keep working until their token expires (seven
+// days at most; thirty for a connected MCP app's refresh token, which is also
+// refused while the account's password is temporary). To end every session
+// at once, change JWT_SECRET and restart the app. API keys are not passwords
+// and are not touched.
+router.post('/reset-all-passwords', auth, admin, async (req, res) => {
+  try {
+    if (!isSuperAdmin(req.user)) {
+      return res.status(403).json({ message: 'Only a Super Admin can reset every password' });
+    }
+    if (req.apiKey || req.user?.agent) return res.status(403).json({ message: 'Sign in to reset passwords' });
+
+    const { currentPassword, password, ownPassword } = req.body || {};
+    if (typeof currentPassword !== 'string' || !currentPassword) {
+      return res.status(400).json({ message: 'Enter your current password' });
+    }
+    for (const [label, value] of [['temporary password', password], ['your own new password', ownPassword]]) {
+      const problem = passwordProblem(value);
+      if (problem) return res.status(400).json({ message: `${problem} (${label})` });
+    }
+    if (String(password).trim() === String(ownPassword).trim()) {
+      return res.status(400).json({ message: 'Your own new password must differ from the temporary one' });
+    }
+
+    const { data: me, error: meError } = await supabase
+      .from('users')
+      .select('id, password')
+      .eq('id', req.user.id)
+      .maybeSingle();
+    if (meError) throw meError;
+    if (!me || !(await checkPassword(currentPassword, me.password))) {
+      return res.status(400).json({ message: 'Current password is not right' });
+    }
+
+    // One PATCH for everyone but the actor, matched by a filter rather than a
+    // list of ids, so the size of the user table does not matter.
+    const { data: others, error: updateError } = await supabase
+      .from('users')
+      .update({ password: await hashTemporaryPassword(password) })
+      .neq('id', me.id)
+      .select('id, name');
+    if (updateError) throw updateError;
+    const { error: ownError } = await supabase
+      .from('users')
+      .update({ password: await hashPassword(ownPassword) })
+      .eq('id', me.id);
+    if (ownError) throw ownError;
+
+    const reset = (others || []).length;
+    const hours = Math.round(TEMPORARY_TTL_MS / 3600000);
+    console.log(`Passwords: ${req.user.name} (Super Admin) reset ${reset} password(s) to a temporary one and set their own`);
+    // A record each person sees once they are back in, and the admin panel's
+    // own trail of what happened.
+    await insertNotifications(
+      (others || []).map((u) => ({
+        user_id: u.id,
+        user_name: u.name,
+        title: 'Password reset',
+        message: `${req.user.name} reset every password. Sign in with the temporary password you were given and set your own.`,
+        ticket_id: null,
+      }))
+    );
+
+    res.json({
+      reset,
+      message:
+        `${reset} password(s) reset. Everyone else now signs in with the temporary password, which works for ${hours} hours, ` +
+        'and is asked to set their own; your own password is the new one you typed. ' +
+        'Sessions already signed in last until their token expires.',
+    });
+  } catch (err) {
+    console.error('RESET ALL PASSWORDS ERROR:', err);
+    res.status(500).json({ message: 'Could not reset the passwords' });
   }
 });
 
@@ -179,7 +271,7 @@ router.put('/:id', auth, admin, async (req, res) => {
       if (!isNonEmptyString(updateData.password)) {
         return res.status(400).json({ message: 'Password cannot be empty' });
       }
-      updateData.password = await bcrypt.hash(updateData.password, 10);
+      updateData.password = await hashPassword(updateData.password);
     }
 
     // Cleared rather than stored as an empty string, so the PDF's fallback to

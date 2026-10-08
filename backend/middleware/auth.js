@@ -55,9 +55,22 @@ module.exports = async (req, res, next) => {
       });
     }
 
+    // A session that began with a temporary password (routes/auth.js, login)
+    // may set a new password and nothing else. Enforced here, so no route has
+    // to remember it.
+    if (payload.must_change_password === true && !isChangePassword(req)) {
+      return res.status(403).json({
+        code: 'PASSWORD_CHANGE_REQUIRED',
+        message: 'Set a new password to continue',
+      });
+    }
+
     req.user = payload;
     return next();
   } catch {
     return res.status(401).json({ message: 'Invalid token' });
   }
 };
+
+const isChangePassword = (req) =>
+  req.method === 'POST' && String(req.originalUrl || '').split('?')[0] === '/api/auth/change-password';

@@ -195,6 +195,10 @@ io.use((socket, next) => {
     if (!raw) return next(new Error('Authentication required'));
 
     socket.user = jwt.verify(raw, process.env.JWT_SECRET);
+    // The same rule middleware/auth.js applies to the API: a session that
+    // began with a temporary password may set a new password and nothing
+    // else, and a live feed of tickets is something else.
+    if (socket.user.must_change_password === true) return next(new Error('Set a new password to continue'));
     next();
   } catch {
     next(new Error('Invalid token'));

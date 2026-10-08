@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import api from "../services/api";
 import useAuthStore from "../store/authStore";
 import logo from "../assets/Sieger_logo.png";
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const login = useAuthStore((state) => state.login);
 
   const [email, setEmail] = useState("");
@@ -17,7 +18,9 @@ export default function Login() {
   const [mode, setMode] = useState("login");
   const [otp, setOtp] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [info, setInfo] = useState("");
+  // A page that sends someone back here can leave a line for them to read
+  // (the change-password page does, when a temporary sign-in has run out).
+  const [info, setInfo] = useState(location.state?.info || "");
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -35,7 +38,9 @@ export default function Login() {
       });
 
       login(res.data.user, res.data.token);
-      navigate("/dashboard");
+      // A temporary password opens one page: the one where a password of the
+      // person's own is set.
+      navigate(res.data.mustChangePassword ? "/change-password" : "/dashboard");
     } catch (err) {
       setError(err?.response?.data?.message || "Invalid credentials");
     } finally {

@@ -8,8 +8,12 @@ const useAuthStore = create((set) => ({
     localStorage.setItem("user", JSON.stringify(user));
     localStorage.setItem("token", token);
     // The JWT travels in the socket handshake, so the connection has to be
-    // (re)opened here to pick up the token that was just stored.
-    connectSocket();
+    // (re)opened here to pick up the token that was just stored. A sign-in
+    // with a temporary password gets no live feed (the server would refuse
+    // the handshake anyway); the login() that follows the password change
+    // opens it with the clean token.
+    if (user?.mustChangePassword) disconnectSocket();
+    else connectSocket();
     set({ user });
   },
 
