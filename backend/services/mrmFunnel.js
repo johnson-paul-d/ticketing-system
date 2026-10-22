@@ -246,11 +246,18 @@ const buildFunnel = async (ctx) => {
   // Salesforce could not be read, so a failure is not mistaken for zero).
   const marketingByMonth = {};
   for (const m of [firstMonth, ...fyMonths.filter((x) => x <= month)]) {
-    const sum = (field) => divisions.reduce((t, d) => t + sources.reduce((s, x) => s + (counts[d.key]?.[x.key]?.[m]?.[field] || 0), 0), 0);
+    const sumFor = (dKeys, field) => dKeys.reduce((t, dk) => t + sources.reduce((s, x) => s + (counts[dk]?.[x.key]?.[m]?.[field] || 0), 0), 0);
+    const sum = (field) => sumFor(divisions.map((d) => d.key), field);
     marketingByMonth[m] = {
       leads: leadsLoaded ? sum('leads') : null,
       converted: leadsLoaded ? sum('converted') : null,
       opps: oppsLoaded ? sum('opps') : null,
+      // The same per division, for the brand index by division.
+      byDivision: Object.fromEntries(divisions.map((d) => [d.key, {
+        leads: leadsLoaded ? sumFor([d.key], 'leads') : null,
+        converted: leadsLoaded ? sumFor([d.key], 'converted') : null,
+        opps: oppsLoaded ? sumFor([d.key], 'opps') : null,
+      }])),
     };
   }
 

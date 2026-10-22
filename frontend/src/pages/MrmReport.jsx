@@ -423,6 +423,20 @@ export default function MrmReport() {
                   ? "Enter the month's figures and full-marks levels under “Brand visibility index” below."
                   : `${model.brand.scored} of ${model.brand.totalComponents} components scored${model.brand.missing.length ? `; not scored: ${model.brand.missing.map((m) => `${m.label} (${m.reason})`).join(", ")}` : ""}.${model.brand.change == null && model.brand.prevScored > 0 ? ` No trend shown: last month was scored on ${model.brand.prevScored} of ${model.brand.totalComponents} components, so the two are not comparable. Fill in last month's column to get one.` : ""} ${model.brand.formula}`}
               >
+                {model.brand.divisions?.length ? (
+                  <p className="text-sm text-gray-700 mb-2">
+                    <span className="font-semibold">By division: </span>
+                    {model.brand.divisions.map((d, i) => (
+                      <span key={d.key}>
+                        {i ? " · " : ""}
+                        <span className="font-semibold">{d.key}</span> {d.index ?? "—"}{d.index != null ? " / 100" : ""}
+                        {d.index == null ? <span className="text-gray-400"> ({d.reason || "not scored"})</span> : d.scored < d.totalComponents ? <span className="text-gray-400"> ({d.scored} of {d.totalComponents} scored)</span> : null}
+                        {d.change != null ? <span className={d.change >= 0 ? "text-green-700" : "text-red-700"}> {d.change >= 0 ? "▲" : "▼"} {Math.abs(d.change)}</span> : null}
+                      </span>
+                    ))}
+                    {Object.keys(model.brand.summed || {}).length ? <span className="block text-xs text-gray-400">Company figures summed from the division figures: {Object.entries(model.brand.summed).map(([k, divs]) => `${model.brand.groups.flatMap((g) => g.items).find((it) => it.key === k)?.label || k} (${divs.join(" + ")})`).join(", ")}.</span> : null}
+                  </p>
+                ) : null}
                 <table className="w-full">
                   <thead><tr><th className={th}>Component</th><th className={`${th} text-right`}>Weight</th><th className={`${th} text-right`}>Actual</th><th className={`${th} text-right`}>Prev month</th><th className={`${th} text-right`}>Full marks at</th><th className={`${th} text-right`}>Score</th><th className={`${th} text-right`}>Points</th></tr></thead>
                   <tbody>

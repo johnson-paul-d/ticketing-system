@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { field, label, th } from "./InputEditors";
 
 // =====================================================
@@ -6,7 +7,11 @@ import { field, label, th } from "./InputEditors";
 // The month's visibility figures, the level of each that counts as full marks,
 // and the weights. Same contract as the other editors: value in, whole
 // replacement value out.
-//   value = { weights: { [key]: percent }, targets: { [key]: n }, months: { 'YYYY-MM': { [key]: n } } }
+//   value = {
+//     weights: { [key]: percent }, targets: { [key]: n }, months: { 'YYYY-MM': { [key]: n } },
+//     divisions: { 'YYYY-MM': { [divisionKey]: { [key]: n } } },   // the same figures per division (optional)
+//     divisionTargets: { [divisionKey]: { [key]: n } },            // full marks per division (optional)
+//   }
 
 // Keep in step with METRICS in backend/services/mrmBrand.js.
 const BRAND_METRICS = [
@@ -21,6 +26,12 @@ const BRAND_METRICS = [
   { key: "opportunities", label: "Qualified opportunities influenced", auto: "Salesforce: opportunities from marketing sources" },
   { key: "linkedinFollowers", label: "LinkedIn followers", auto: "LinkedIn sync: total across the pages on the LinkedIn slide" },
 ];
+// Rows of the by-division grid: everything typed by hand, plus enquiries,
+// which the portal fills per division from Salesforce but which needs a
+// full-marks level per division before it counts in the division's index.
+// Followers are one LinkedIn sync for the company; opportunities are shown,
+// not scored.
+const DIVISION_METRICS = BRAND_METRICS.filter((m) => !m.auto || m.component);
 
 const prevMonthOf = (ym) => {
   const [y, m] = ym.split("-").map(Number);
@@ -29,29 +40,64 @@ const prevMonthOf = (ym) => {
 };
 const monthLabel = (ym) => new Date(`${ym}-01T00:00:00`).toLocaleDateString("en-US", { month: "short", year: "2-digit" });
 const toNum = (s) => (s === "" ? null : Number(s));
+const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+const obj = (v) => (isObj(v) ? v : {});
 
-export function BrandEditor({ value, onChange, month }) {
+export function BrandEditor({ value, onChange, month, settings }) {
   const v = value || {};
-  const months = v.months || {};
-  const targets = v.targets || {};
-  const weights = v.weights || {};
+  const months = obj(v.months);
+  const targets = obj(v.targets);
+  const weights = obj(v.weights);
+  const byDiv = obj(v.divisions);
+  const divTargets = obj(v.divisionTargets);
   const prev = prevMonthOf(month);
+  const divisions = (Array.isArray(settings?.divisions) ? settings.divisions : []).filter((d) => d && d.key).map((d) => ({ key: String(d.key), label: d.label || String(d.key) }));
 
-  const setMonth = (ym, key, x) => onChange({ ...v, months: { ...months, [ym]: { ...(months[ym] || {}), [key]: x } } });
+  const hasDivisionFigures = [month, prev].some((ym) => divisions.some((d) => DIVISION_METRICS.some((m) => obj(obj(byDiv[ym])[d.key])[m.key] != null)));
+  // Open by itself when the month already has division figures (the stored
+  // value arrives after the first render, so this is derived, not initial state).
+  const [showPref, setShowPref] = useState(null);
+  const showDivisions = showPref ?? hasDivisionFigures;
+  const setShowDivisions = setShowPref;
+
+  const setMonth = (ym, key, x) => onChange({ ...v, months: { ...months, [ym]: { ...obj(months[ym]), [key]: x } } });
   const setTarget = (key, x) => onChange({ ...v, targets: { ...targets, [key]: x } });
   const setWeight = (key, x) => onChange({ ...v, weights: { ...weights, [key]: x } });
+  const setDivision = (ym, dk, key, x) => onChange({ ...v, divisions: { ...byDiv, [ym]: { ...obj(byDiv[ym]), [dk]: { ...obj(obj(byDiv[ym])[dk]), [key]: x } } } });
+  const setDivisionTarget = (dk, key, x) => onChange({ ...v, divisionTargets: { ...divTargets, [dk]: { ...obj(divTargets[dk]), [key]: x } } });
 
   const weightOf = (m) => (weights[m.key] ?? m.weight);
   const weightTotal = BRAND_METRICS.filter((m) => m.component).reduce((s, m) => s + (Number(weightOf(m)) || 0), 0);
 
-  const cell = (ym, m) => (
-    <input
-      type="number" step="any" min="0" value={months[ym]?.[m.key] ?? ""}
-      placeholder={m.auto ? "auto" : ""}
-      onChange={(e) => setMonth(ym, m.key, toNum(e.target.value))}
-      className={`${field} text-right`}
-    />
-  );
+  // The sum of the division figures entered for a metric in a month, shown in
+  // the company box when nothing is typed there (that is what the index uses).
+  const divisionSum = (ym, key) => {
+    const parts = divisions.map((d) => obj(obj(byDiv[ym])[d.key])[key]).filter((x) => x != null && x !== "");
+    return parts.length ? parts.reduce((s, x) => s + Number(x), 0) : null;
+  };
+
+  const cell = (ym, m) => {
+    const sum = m.auto ? null : divisionSum(ym, m.key);
+    return (
+      <input
+        type="number" step="any" min="0" value={months[ym]?.[m.key] ?? ""}
+        placeholder={m.auto ? "auto" : sum != null ? `${sum} (divisions)` : ""}
+        title={sum != null && (months[ym]?.[m.key] ?? "") === "" ? `Sum of the division figures: ${sum}. Type a figure here to use something else.` : undefined}
+        onChange={(e) => setMonth(ym, m.key, toNum(e.target.value))}
+        className={`${field} text-right`}
+      />
+    );
+  };
+  const divCell = (ym, d, m) =>
+    m.auto ? (
+      <input type="text" value="" placeholder="auto" disabled title={`${m.label} come from Salesforce for ${d.label}; set the full-marks level on the right.`} className={`${field} text-right bg-gray-50 text-gray-400`} />
+    ) : (
+      <input
+        type="number" step="any" min="0" value={obj(obj(byDiv[ym])[d.key])[m.key] ?? ""}
+        onChange={(e) => setDivision(ym, d.key, m.key, toNum(e.target.value))}
+        className={`${field} text-right`}
+      />
+    );
 
   return (
     <div className="space-y-4">
@@ -105,6 +151,60 @@ export function BrandEditor({ value, onChange, month }) {
       <p className={`text-xs ${weightTotal === 100 ? "text-gray-500" : "text-amber-700 font-semibold"}`}>
         Weights add up to {weightTotal}%.{weightTotal === 100 ? "" : " They are used in proportion, so the index still works, but 100% keeps the slide readable."}
       </p>
+
+      {divisions.length ? (
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-sm font-medium text-gray-800">
+            <input type="checkbox" checked={showDivisions} onChange={(e) => setShowDivisions(e.target.checked)} />
+            Enter the figures by division ({divisions.map((d) => d.label).join(", ")})
+          </label>
+          {showDivisions ? (
+            <>
+              <p className="text-xs text-gray-500">
+                Each division has its own website, Search Console property and video channel, so the same figures can be entered per division.
+                The slide then shows an index per division for every division with a figure in the month, scored against the full-marks levels below where set, else the company ones above.
+                When a company box above is left blank, the company figure is the sum of the division figures entered here; a month summed over different divisions than the one before is not compared with it.
+                Enquiries come from Salesforce per division and count in a division’s index only once its own full-marks level is set here (the company level is for all divisions together). Followers and opportunities are not entered per division.
+              </p>
+              <div className="overflow-x-auto border border-gray-100 rounded-xl">
+                <table className="min-w-full">
+                  <thead>
+                    <tr>
+                      <th className={th} rowSpan={2}>Figure</th>
+                      <th className={`${th} text-center border-l border-gray-100`} colSpan={divisions.length}>{monthLabel(month)}</th>
+                      <th className={`${th} text-center border-l border-gray-100`} colSpan={divisions.length}>{monthLabel(prev)}</th>
+                      <th className={`${th} text-center border-l border-gray-100`} colSpan={divisions.length}>Full marks at (optional)</th>
+                    </tr>
+                    <tr>
+                      {[month, prev, "targets"].flatMap((ym) => divisions.map((d, i) => (
+                        <th key={`${ym}-${d.key}`} className={`${th} text-right ${i === 0 ? "border-l border-gray-100" : ""}`}>{d.label}</th>
+                      )))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {DIVISION_METRICS.map((m) => (
+                      <tr key={m.key} className={`border-t border-gray-100 align-top ${m.component ? "" : "bg-gray-50/60"}`}>
+                        <td className="px-2 py-2 text-sm font-medium text-gray-800 whitespace-nowrap">{m.label}</td>
+                        {divisions.map((d, i) => <td key={`m-${d.key}`} className={`px-1.5 py-1.5 w-28 ${i === 0 ? "border-l border-gray-100" : ""}`}>{divCell(month, d, m)}</td>)}
+                        {divisions.map((d, i) => <td key={`p-${d.key}`} className={`px-1.5 py-1.5 w-28 ${i === 0 ? "border-l border-gray-100" : ""}`}>{divCell(prev, d, m)}</td>)}
+                        {divisions.map((d, i) => (
+                          <td key={`t-${d.key}`} className={`px-1.5 py-1.5 w-28 ${i === 0 ? "border-l border-gray-100" : ""}`}>
+                            {m.component ? (
+                              <input type="number" step="any" min="0" value={obj(divTargets[d.key])[m.key] ?? ""} placeholder={targets[m.key] != null ? String(targets[m.key]) : ""} onChange={(e) => setDivisionTarget(d.key, m.key, toNum(e.target.value))} className={`${field} text-right`} />
+                            ) : <span className="block text-center text-gray-300">—</span>}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-gray-500">Other months’ division figures are kept as they are; switch the review month at the top of the page to enter them.</p>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
       <div>
         <span className={label}>How the index is worked out</span>
         <p className="text-xs text-gray-500">

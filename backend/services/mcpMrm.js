@@ -144,7 +144,7 @@ const INPUT_GUIDE = {
   spend: 'Marketing spend in ₹ lakh: { [division]: { [source]: { "YYYY-MM": lakh } } }. Ads is read from Google Ads unless typed. Use mrm_set_spend.',
   abm: 'ABM slide: { picked: { [abmAccountId]: { include, action, quotationLakh } }, accounts: [typed rows] }. Use mrm_tick_abm_accounts.',
   exhibitions: 'Expo slide: { projects: [ticked portal projects with dates, budget, spend, remarks], manual: [events without a project], newExpos: [strategic new exhibitions] }. Use mrm_tick_exhibition_projects for projects.',
-  brand: 'Brand Visibility Index: { months: { "YYYY-MM": figures }, targets: full-marks level per figure, weights }. Use mrm_set_brand_figures.',
+  brand: 'Brand Visibility Index: { months: { "YYYY-MM": figures }, targets: full-marks level per figure, weights, divisions: { "YYYY-MM": { [division]: figures } }, divisionTargets: { [division]: full-marks levels } }. Use mrm_set_brand_figures.',
   linkedin: 'LinkedIn slide wording: { doneThisMonth: [..], nextMonthPlan: [..] }.',
   seo: 'SEO keywords: { keywords: [{ keyword, division, ranks: { "YYYY-MM": rank } }], notes }. Use mrm_set_seo_ranks.',
   collaterals: 'Collateral slide: { tickets: { [ticketId]: { include, location, type, label } }, completed, planned (older typed lists) }. Use mrm_tick_collateral_tickets.',
@@ -432,15 +432,19 @@ const tools = [
       `weight of each scored figure. Figure keys: ${BRAND_METRICS.map((m) => m.key).join(', ')}. ` +
       'enquiries, opportunities and linkedinFollowers are filled by the portal; type them only to override. A null value ' +
       'clears a figure. Figures, targets and weights not mentioned are left as they are. The index compares with the ' +
-      'previous month only when both months are scored on the same components, so enter last month\'s figures too the first time.',
+      'previous month only when both months are scored on the same components, so enter last month\'s figures too the first time. ' +
+      'With "division" (a division key from Definitions, e.g. CPS), the figures and targets are that division\'s own: the slide ' +
+      'then shows an index per division, and the company figure for a metric is the sum of the division figures unless a company ' +
+      'figure is typed. Weights are company-wide and cannot be set per division.',
     annotations: changes,
     inputSchema: {
       type: 'object',
       properties: {
         month: { type: 'string', description: 'YYYY-MM the figures belong to.' },
+        division: { type: 'string', description: 'Optional: the division the figures belong to (key from Definitions, e.g. CPS, ASTOR, TMD). Omit for the company figures.' },
         figures: { type: 'object', description: 'Figure key → number (or null to clear).', additionalProperties: { type: ['number', 'null'] } },
-        targets: { type: 'object', description: 'Scored figure key → the level that counts as full marks.', additionalProperties: { type: ['number', 'null'] } },
-        weights: { type: 'object', description: 'Scored figure key → weight in percent. Blank uses the default.', additionalProperties: { type: ['number', 'null'] } },
+        targets: { type: 'object', description: 'Scored figure key → the level that counts as full marks (for the division when "division" is given).', additionalProperties: { type: ['number', 'null'] } },
+        weights: { type: 'object', description: 'Scored figure key → weight in percent. Blank uses the default. Not allowed with "division".', additionalProperties: { type: ['number', 'null'] } },
       },
       required: ['month'],
     },
@@ -449,6 +453,9 @@ const tools = [
       const month = checkMonth(args.month);
       const metricKeys = BRAND_METRICS.map((m) => m.key);
       const scoredKeys = BRAND_METRICS.filter((m) => m.component).map((m) => m.key);
+      // Per division, only what is typed by hand: followers are one sync for
+      // the company; enquiries and opportunities come from Salesforce per division.
+      const divisionKeys = BRAND_METRICS.filter((m) => !m.auto).map((m) => m.key);
       const clean = (obj, allowed, what) => {
         const out = {};
         for (const [k, v] of Object.entries(isPlainObject(obj) ? obj : {})) {
@@ -459,28 +466,44 @@ const tools = [
         }
         return out;
       };
-      const figures = clean(args.figures, metricKeys, 'figure key');
+      const wantDivision = args.division !== undefined && args.division !== null && String(args.division).trim() !== '';
+      const figures = clean(args.figures, wantDivision ? divisionKeys : metricKeys, wantDivision ? 'figure that can be entered per division' : 'figure key');
       const targets = clean(args.targets, scoredKeys, 'scored figure key');
       const weights = clean(args.weights, scoredKeys, 'scored figure key');
+      if (wantDivision && Object.keys(weights).length) throw bad('Weights are company-wide: set them without "division".');
       if (!Object.keys(figures).length && !Object.keys(targets).length && !Object.keys(weights).length) {
         throw bad('Nothing to save: pass figures, targets or weights.');
       }
+      let division = null;
       await serial('brand', async () => {
         const { inputs } = await readInputs(ctx);
         const brand = isPlainObject(inputs.brand) ? clone(inputs.brand) : {};
         const obj = (v) => (isPlainObject(v) ? v : {});
-        brand.months = { ...obj(brand.months), [month]: { ...obj(obj(brand.months)[month]), ...figures } };
-        brand.targets = { ...obj(brand.targets), ...targets };
-        brand.weights = { ...obj(brand.weights), ...weights };
+        if (wantDivision) {
+          const known = (Array.isArray(inputs.settings?.divisions) ? inputs.settings.divisions : []).filter((d) => d && d.key).map((d) => String(d.key));
+          const want = String(args.division).trim().toLowerCase();
+          division = known.find((k) => k.toLowerCase() === want) || null;
+          if (!division) throw bad(`"${args.division}" is not a division. Use: ${known.join(', ') || 'none defined under Definitions'}.`);
+          if (Object.keys(figures).length) brand.divisions = { ...obj(brand.divisions), [month]: { ...obj(obj(brand.divisions)[month]), [division]: { ...obj(obj(obj(brand.divisions)[month])[division]), ...figures } } };
+          if (Object.keys(targets).length) brand.divisionTargets = { ...obj(brand.divisionTargets), [division]: { ...obj(obj(brand.divisionTargets)[division]), ...targets } };
+        } else {
+          brand.months = { ...obj(brand.months), [month]: { ...obj(obj(brand.months)[month]), ...figures } };
+          brand.targets = { ...obj(brand.targets), ...targets };
+          brand.weights = { ...obj(brand.weights), ...weights };
+        }
         await saveKey(ctx, 'brand', brand);
       });
       portal.clearCache();
       const model = await portal.get(ctx.credential, '/reports/mrm/data', { month });
       const b = model.brand || {};
+      const d = division ? (b.divisions || []).find((x) => x.key === division) : null;
       return {
-        saved: { month, figures, targets, weights },
+        saved: { month, division, figures, targets, weights },
         index: { value: b.index ?? null, change: b.change ?? null, scored: `${b.scored ?? 0} of ${b.totalComponents ?? 7}`, notScored: b.missing || [] },
-        message: b.index == null ? 'Saved. No component can be scored yet: each needs the month\'s figure and a full-marks level.' : `Saved. The index for ${month} is ${b.index} / 100.`,
+        divisionIndex: d ? { division, value: d.index ?? null, change: d.change ?? null, scored: `${d.scored ?? 0} of ${d.totalComponents ?? 7}`, notScored: d.missing || [] } : undefined,
+        message: division
+          ? (d?.index == null ? `Saved for ${division}. No component can be scored for it yet: each needs the month's figure and a full-marks level.` : `Saved. The ${division} index for ${month} is ${d.index} / 100; company ${b.index == null ? 'not scored' : `${b.index} / 100`}.`)
+          : (b.index == null ? 'Saved. No component can be scored yet: each needs the month\'s figure and a full-marks level.' : `Saved. The index for ${month} is ${b.index} / 100.`),
         page: PAGE_URL,
       };
     },

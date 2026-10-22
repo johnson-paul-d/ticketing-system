@@ -884,19 +884,26 @@ const buildMrm = async (month, viewerName) => {
   const gainKnown = counted.length > 0 && counted.every((p) => p.month.achieved !== null && p.month.achieved !== undefined);
   const followersGained = gainKnown ? counted.reduce((s, p) => s + p.month.achieved, 0) : null;
   const prevMonth = addMonths(month, -1);
+  // Enquiries and opportunities per division, for the index by division.
+  const brandByDivision = (ym) => Object.fromEntries(Object.entries(funnel.marketingByMonth?.[ym]?.byDivision || {}).map(([k, v]) => [k, { enquiries: v.leads ?? null, opportunities: v.opps ?? null }]));
   const brand = buildBrand(ctx, {
     [month]: {
       enquiries: funnel.marketingByMonth?.[month]?.leads ?? null,
       opportunities: funnel.marketingByMonth?.[month]?.opps ?? null,
       linkedinFollowers: followersNow,
       followersGained,
+      byDivision: brandByDivision(month),
     },
     [prevMonth]: {
       enquiries: funnel.marketingByMonth?.[prevMonth]?.leads ?? null,
       opportunities: funnel.marketingByMonth?.[prevMonth]?.opps ?? null,
       linkedinFollowers: gainKnown ? followersNow - followersGained : null,
+      byDivision: brandByDivision(prevMonth),
     },
-  });
+  }, funnel.divisions.map((d) => ({ key: d.key, label: d.label })));
+  if (brand.orphanDivisions.length) {
+    warnings.push(`Brand visibility figures are stored for ${brand.orphanDivisions.map((k) => `"${k}"`).join(', ')}, which is not a division under Definitions (keys: ${funnel.divisions.map((d) => d.key).join(', ')}). They count nowhere until the key matches.`);
+  }
 
   // ------------------------------------------------ ABP slide tokens
   const [, mNum] = parseYm(month);

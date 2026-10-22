@@ -393,6 +393,21 @@ const renderMrm = async (model) => {
       x: M, y: TOP + 1.58, w: lw, h: 0.32, fontFace: FONT, fontSize: 12, bold: true, color: trend.color, align: 'center', isTextBox: true, margin: 0,
     });
 
+    // The index per division, when figures were entered by division.
+    const divs = Array.isArray(b.divisions) ? b.divisions : [];
+    const stripH = divs.length ? 0.46 : 0;
+    if (divs.length) {
+      // One line: "By division: CPS 89 (3/7) · ASTOR 47 (3/7) · TMD 79 (3/7)".
+      const runs = [{ text: 'By division: ', options: { bold: true, color: MUTED } }];
+      divs.forEach((d, i) => {
+        runs.push({ text: `${d.key} `, options: { bold: true, color: INK } });
+        runs.push({ text: d.index == null ? '–' : String(d.index), options: { bold: true, color: d.index == null ? MUTED : d.index >= 80 ? GOOD : d.index >= 50 ? WARN : BAD } });
+        runs.push({ text: d.index == null ? ` (${d.reason || 'not scored'})` : d.scored < d.totalComponents ? ` (${d.scored}/${d.totalComponents})` : '', options: { color: MUTED } });
+        if (i < divs.length - 1) runs.push({ text: ' · ', options: { color: MUTED } });
+      });
+      s.addText(runs, { x: M, y: TOP + 0.1 + cardH + 0.06, w: lw, h: 0.4, fontFace: FONT, fontSize: 11, align: 'center', valign: 'middle', isTextBox: true, margin: 0 });
+    }
+
     const rows = b.components.map((c) => [
       { text: c.label, align: 'left', bold: true },
       `${c.weight}%`,
@@ -402,7 +417,7 @@ const renderMrm = async (model) => {
     ]);
     rows.push(['Index', `${b.weightTotal}%`, '', '', b.index == null ? '—' : String(b.index)]);
     table(s, {
-      x: M, y: TOP + 0.1 + cardH + 0.2, w: lw,
+      x: M, y: TOP + 0.1 + cardH + 0.2 + stripH, w: lw,
       head: ['Index component', 'Weight', 'Actual', 'Full marks at', 'Score'],
       colW: [1.7, 0.62, 0.86, 0.95, 0.62],
       rows, fontSize: 8.5, rowH: 0.3, boldLast: true,
@@ -470,7 +485,13 @@ const renderMrm = async (model) => {
               .map(([r, labels]) => `${r}: ${labels.join(', ')}`)
               .join('; ')}.`
           : `All ${b.totalComponents} components scored.`;
-    footnote(s, `Score = actual ÷ full-marks level × 100, capped at 100; the index is the weighted average. ${coverage} Followers from the LinkedIn sync; enquiries and opportunities from Salesforce (marketing sources); other figures entered monthly.`);
+    // The footnote has two lines; with the division note the source sentence
+    // is the short form so it still fits.
+    const summedCount = Object.keys(b.summed || {}).length;
+    const sources = summedCount
+      ? ` ${summedCount} company figure${summedCount > 1 ? 's are' : ' is'} the sum of the division figures entered. Followers from LinkedIn; enquiries and opportunities from Salesforce.`
+      : ' Followers from the LinkedIn sync; enquiries and opportunities from Salesforce (marketing sources); other figures entered monthly.';
+    footnote(s, `Score = actual ÷ full-marks level × 100, capped at 100; the index is the weighted average. ${coverage}${sources}`);
   }
 
   // =====================================================
