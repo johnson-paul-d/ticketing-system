@@ -367,3 +367,70 @@ export function SettingsEditor({ value, onChange }) {
     </div>
   );
 }
+
+// Site branding slide: tick the tasks of the site-branding project to show,
+// optionally rename the customer or system as printed, and set the link to
+// the reference images. The task list comes from the report figures.
+export function SiteBrandingEditor({ value, onChange, rows }) {
+  const v = value || {};
+  const tasks = v.tasks || {};
+  const link = v.link || {};
+  const [filter, setFilter] = useState("");
+  const setTask = (id, patch) => onChange({ ...v, tasks: { ...tasks, [id]: { ...(tasks[id] || {}), ...patch } } });
+  const setLink = (patch) => onChange({ ...v, link: { ...link, ...patch } });
+  const list = rows || [];
+  const ticked = list.filter((t) => tasks[t.id]?.include === true).length;
+  const shown = list.filter((t) => !filter || `${t.title} ${t.progress}`.toLowerCase().includes(filter.toLowerCase()));
+  const url = String(link.url || "").trim();
+  const badUrl = url && !/^https?:\/\//i.test(url);
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-gray-600">
+        Tasks of the site-branding project (Definitions → “Site branding: project name contains”). Tick the ones to show on the slide; while none is ticked, every task is shown.
+        Completed tasks show their completion month, open ones their due month (Pending when that month has passed). Task titles of the form “Customer - System” are split into the two columns; type over them if needed.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <span className={label}>Reference images link</span>
+          <input type="url" value={link.url ?? ""} onChange={(e) => setLink({ url: e.target.value })} placeholder="https://…" className={field} />
+          {badUrl ? <span className="text-xs text-amber-700">Only http or https links are put on the slide.</span> : null}
+        </div>
+        <div>
+          <span className={label}>Link text on the slide</span>
+          <input type="text" value={link.label ?? ""} onChange={(e) => setLink({ label: e.target.value })} placeholder="CPS - Branding Site Completed" className={field} />
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <input type="text" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter tasks…" className={`${field} max-w-sm`} />
+        <span className="text-xs text-gray-500">{ticked ? `${ticked} of ${list.length} ticked` : `None ticked: all ${list.length} tasks are shown`}</span>
+        {list.length ? (
+          <>
+            <button type="button" onClick={() => onChange({ ...v, tasks: Object.fromEntries(list.map((t) => [t.id, { ...(tasks[t.id] || {}), include: true }])) })} className="text-xs font-semibold text-[#9b2423] hover:underline">Tick all</button>
+            <button type="button" onClick={() => onChange({ ...v, tasks: Object.fromEntries(Object.entries(tasks).map(([id, x]) => [id, { ...x, include: false }])) })} className="text-xs font-semibold text-gray-500 hover:underline">Clear ticks</button>
+          </>
+        ) : null}
+      </div>
+      <div className="overflow-x-auto rounded-xl border border-gray-200">
+        <table className="w-full min-w-[820px]">
+          <thead><tr><th className={`${th} w-10`}>Show</th><th className={th}>Task</th><th className={th}>Progress</th><th className={th} style={{ width: 220 }}>Customer on slide</th><th className={th} style={{ width: 170 }}>System on slide</th></tr></thead>
+          <tbody>
+            {!list.length ? <tr><td colSpan={5} className="px-3 py-4 text-sm text-gray-400 text-center">No tasks found. Check the project name under Definitions, or refresh the figures.</td></tr> : null}
+            {shown.map((t) => {
+              const on = tasks[t.id]?.include === true;
+              return (
+                <tr key={t.id} className={`border-t border-gray-100 align-top ${on ? "bg-[#9b2423]/5" : ""}`}>
+                  <td className="px-2 py-2"><input type="checkbox" checked={on} onChange={(e) => setTask(t.id, { include: e.target.checked })} className="accent-[#9b2423] w-4 h-4 mt-1" /></td>
+                  <td className="px-2 py-2 text-sm text-gray-800">{t.title}</td>
+                  <td className={`px-2 py-2 text-sm whitespace-nowrap ${t.done ? "text-emerald-700" : t.overdue ? "text-red-700" : "text-amber-700"}`}>{t.progress}</td>
+                  <td className="px-1.5 py-1.5"><input type="text" value={tasks[t.id]?.customer ?? ""} onChange={(e) => setTask(t.id, { customer: e.target.value })} placeholder={t.customer} className={field} /></td>
+                  <td className="px-1.5 py-1.5"><input type="text" value={tasks[t.id]?.system ?? ""} onChange={(e) => setTask(t.id, { system: e.target.value })} placeholder={t.system || "—"} className={field} /></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

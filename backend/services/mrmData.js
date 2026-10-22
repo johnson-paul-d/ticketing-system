@@ -632,9 +632,14 @@ const buildMrm = async (month, viewerName) => {
       if (!ids.length) return { project: null, total: 0, completed: 0, rows: [] };
 
       const tasks = await pageAll(
-        () => supabase.from('tickets').select('id, title, status, due_date, completed_date').in('project_id', ids),
+        () => supabase.from('tickets').select('id, title, status, due_date, completed_date').in('project_id', ids).eq('deleted', false),
         'id'
       );
+      // Which tasks go on the slide: the ticked ones, or all of them while none is ticked.
+      const sb = inputs.siteBranding && typeof inputs.siteBranding === 'object' ? inputs.siteBranding : {};
+      const picks = sb.tasks && typeof sb.tasks === 'object' ? sb.tasks : {};
+      const picked = Object.values(picks).some((x) => x && x.include === true);
+      const text = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
       const isDone = (t) => /^(completed|closed)$/i.test(String(t.status || ''));
       const monthTag = (day) => (day ? MONTHS[Number(String(day).slice(5, 7)) - 1].toUpperCase() : '');
       const split = (title) => {
@@ -643,9 +648,14 @@ const buildMrm = async (month, viewerName) => {
           ? { customer: title.slice(0, i).replace(/[-\s]+$/, '').trim(), system: title.slice(i + 3).trim() }
           : { customer: String(title).trim(), system: '' };
       };
-      const rows = tasks
+      const candidates = tasks
         .map((t) => ({
+          id: t.id,
+          title: t.title,
           ...split(t.title),
+          customer: text(picks[t.id]?.customer) || split(t.title).customer,
+          system: text(picks[t.id]?.system) ?? split(t.title).system,
+          included: picked ? picks[t.id]?.include === true : true,
           done: isDone(t),
           due: t.due_date || null,
           sortKey: (isDone(t) ? t.completed_date || t.due_date : t.due_date) || '9999-12-31',
@@ -660,15 +670,24 @@ const buildMrm = async (month, viewerName) => {
         }))
         // Completed first, then what is coming, each in date order.
         .sort((a, b) => Number(b.done) - Number(a.done) || a.sortKey.localeCompare(b.sortKey) || a.customer.localeCompare(b.customer));
+      const rows = candidates.filter((r) => r.included);
+
+      // Only web links go into the deck.
+      const url = text(sb.link?.url);
+      const link = url && /^https?:\/\//i.test(url) ? { url, label: text(sb.link?.label) || url } : null;
+      if (url && !link) warnings.push(`Site branding: the reference link "${url}" is not a web address (http or https), so it is left off the slide.`);
 
       return {
-        project: projects[0].name,
+        project: projects.map((p) => p.name).join(', '),
+        picked,
+        link,
         total: rows.length,
         completed: rows.filter((r) => r.done).length,
         rows,
+        candidates,
       };
     },
-    { project: null, total: 0, completed: 0, rows: [] }
+    { project: null, picked: false, link: null, total: 0, completed: 0, rows: [], candidates: [] }
   );
 
   // ------------------------------------------------ Export opportunities

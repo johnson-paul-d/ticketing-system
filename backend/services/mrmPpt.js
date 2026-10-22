@@ -104,7 +104,7 @@ const renderMrm = async (model) => {
         return {
           text: last && blank ? '' : dash(o.text),
           options: {
-            fill: { color: last ? 'EADCDC' : i % 2 === 0 ? BAND : BAND_ALT },
+            fill: { color: last ? 'EADCDC' : o.fill || (i % 2 === 0 ? BAND : BAND_ALT) },
             color: o.color || INK, bold: Boolean(o.bold || last),
             align: o.align || align[c] || 'center', valign: 'middle', fontFace: FONT, fontSize,
           },
@@ -615,7 +615,69 @@ const renderMrm = async (model) => {
   }
 
   // =====================================================
-  // 12. Thank you (last slide)
+  // 12. Site branding – completed and ongoing installations
+  // =====================================================
+  {
+    const sb = model.siteBranding || { rows: [] };
+    const rows = sb.rows || [];
+    const progressCell = (r) =>
+      r.done
+        ? { text: r.progress, color: GOOD, fill: 'E6F2E8' }
+        : r.overdue
+          ? { text: r.progress, color: BAD, bold: true, fill: 'FBE6E4' }
+          : { text: r.progress.toUpperCase(), color: '8A5A00', fill: 'FDF2E3' };
+    // Reference images on the right when a link is set; the two tables take the rest.
+    const side = sb.link ? 2.5 : 0;
+    const gap = 0.25;
+    const tableW = (W - M * 2 - side - (side ? gap : 0) - gap) / 2;
+    const colW = [tableW * 0.38, tableW * 0.3, tableW * 0.32];
+    const y = TOP + 1.1;
+    const rowH = 0.29;
+    // Fill each table by height, not by count: a long customer name wraps to
+    // a second line, and a fixed count would push the table into the footnote.
+    const perLine = (w) => Math.max(8, Math.floor(w / 0.075)); // characters per line at 9.5 pt
+    const lines = (r) => Math.max(Math.ceil(String(r.customer).length / perLine(colW[0])), Math.ceil(String(r.system || '').length / perLine(colW[1])), 1);
+    const budget = (H - 0.45 - y - rowH) / rowH; // body lines that fit above the footnote
+    const tables = [];
+    let cur = [], used = 0;
+    for (const r of rows) {
+      const u = 1 + (lines(r) - 1) * 0.55; // a wrapped row is about one and a half rows tall
+      if (cur.length && used + u > budget) { tables.push(cur); cur = []; used = 0; }
+      cur.push(r); used += u;
+    }
+    if (cur.length) tables.push(cur);
+    const pages = Math.max(1, Math.ceil(tables.length / 2));
+    const pct = sb.total ? Math.round((sb.completed / sb.total) * 100) : 0;
+    for (let pg = 0; pg < pages; pg++) {
+      const s = chrome(
+        `Site Branding – Completed & Ongoing Installations${pages > 1 ? ` (${pg + 1}/${pages})` : ''}`,
+        `Customer locations · ${sb.project ? `project “${sb.project}”` : 'no site-branding project found'} · ${model.meta.monthName} ${model.meta.year}`
+      );
+      const tw = 3.2;
+      const tilesX = (W - (tw * 2 + 0.3)) / 2;
+      tile(s, { x: tilesX, y: TOP + 0.05, w: tw, h: 0.85, value: sb.total, label: 'Total projects' });
+      tile(s, { x: tilesX + tw + 0.3, y: TOP + 0.05, w: tw, h: 0.85, value: `${sb.completed} (${pct}%)`, label: 'Completed', accent: true });
+      if (!rows.length) {
+        s.addText('No site-branding tasks to show. Check the project name under Definitions, or tick tasks under “Site branding” on the MRM page.', {
+          x: M, y, w: W - M * 2, h: 0.5, fontFace: FONT, fontSize: 12, color: MUTED, align: 'center', isTextBox: true, margin: 0,
+        });
+      }
+      tables.slice(pg * 2, pg * 2 + 2).forEach((part, i) => {
+        table(s, { x: M + i * (tableW + gap), y, w: tableW, head: ['Customer', 'System', 'Progress'], colW, rows: part.map((r) => [{ text: r.customer }, r.system || '—', progressCell(r)]), fontSize: 9.5, rowH });
+      });
+      if (sb.link) {
+        const lx = W - M - side;
+        s.addText('Reference Images', { x: lx, y: y + 0.4, w: side, h: 0.5, fontFace: FONT, fontSize: 20, bold: true, color: INK, align: 'center', isTextBox: true, margin: 0 });
+        s.addText([{ text: sb.link.label, options: { hyperlink: { url: sb.link.url, tooltip: sb.link.url }, color: '1F5FBF', underline: { style: 'sng' } } }], {
+          x: lx, y: y + 1.0, w: side, h: 1.0, fontFace: FONT, fontSize: 16, align: 'center', valign: 'top', isTextBox: true, margin: 0,
+        });
+      }
+      footnote(s, `Tasks of the site-branding project${sb.picked ? ' ticked on the MRM page' : ' (all of them: tick tasks on the MRM page to choose)'}. Completed = task closed, month of completion; Planned = due month; Pending = due month already passed.`);
+    }
+  }
+
+  // =====================================================
+  // 13. Thank you (last slide)
   // =====================================================
   {
     const s = pres.addSlide();

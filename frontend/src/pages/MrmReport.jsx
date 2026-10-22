@@ -3,7 +3,7 @@ import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
 import { FileDown, Loader2, AlertCircle, RefreshCw, Save, RotateCcw, Presentation, Database, Lock, Code2 } from "lucide-react";
 import { LinkedinEditor } from "../components/mrm/InputEditors";
-import { ExhibitionsEditor, CollateralsEditor, HistoryEditor, TargetsEditor, SettingsEditor } from "../components/mrm/PickerEditors";
+import { ExhibitionsEditor, CollateralsEditor, SiteBrandingEditor, HistoryEditor, TargetsEditor, SettingsEditor } from "../components/mrm/PickerEditors";
 import { SpendEditor, AbmEditor, SeoEditor } from "../components/mrm/FunnelEditors";
 import { BrandEditor } from "../components/mrm/BrandEditor";
 
@@ -39,6 +39,7 @@ const INPUTS = [
   { key: "linkedin", label: "LinkedIn wording", hint: "Section 4: done this month, next month plan." },
   { key: "seo", label: "SEO keywords", hint: "Section 4: targeted keywords and their Google rank for the month." },
   { key: "collaterals", label: "Collaterals & videos", hint: "Section 5: tick the tickets to list on the slide." },
+  { key: "siteBranding", label: "Site branding", hint: "Site branding slide: tick the project tasks to show and set the reference-images link." },
   { key: "targets", label: "Targets", hint: "Monthly targets shown on the LinkedIn charts." },
   { key: "history", label: "Presented figures", hint: "Past months, shown exactly as presented." },
   { key: "settings", label: "Definitions", hint: "Divisions, sources, categories, quote statuses. Rarely changed." },
@@ -267,6 +268,7 @@ export default function MrmReport() {
       case "abm": return <AbmEditor {...p} />;
       case "exhibitions": return <ExhibitionsEditor {...p} />;
       case "collaterals": return <CollateralsEditor {...p} />;
+      case "siteBranding": return <SiteBrandingEditor {...p} rows={model?.siteBranding?.candidates} />;
       case "linkedin": return <LinkedinEditor {...p} />;
       case "seo": return <SeoEditor {...p} />;
       case "brand": return <BrandEditor {...p} />;
@@ -511,6 +513,23 @@ export default function MrmReport() {
                   </tbody>
                 </table>
               </Section>
+
+              {model.siteBranding ? (
+              <Section
+                title={`Site branding – ${model.siteBranding.completed} of ${model.siteBranding.total} completed`}
+                hint={`${model.siteBranding.project ? `Tasks of “${model.siteBranding.project}”` : "No site-branding project found"}; ${model.siteBranding.picked ? "the ticked ones" : "all of them (none ticked yet)"}. ${model.siteBranding.link ? `Reference link: ${model.siteBranding.link.label}.` : "No reference link set."}`}
+              >
+                <table className="w-full">
+                  <thead><tr><th className={th}>Customer</th><th className={th}>System</th><th className={th}>Progress</th></tr></thead>
+                  <tbody>
+                    {model.siteBranding.rows.slice(0, 16).map((r) => (
+                      <tr key={r.id}><td className={td}>{r.customer}</td><td className={td}>{r.system || "—"}</td><td className={`${td} ${r.done ? "text-emerald-700" : r.overdue ? "text-red-700" : "text-amber-700"}`}>{r.progress}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+                {model.siteBranding.rows.length > 16 ? <p className="text-xs text-gray-400 mt-1">… and {model.siteBranding.rows.length - 16} more on the slide.</p> : null}
+              </Section>
+              ) : null}
             </div>
           </>
         ) : null}

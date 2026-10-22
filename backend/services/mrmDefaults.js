@@ -300,6 +300,15 @@ module.exports = {
     ],
   },
 
+  // Site branding slide: tasks of the site-branding project (Definitions:
+  // "Site branding: project name contains"). Ticked tasks go on the slide;
+  // with none ticked every task is shown. `customer` / `system` override what
+  // the slide prints for a task; `link` is the reference-images link.
+  siteBranding: {
+    tasks: {},
+    link: { url: '', label: 'CPS - Branding Site Completed' },
+  },
+
   agents: {
     title: 'Agents',
     items: [

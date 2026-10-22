@@ -147,6 +147,7 @@ const INPUT_GUIDE = {
   brand: 'Brand Visibility Index: { months: { "YYYY-MM": figures }, targets: full-marks level per figure, weights, divisions: { "YYYY-MM": { [division]: figures } }, divisionTargets: { [division]: full-marks levels } }. Use mrm_set_brand_figures.',
   linkedin: 'LinkedIn slide wording: { doneThisMonth: [..], nextMonthPlan: [..] }.',
   seo: 'SEO keywords: { keywords: [{ keyword, division, ranks: { "YYYY-MM": rank } }], notes }. Use mrm_set_seo_ranks.',
+  siteBranding: 'Site branding slide: { tasks: { [ticketId]: { include, customer, system } }, link: { url, label } }. Tasks are those of the site-branding project; with none ticked, all are shown. Edit with mrm_update_input.',
   collaterals: 'Collateral slide: { tickets: { [ticketId]: { include, location, type, label } }, completed, planned (older typed lists) }. Use mrm_tick_collateral_tickets.',
   targets: 'Monthly targets per fiscal year, e.g. { 2026: { linkedinFollowers: { "Sieger Parking": { default: 765 } } } }.',
   history: 'Figures already presented to management, shown as presented. Normally written by mrm_lock_month.',
