@@ -36,6 +36,10 @@ jobs:
       - name: Check the portal answers
         shell: powershell
         run: |
-          $r = Invoke-RestMethod http://127.0.0.1:8020/api/test -TimeoutSec 30
-          if ($r.message -ne 'Backend works') { throw "Unexpected reply: $($r | ConvertTo-Json -Compress)" }
+          # The service can take a few seconds to listen after the restart: retry for up to a minute.
+          $r = $null
+          for ($i = 0; $i -lt 12 -and -not $r; $i++) {
+            try { $r = Invoke-RestMethod http://127.0.0.1:8020/api/test -TimeoutSec 10 } catch { Start-Sleep -Seconds 5 }
+          }
+          if (-not $r -or $r.message -ne 'Backend works') { throw "Portal did not answer after deploy: $($r | ConvertTo-Json -Compress)" }
           "Portal is up after deploy."
