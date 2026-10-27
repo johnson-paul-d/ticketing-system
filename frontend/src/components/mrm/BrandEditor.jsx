@@ -28,9 +28,9 @@ const BRAND_METRICS = [
   { key: "searchClicks", label: "Google search clicks", from: "Google Search Console → Performance → Total clicks" },
   { key: "linkedinEngagements", label: "LinkedIn engagements", from: "LinkedIn page analytics → reactions + comments + reposts + clicks" },
   // Rates: worked out from two figures, scored against a benchmark rate as full marks. Weight 0 until set.
-  { key: "searchCtr", label: "Google search CTR (%)", component: "Search click-through", weight: 0, derived: "clicks ÷ impressions × 100" },
-  { key: "organicShare", label: "Organic share of visits (%)", component: "Organic share", weight: 0, derived: "organic traffic ÷ website visitors × 100" },
-  { key: "linkedinEngagementRate", label: "LinkedIn engagement rate (%)", component: "LinkedIn engagement", weight: 0, derived: "engagements ÷ LinkedIn impressions × 100" },
+  { key: "searchCtr", label: "Google search CTR (%)", component: "Search click-through", weight: 0, derived: "clicks ÷ impressions × 100", ratio: ["searchClicks", "searchImpressions"] },
+  { key: "organicShare", label: "Organic share of visits (%)", component: "Organic share", weight: 0, derived: "organic traffic ÷ website visitors × 100", ratio: ["organicTraffic", "websiteVisitors"] },
+  { key: "linkedinEngagementRate", label: "LinkedIn engagement rate (%)", component: "LinkedIn engagement", weight: 0, derived: "engagements ÷ LinkedIn impressions × 100", ratio: ["linkedinEngagements", "linkedinImpressions"] },
 ];
 // Rows of the by-division grid: everything typed by hand, plus enquiries,
 // which the portal fills per division from Salesforce but which needs a
@@ -82,14 +82,45 @@ export function BrandEditor({ value, onChange, month, settings }) {
     return parts.length ? parts.reduce((s, x) => s + Number(x), 0) : null;
   };
 
+  // The company figure the index uses: typed, else the sum of the division figures.
+  const effective = (ym, key) => {
+    const typed = months[ym]?.[key];
+    if (typed != null && typed !== "") return Number(typed);
+    return divisionSum(ym, key);
+  };
+  const fmt = (v) => Number(v).toLocaleString("en-IN", { maximumFractionDigits: 2 });
   const cell = (ym, m) => {
-    if (m.derived) return <input type="text" value="" placeholder="worked out" disabled title={`Worked out: ${m.derived}`} className={`${field} text-right bg-gray-50 text-gray-400`} />;
+    if (m.derived) {
+      const a = effective(ym, m.ratio[0]), b = effective(ym, m.ratio[1]);
+      const rate = a != null && b ? (a / b) * 100 : null;
+      return (
+        <div className="text-right px-2 py-1" title={`Worked out: ${m.derived}`}>
+          <div className={rate == null ? "text-gray-300" : "font-semibold text-gray-800"}>{rate == null ? "—" : `${fmt(rate)}%`}</div>
+          <div className="text-[10px] text-gray-400">{rate == null ? "needs both figures" : "worked out"}</div>
+        </div>
+      );
+    }
+    const typed = months[ym]?.[m.key];
     const sum = m.auto ? null : divisionSum(ym, m.key);
+    // Division figures entered and no company figure typed: show the sum as the figure in use.
+    if (sum != null && (typed == null || typed === "")) {
+      return (
+        <div className="text-right">
+          <div className="px-2 py-1 font-semibold text-gray-800">{fmt(sum)}</div>
+          <div className="text-[10px] text-gray-400 px-2">sum of sites</div>
+          <input
+            type="number" step="any" min="0" value="" placeholder="override"
+            title="Type a company figure only to use something other than the sum of the sites."
+            onChange={(e) => setMonth(ym, m.key, toNum(e.target.value))}
+            className={`${field} text-right mt-1 text-xs`}
+          />
+        </div>
+      );
+    }
     return (
       <input
-        type="number" step="any" min="0" value={months[ym]?.[m.key] ?? ""}
-        placeholder={m.auto ? "auto" : sum != null ? `${sum} (divisions)` : ""}
-        title={sum != null && (months[ym]?.[m.key] ?? "") === "" ? `Sum of the division figures: ${sum}. Type a figure here to use something else.` : undefined}
+        type="number" step="any" min="0" value={typed ?? ""}
+        placeholder={m.auto ? "auto" : ""}
         onChange={(e) => setMonth(ym, m.key, toNum(e.target.value))}
         className={`${field} text-right`}
       />
