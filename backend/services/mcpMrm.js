@@ -452,11 +452,11 @@ const tools = [
     handler: async (args, ctx) => {
       requireWrite(ctx);
       const month = checkMonth(args.month);
-      const metricKeys = BRAND_METRICS.map((m) => m.key);
+      const metricKeys = BRAND_METRICS.filter((m) => !m.ratio).map((m) => m.key);
       const scoredKeys = BRAND_METRICS.filter((m) => m.component).map((m) => m.key);
       // Per division, only what is typed by hand: followers are one sync for
       // the company; enquiries and opportunities come from Salesforce per division.
-      const divisionKeys = BRAND_METRICS.filter((m) => !m.auto).map((m) => m.key);
+      const divisionKeys = BRAND_METRICS.filter((m) => !m.auto && !m.ratio).map((m) => m.key);
       const clean = (obj, allowed, what) => {
         const out = {};
         for (const [k, v] of Object.entries(isPlainObject(obj) ? obj : {})) {

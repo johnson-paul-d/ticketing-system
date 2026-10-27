@@ -63,6 +63,15 @@ const METRICS = [
   { key: 'linkedinFollowers', label: 'LinkedIn followers', group: 'social', auto: true },
   { key: 'enquiries', label: 'Marketing enquiries', group: 'business', component: 'Enquiries generated', weight: 10, auto: true },
   { key: 'opportunities', label: 'Qualified opportunities influenced', group: 'business', auto: true },
+  // Figures behind the rate components below (typed monthly, per site where they exist).
+  { key: 'searchClicks', label: 'Google search clicks', group: 'digital' },
+  { key: 'linkedinEngagements', label: 'LinkedIn engagements', group: 'social' },
+  // Rate components: worked out from two figures (numerator ÷ denominator × 100), never typed,
+  // and scored against a benchmark rate as the full-marks level. Weight 0 by default, so the
+  // index is unchanged until a weight is set on the MRM page.
+  { key: 'searchCtr', label: 'Google search click-through rate', group: 'digital', component: 'Search click-through', weight: 0, ratio: ['searchClicks', 'searchImpressions'], unit: '%' },
+  { key: 'organicShare', label: 'Organic share of website visits', group: 'digital', component: 'Organic share', weight: 0, ratio: ['organicTraffic', 'websiteVisitors'], unit: '%' },
+  { key: 'linkedinEngagementRate', label: 'LinkedIn engagement rate', group: 'social', component: 'LinkedIn engagement', weight: 0, ratio: ['linkedinEngagements', 'linkedinImpressions'], unit: '%' },
 ];
 const METRIC = Object.fromEntries(METRICS.map((m) => [m.key, m]));
 const GROUPS = [
@@ -71,7 +80,7 @@ const GROUPS = [
   { key: 'business', title: 'Business Impact' },
 ];
 // Slide order of the index components (heaviest first, as the team lists them).
-const COMPONENT_ORDER = ['searchImpressions', 'websiteVisitors', 'linkedinImpressions', 'videoViews', 'brandedSearches', 'prMentions', 'enquiries'];
+const COMPONENT_ORDER = ['searchImpressions', 'websiteVisitors', 'linkedinImpressions', 'videoViews', 'brandedSearches', 'prMentions', 'enquiries', 'searchCtr', 'organicShare', 'linkedinEngagementRate'];
 
 const num = (v) => (v === null || v === undefined || v === '' || Number.isNaN(Number(v)) ? null : Number(v));
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -104,7 +113,14 @@ const buildBrand = (ctx, auto = {}, divisions = []) => {
 
   // Company figure: typed total, else (for figures that are typed by hand)
   // the sum of the division figures, else auto.
+  // A rate from two figures of the same basis (both company, or both one division).
+  const rateOf = (m, get) => {
+    const a = get(m.ratio[0]), b = get(m.ratio[1]);
+    if (a.value === null || b.value === null || !(b.value > 0)) return { value: null, source: 'none' };
+    return { value: round((a.value / b.value) * 100, 2), source: 'derived' };
+  };
   const valueOf = (key, ym) => {
+    if (METRIC[key]?.ratio) return rateOf(METRIC[key], (k) => valueOf(k, ym));
     const typed = num(obj(brand.months)[ym]?.[key]);
     if (typed !== null) return { value: typed, source: 'typed' };
     if (!METRIC[key]?.auto) {
@@ -117,6 +133,7 @@ const buildBrand = (ctx, auto = {}, divisions = []) => {
   };
   // A division's figure: typed for the division, else what the portal computed for it.
   const divisionValueOf = (dk, key, ym) => {
+    if (METRIC[key]?.ratio) return rateOf(METRIC[key], (k) => divisionValueOf(dk, k, ym));
     const typed = typedDivision(dk, key, ym);
     if (typed !== null) return { value: typed, source: 'typed' };
     const a = num(obj(obj(auto[ym]?.byDivision)[dk])[key]);
@@ -153,7 +170,7 @@ const buildBrand = (ctx, auto = {}, divisions = []) => {
       const target = targetOf(key, dk);
       const weight = weightOf(m);
       const score = measured && value !== null && target !== null && target > 0 ? Math.max(0, Math.min(100, (value / target) * 100)) : null;
-      return { key, label: m.component, metricLabel: m.label, weight, value, source, summedFrom: parts, target, score: score === null ? null : round(score, 0), rawScore: score };
+      return { key, label: m.component, metricLabel: m.label, unit: m.unit || null, weight, value, source, summedFrom: parts, target, score: score === null ? null : round(score, 0), rawScore: score };
     });
     const scored = components.filter((c) => c.rawScore !== null && c.weight > 0);
     const weightSum = scored.reduce((s, c) => s + c.weight, 0);

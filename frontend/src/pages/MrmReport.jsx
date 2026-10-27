@@ -445,8 +445,8 @@ export default function MrmReport() {
                     {model.brand.components.map((c) => (
                       <tr key={c.key}>
                         <td className={td}>{c.label}<span className="block text-[11px] text-gray-400">{c.metricLabel}{c.source === "auto" ? " · from the portal" : ""}</span></td>
-                        <td className={num}>{c.weight}%</td><td className={num}>{money(c.value)}</td><td className={`${num} text-gray-400`}>{money(c.prevValue)}</td>
-                        <td className={num}>{money(c.target)}</td><td className={`${num} font-semibold`}>{c.score ?? "—"}</td><td className={`${num} text-gray-500`}>{c.points ?? "—"}</td>
+                        <td className={num}>{c.weight}%</td><td className={num}>{c.unit && c.value != null ? `${c.value}%` : money(c.value)}</td><td className={`${num} text-gray-400`}>{c.unit && c.prevValue != null ? `${c.prevValue}%` : money(c.prevValue)}</td>
+                        <td className={num}>{c.unit && c.target != null ? `${c.target}%` : money(c.target)}</td><td className={`${num} font-semibold`}>{c.score ?? "—"}</td><td className={`${num} text-gray-500`}>{c.points ?? "—"}</td>
                       </tr>
                     ))}
                     {model.brand.groups.flatMap((g) => g.items).filter((it) => !model.brand.components.some((c) => c.key === it.key)).map((it) => (

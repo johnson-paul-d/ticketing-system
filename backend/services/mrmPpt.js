@@ -411,8 +411,8 @@ const renderMrm = async (model) => {
     const rows = b.components.map((c) => [
       { text: c.label, align: 'left', bold: true },
       `${c.weight}%`,
-      n(c.value),
-      n(c.target),
+      c.unit && c.value != null ? `${n(c.value)}%` : n(c.value),
+      c.unit && c.target != null ? `${n(c.target)}%` : n(c.target),
       c.score == null ? '—' : { text: String(c.score), bold: true, color: c.score >= 80 ? GOOD : c.score >= 50 ? WARN : BAD },
     ]);
     rows.push(['Index', `${b.weightTotal}%`, '', '', b.index == null ? '—' : String(b.index)]);

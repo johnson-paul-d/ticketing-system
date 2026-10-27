@@ -25,6 +25,12 @@ const BRAND_METRICS = [
   { key: "organicTraffic", label: "Organic traffic", from: "Google Analytics → Organic search sessions" },
   { key: "opportunities", label: "Qualified opportunities influenced", auto: "Salesforce: opportunities from marketing sources" },
   { key: "linkedinFollowers", label: "LinkedIn followers", auto: "LinkedIn sync: total across the pages on the LinkedIn slide" },
+  { key: "searchClicks", label: "Google search clicks", from: "Google Search Console → Performance → Total clicks" },
+  { key: "linkedinEngagements", label: "LinkedIn engagements", from: "LinkedIn page analytics → reactions + comments + reposts + clicks" },
+  // Rates: worked out from two figures, scored against a benchmark rate as full marks. Weight 0 until set.
+  { key: "searchCtr", label: "Google search CTR (%)", component: "Search click-through", weight: 0, derived: "clicks ÷ impressions × 100" },
+  { key: "organicShare", label: "Organic share of visits (%)", component: "Organic share", weight: 0, derived: "organic traffic ÷ website visitors × 100" },
+  { key: "linkedinEngagementRate", label: "LinkedIn engagement rate (%)", component: "LinkedIn engagement", weight: 0, derived: "engagements ÷ LinkedIn impressions × 100" },
 ];
 // Rows of the by-division grid: everything typed by hand, plus enquiries,
 // which the portal fills per division from Salesforce but which needs a
@@ -77,6 +83,7 @@ export function BrandEditor({ value, onChange, month, settings }) {
   };
 
   const cell = (ym, m) => {
+    if (m.derived) return <input type="text" value="" placeholder="worked out" disabled title={`Worked out: ${m.derived}`} className={`${field} text-right bg-gray-50 text-gray-400`} />;
     const sum = m.auto ? null : divisionSum(ym, m.key);
     return (
       <input
@@ -89,7 +96,9 @@ export function BrandEditor({ value, onChange, month, settings }) {
     );
   };
   const divCell = (ym, d, m) =>
-    m.auto ? (
+    m.derived ? (
+      <input type="text" value="" placeholder="worked out" disabled title={`Worked out: ${m.derived}`} className={`${field} text-right bg-gray-50 text-gray-400`} />
+    ) : m.auto ? (
       <input type="text" value="" placeholder="auto" disabled title={`${m.label} come from Salesforce for ${d.label}; set the full-marks level on the right.`} className={`${field} text-right bg-gray-50 text-gray-400`} />
     ) : (
       <input
@@ -141,7 +150,7 @@ export function BrandEditor({ value, onChange, month, settings }) {
                 </td>
                 <td className="px-2 py-2 text-xs text-gray-500">
                   {m.component ? <span className="font-semibold text-gray-700">{m.component}. </span> : <span className="text-gray-400">Shown on the slide, not in the index. </span>}
-                  {m.auto ? <span><em>Auto</em> — {m.auto}.</span> : m.from}
+                  {m.derived ? <span><em>Worked out</em> — {m.derived}; full marks = the benchmark rate.</span> : m.auto ? <span><em>Auto</em> — {m.auto}.</span> : m.from}
                 </td>
               </tr>
             ))}
