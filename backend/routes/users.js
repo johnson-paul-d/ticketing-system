@@ -225,6 +225,45 @@ router.post('/reset-all-passwords', auth, admin, async (req, res) => {
   }
 });
 
+// SET one user's password (admin only). The admin types it and hands it over
+// themselves; nothing is e-mailed. With `temporary`, the person must set their
+// own at the next sign-in and the typed one stops working after the
+// temporary TTL, the same as the reset-every-password one. Your own password
+// is changed from your profile, where the current one is asked for.
+router.post('/:id/password', auth, admin, async (req, res) => {
+  try {
+    if (req.apiKey || req.user?.agent) return res.status(403).json({ message: 'Sign in to set passwords' });
+    if (String(req.user.id) === String(req.params.id)) {
+      return res.status(400).json({ message: 'Change your own password from your profile' });
+    }
+
+    const { password, temporary } = req.body || {};
+    const problem = passwordProblem(password);
+    if (problem) return res.status(400).json({ message: problem });
+
+    const target = await findUser(req.params.id);
+    if (!target) return res.status(404).json({ message: 'User not found' });
+    if (!canManage(req.user, target.role)) {
+      return res.status(403).json({ message: 'You can only manage users on your own team' });
+    }
+
+    const stored = temporary ? await hashTemporaryPassword(password) : await hashPassword(password);
+    const { error } = await supabase.from('users').update({ password: stored }).eq('id', target.id);
+    if (error) throw error;
+
+    console.log(`Passwords: ${req.user.name} set the password of ${target.name}${temporary ? ' (temporary)' : ''}`);
+    const hours = Math.round(TEMPORARY_TTL_MS / 3600000);
+    res.json({
+      message: temporary
+        ? `Password set for ${target.name}. They must choose their own when they sign in; this one works for ${hours} hours.`
+        : `Password set for ${target.name}.`,
+    });
+  } catch (err) {
+    console.error('SET PASSWORD ERROR:', err);
+    res.status(500).json({ message: 'Could not set the password' });
+  }
+});
+
 // UPDATE user (admin only) – supports password update
 router.put('/:id', auth, admin, async (req, res) => {
   try {
@@ -268,9 +307,8 @@ router.put('/:id', auth, admin, async (req, res) => {
     }
 
     if ('password' in updateData) {
-      if (!isNonEmptyString(updateData.password)) {
-        return res.status(400).json({ message: 'Password cannot be empty' });
-      }
+      const problem = passwordProblem(updateData.password);
+      if (problem) return res.status(400).json({ message: problem });
       updateData.password = await hashPassword(updateData.password);
     }
 

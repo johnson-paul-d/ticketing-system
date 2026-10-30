@@ -116,7 +116,7 @@ router.post('/login', loginIpLimit, loginAccountLimit, async (req, res) => {
     const mustChangePassword = isTemporary(user.password);
     if (mustChangePassword && temporaryExpired(user.password)) {
       return res.status(401).json({
-        message: 'This temporary password has expired. Ask your Super Admin to reset the passwords again.',
+        message: 'This temporary password has expired. Ask an admin to set your password again.',
       });
     }
     const token = jwt.sign(
