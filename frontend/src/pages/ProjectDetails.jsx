@@ -56,6 +56,7 @@ const COLUMNS = [
   },
   { key: "done", label: "Done", statuses: ["Completed", "Closed"], target: "Completed", dot: "#10b981" },
 ];
+const DONE_STATUSES = COLUMNS.find((c) => c.key === "done").statuses;
 
 const priorityPill = {
   Critical: "bg-red-600 text-white",
@@ -139,6 +140,8 @@ export default function ProjectDetails() {
   const [fPriority, setFPriority] = useState("");
   const [fAssignee, setFAssignee] = useState("");
   const [myOnly, setMyOnly] = useState(false);
+  // "Open" is every task not yet done (To Do, In Progress, Waiting); "Completed" is the Done column.
+  const [fStatus, setFStatus] = useState("");
 
   // Edit-project modal
   const [showEdit, setShowEdit] = useState(false);
@@ -230,11 +233,12 @@ export default function ProjectDetails() {
         if (fPriority && t.priority !== fPriority) return false;
         if (fAssignee && t.assigned_to !== fAssignee) return false;
         if (myOnly && t.assigned_to !== user?.id) return false;
+        if (fStatus && (fStatus === "Completed") !== DONE_STATUSES.includes(t.status)) return false;
         return true;
       }),
-    [tasks, q, fPriority, fAssignee, myOnly, user?.id, keyPrefix]
+    [tasks, q, fPriority, fAssignee, myOnly, fStatus, user?.id, keyPrefix]
   );
-  const filtersActive = !!(q || fPriority || fAssignee || myOnly);
+  const filtersActive = !!(q || fPriority || fAssignee || myOnly || fStatus);
 
   // Activity feed: flattened task timelines, newest first. A division handed
   // down from the project is on each task's own timeline; here it would be the
@@ -708,6 +712,15 @@ export default function ProjectDetails() {
             />
           </div>
           <select
+            value={fStatus}
+            onChange={(e) => setFStatus(e.target.value)}
+            className="bg-white border border-gray-200 rounded-xl px-2.5 py-2 text-xs outline-none text-gray-600"
+          >
+            <option value="">Status</option>
+            <option>Open</option>
+            <option>Completed</option>
+          </select>
+          <select
             value={fPriority}
             onChange={(e) => setFPriority(e.target.value)}
             className="bg-white border border-gray-200 rounded-xl px-2.5 py-2 text-xs outline-none text-gray-600"
@@ -744,7 +757,7 @@ export default function ProjectDetails() {
           )}
           {filtersActive && (
             <button
-              onClick={() => { setQ(""); setFPriority(""); setFAssignee(""); setMyOnly(false); }}
+              onClick={() => { setQ(""); setFPriority(""); setFAssignee(""); setMyOnly(false); setFStatus(""); }}
               className="inline-flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-[#9b2423] px-2 py-2"
               title="Clear filters"
             >
