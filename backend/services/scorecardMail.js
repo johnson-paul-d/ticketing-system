@@ -116,9 +116,11 @@ function buildScorecardEmail(card, kind) {
   const url = scorecardUrl();
   const g = toneOf(team.grade);
 
-  const toRateBody = card.toRate.length
+  // Everything still waiting, not only what was completed in the period.
+  const waiting = card.toRateAll || card.toRate;
+  const toRateBody = waiting.length
     ? listRows(
-        card.toRate,
+        waiting,
         (t) => {
           const link = ticketUrl(t.id);
           const title = link ? `<a href="${esc(link)}" style="color:${INK};text-decoration:none;font-weight:600;">${esc(t.title)}</a>` : `<b>${esc(t.title)}</b>`;
@@ -177,10 +179,10 @@ function buildScorecardEmail(card, kind) {
       ${tile(`${team.scored}<span style="font-size:13px;color:${MUTED};font-weight:600;">/${team.tasks}</span>`, 'Tasks scored', team.pending ? `${team.pending} pending` : 'all scored')}
       ${tile(num(team.onTimePct, '%'), 'On time', team.late ? `${team.late} late · avg ${num(team.avgDaysLate)}d` : 'none late')}
       ${tile(num(team.firstPassPct, '%'), 'First-time pass', `${team.sentBack} sent back`)}
-      ${tile(`<span style="color:${card.toRate.length ? BRAND : INK};">${card.toRate.length}</span>`, 'Waiting for you', `${card.awaitingApproval.length} awaiting approval`)}
+      ${tile(`<span style="color:${waiting.length ? BRAND : INK};">${waiting.length}</span>`, 'Waiting for you', `${card.awaitingApproval.length} awaiting approval`)}
     </tr></table></td></tr>
     ${section('Team members', peopleTable(card.people))}
-    ${section(`Waiting for you <span style="color:${MUTED};font-weight:400;">(${card.toRate.length})</span>`, toRateBody)}
+    ${section(`Waiting for you <span style="color:${MUTED};font-weight:400;">(${waiting.length})</span>`, toRateBody)}
     ${section(`Open tickets past their due date <span style="color:${MUTED};font-weight:400;">(${card.overdue.length})</span>`, overdueBody)}
     <tr><td style="padding:24px 28px;">
       ${url ? `<a href="${esc(url)}" style="display:inline-block;background:${BRAND};color:#fff;text-decoration:none;font-weight:700;font-size:14px;padding:12px 22px;border-radius:10px;">Open the scorecard</a>` : ''}

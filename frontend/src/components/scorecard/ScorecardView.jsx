@@ -526,7 +526,13 @@ export default function ScorecardView() {
           <h2 className="font-bold text-gray-900 flex items-center gap-2">
             <Star size={17} className="text-amber-500 fill-amber-400" /> Waiting for you
             <span className="bg-[#9b2423] text-white text-xs font-bold px-2 py-0.5 rounded-full">{data.toRate.length}</span>
+            <span className="text-xs font-normal text-gray-400">{data.period.range}</span>
           </h2>
+          {data.toRateAll.length > data.toRate.length && (
+            <span className="text-xs text-gray-500">
+              +{data.toRateAll.length - data.toRate.length} more outside this period
+            </span>
+          )}
           {data.awaitingApproval.length > 0 && (
             <Link to="/pending-approvals" className="text-xs font-semibold text-[#9b2423] hover:underline">
               {data.awaitingApproval.length} waiting for approval → approve & rate
@@ -534,7 +540,7 @@ export default function ScorecardView() {
           )}
         </div>
         {data.toRate.length === 0 ? (
-          <p className="text-sm text-emerald-700 bg-emerald-50 rounded-2xl px-4 py-3">Everything completed is rated and scored. 🎉</p>
+          <p className="text-sm text-emerald-700 bg-emerald-50 rounded-2xl px-4 py-3">Everything completed in this period is rated and scored. 🎉</p>
         ) : (
           <>
             <div className="grid gap-2 md:grid-cols-2">

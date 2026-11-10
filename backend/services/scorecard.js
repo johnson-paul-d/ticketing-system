@@ -575,11 +575,12 @@ async function buildScorecard(viewer, periodKey = 'this-month') {
   const team = summarise(tasks);
   const prevTeam = summarise(prevTasks);
 
-  // Accepted work still waiting on the reviewer (a rating, a due date),
-  // whatever period it falls in.
-  const toRate = done
+  // Accepted work still waiting on the reviewer (a rating, a due date): the
+  // page lists what falls in the period picked; the emails list all of it.
+  const toRateAll = done
     .filter((t) => t.state === 'pending')
     .sort((a, b) => (a.submittedOn < b.submittedOn ? -1 : 1));
+  const toRate = toRateAll.filter((t) => within(t, period.from, period.to));
   const awaitingApproval = scope.tasks
     // submittedOn is set only for a completion request, not one for another status
     .filter((t) => t.status === 'Waiting For Approval' && t.submittedOn && !t.excluded)
@@ -601,6 +602,7 @@ async function buildScorecard(viewer, periodKey = 'this-month') {
     people,
     tasks: tasks.sort((a, b) => ((a.submittedOn || '') < (b.submittedOn || '') ? 1 : -1)),
     toRate,
+    toRateAll,
     awaitingApproval,
     overdue: scope.overdue.sort((a, b) => b.daysOverdue - a.daysOverdue),
   };

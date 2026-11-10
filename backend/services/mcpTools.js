@@ -523,6 +523,7 @@ const tools = [
           first_pass_score: t.parts.firstPass,
         })),
         waiting_for_rating_total: card.toRate.length,
+        waiting_for_rating_all_periods: card.toRateAll.length,
         awaiting_approval: card.awaitingApproval.length,
       };
     },
