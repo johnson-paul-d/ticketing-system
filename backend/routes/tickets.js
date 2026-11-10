@@ -1135,12 +1135,21 @@ router.put('/:id/reject', auth, async (req, res) => {
     if (!(await canAccessTicket(req.user, ticket))) {
       return res.status(403).json({ message: 'Access denied' });
     }
+    // A send-back carries its reason, and says whether the brief changed. A
+    // change of scope is not a quality correction, so the scorecard does not
+    // count it against first-time pass (services/scorecard.js).
+    const reason = String(req.body?.reason || '').trim().slice(0, 1000);
+    const scopeChange = req.body?.scope_change === true;
     let timeline = Array.isArray(ticket.timeline) ? ticket.timeline : [];
     timeline.push({
       type: 'approval',
-      action: 'Ticket rejected',
+      action: reason
+        ? `Ticket rejected — ${scopeChange ? 'scope changed' : 'sent back for correction'}: ${reason}`
+        : 'Ticket rejected',
       user: req.user.name,
       created_at: getISTTime(),
+      ...(reason ? { reason } : {}),
+      ...(scopeChange ? { scope_change: true } : {}),
     });
     const { data, error } = await supabase
       .from('tickets')
@@ -1161,7 +1170,9 @@ router.put('/:id/reject', auth, async (req, res) => {
     await notifyUser(
       ticket.approval_requested_by,
       'Ticket Rejected',
-      `${req.user.name} rejected the completion request for "${ticket.title}". It has been reopened.`,
+      `${req.user.name} rejected the completion request for "${ticket.title}". It has been reopened.${
+        reason ? ` ${scopeChange ? 'Scope changed' : 'Correction needed'}: ${reason}` : ''
+      }`,
       ticket.id
     );
 

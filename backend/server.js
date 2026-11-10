@@ -261,6 +261,8 @@ app.use('/api/api-keys', apiKeyRoutes);
 app.use('/api/openapi.json', openapiRoutes);
 // Mounted ahead of the general reports router so its paths are matched first.
 app.use('/api/reports/mrm', require('./routes/mrm'));
+// Quality scorecard: the reviewer's ratings, scores and summary emails.
+app.use('/api/scorecard', require('./routes/scorecard'));
 app.use('/api/reports', workReportRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/projects', projectRoutes);
@@ -384,6 +386,7 @@ server.listen(PORT, () => {
   console.log(`Salesforce mirror: ${process.env.SALESFORCE_DB_URL || 'not configured'}`);
   require('./services/linkedinScheduler').startLinkedInScheduler(PORT);
   startRecurrenceScheduler(io);
+  require('./services/scorecardScheduler').startScorecardScheduler();
   // Renames legacy ticket categories and divisions to the canonical lists.
   // Idempotent: after the first pass there is nothing left for either to do.
   // One after the other, because both append to ticket timelines.

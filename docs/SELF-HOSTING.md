@@ -361,6 +361,55 @@ review, press **Lock <month> figures** on the page so they stay fixed
 `LINKEDIN_AUTO_SYNC=on` refreshes LinkedIn analytics once a day, so the
 month-end follower count exists without anyone pressing Sync.
 
+## Quality scorecard
+
+A score out of 100 for each completed task, shown to the reviewer (Ram) only:
+the **Quality scorecard** tab of the Completion Report, a score panel on each
+completed ticket, and a score card that opens when he approves work.
+
+| Part | Weight | How |
+| --- | --- | --- |
+| On time | 35% | Automatic. The day the accepted version was submitted against the approved due date: 100 on or before, 75 for 1–2 days late, 50 for 3–5, 0 beyond. Waiting for approval never counts |
+| First-time pass | 25% | Automatic. 100, 50 after one send-back, 0 after two. A send-back marked "the brief changed" is not counted |
+| Accuracy | 20% | Ram's 1–5 stars, as stars ÷ 5 × 100 |
+| Quality | 10% | Ram's 1–5 stars (finish, completeness, ready to use) |
+| Within time allowed | 10% | Automatic. Time logged against the ticket's allotted time: 100 within it, 75 up to a quarter over, 50 up to half over, 0 beyond. No time allotted, or none logged, is full marks |
+
+Ram can correct any automatic input on a task — the completed date, the times
+sent back, the time taken and the time allowed — from the rating card; the
+corrected value is marked as such and the automatic one stays visible. A task
+with no due date, no approval or a missing rating is pending, never zero. Monthly activity buckets ("MISC -
+SEP", "MEETINGS - SEP"…) are left out unless Ram includes them; so is the
+reviewer's own work. Scoring covers work completed from 2 Oct 2026. Every
+change is kept in `ticket_scores.history`. The arithmetic is checked by
+`node backend/scripts/scorecard-check.js`.
+
+Emails, once switched on: last week's scorecard every **Monday from 9 am**,
+last month's on the **2nd from 9 am**, to each reviewer. Each is claimed in
+`scorecard_mail_log` before it goes, so a restart never sends one twice. The
+tab's **Monday email** / **Monthly email** buttons preview them and send a
+`[TEST]` copy to the signed-in reviewer.
+
+| Setting | Default | |
+| --- | --- | --- |
+| `SCORECARD_REVIEWERS` | `ramenaathan@siegerglobal.net` | Comma-separated portal logins (admins) who see and rate the scorecard and get the emails |
+| `SCORECARD_EMAILS` | off | `on` sends the Monday and 2nd emails. Leave unset on a laptop |
+| `SCORECARD_FROM` | `2026-10-02` | First completion day that is scored |
+
+To turn it on:
+
+1. Create the two tables, in both databases:
+   ```powershell
+   psql -U postgres -d mkttickets -f D:\mkttickets\backend\database\scorecard-migration.sql; psql -U postgres -d mkttickets -c "notify pgrst, 'reload schema';"
+   psql -U postgres -d mkttickets_dev -f D:\mkttickets\backend\database\scorecard-migration.sql; psql -U postgres -d mkttickets_dev -c "notify pgrst, 'reload schema';"
+   ```
+   Until this runs the scorecard still shows, with a notice that ratings cannot be saved.
+2. After the demo, add `SCORECARD_EMAILS=on` to `D:\mkttickets\backend\.env` and
+   `nssm restart mkttickets`. The log then says `Scorecard emails: on`.
+
+Emails go through the same mailer as everything else, so they reach Ram only
+if mail sending works for his address (see `SMTP_*` / `RESEND_API_KEY`).
+
 ## Ticket categories
 
 Each team has one list of ticket categories, and it is held twice: in

@@ -473,6 +473,62 @@ const tools = [
   },
 
   {
+    name: 'get_scorecard',
+    title: 'Team quality scorecard',
+    description:
+      "The quality scorecard: each person's score out of 100 for work submitted in a period, from " +
+      "on time (35%), first-time pass (25%), the reviewer's accuracy (20%) and quality (10%) stars, and " +
+      'time taken within the time allowed (10%; full marks when no time was allowed or logged), plus the ' +
+      'tasks still waiting on the reviewer. For the reviewer (Ram) only; anyone else is refused. A task ' +
+      'with no due date, no approval or a missing rating is pending, not zero.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        period: {
+          type: 'string',
+          description:
+            'this-week, last-week, this-month (default), last-month, a month as YYYY-MM, or a run of months as YYYY-MM..YYYY-MM.',
+        },
+      },
+    },
+    handler: async (args, ctx) => {
+      const card = await portal.get(ctx.credential, '/scorecard', { period: args.period || 'this-month' });
+      const person = (p) => ({
+        name: p.name,
+        score: p.score,
+        grade: p.grade?.label || null,
+        rank: p.rank ?? null,
+        change_vs_previous: p.delta,
+        tasks: p.tasks,
+        scored: p.scored,
+        on_time_pct: p.onTimePct,
+        first_time_pass_pct: p.firstPassPct,
+        sent_back: p.sentBack,
+        waiting_for_rating: p.toRate,
+        parts: p.parts,
+      });
+      return {
+        period: `${card.period.label} (${card.period.from} to ${card.period.to})`,
+        weights: card.weights,
+        team: person({ name: 'Team', ...card.team }),
+        people: card.people.map(person),
+        waiting_for_rating: card.toRate.slice(0, 40).map((t) => ({
+          id: t.id,
+          title: t.title,
+          person: t.person,
+          submitted: t.submittedOn,
+          days_late: t.lateDays,
+          sent_back: t.corrections,
+          on_time_score: t.parts.onTime,
+          first_pass_score: t.parts.firstPass,
+        })),
+        waiting_for_rating_total: card.toRate.length,
+        awaiting_approval: card.awaitingApproval.length,
+      };
+    },
+  },
+
+  {
     name: 'list_projects',
     title: 'List projects',
     description:

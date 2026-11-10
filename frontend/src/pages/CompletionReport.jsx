@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   TrendingUp,
   Loader2,
@@ -9,6 +9,7 @@ import {
   Timer,
   Users,
   FilterX,
+  Award,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -24,8 +25,16 @@ import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
 import { excludeDisabledUsers } from "../utils/reportFilters";
 import { TICKET_DIVISIONS } from "../constants/divisions";
+import ScorecardView from "../components/scorecard/ScorecardView";
+import { useScorecardAccess } from "../components/scorecard/ScoreBits";
 
 const dstr = (d) => (d ? String(d).split("T")[0] : null);
+// Timeline instants are UTC; the calendar day that matters is India's.
+const istDay = (d) => {
+  if (!d) return null;
+  const t = new Date(d).getTime();
+  return Number.isNaN(t) ? dstr(d) : new Date(t + 330 * 60000).toISOString().slice(0, 10);
+};
 const DATE_RX = /from (.*?) to (\d{4}-\d{2}-\d{2})/i;
 
 const fmtMins = (mins) => {
@@ -40,9 +49,11 @@ const daysBetween = (a, b) =>
   Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86400000);
 
 // Completion date read from the ticket's own history: the moment its status
-// moved to its terminal state (Completed/Closed), whether by a direct status
-// change or by an admin approving a completion request. Returns null when the
-// history has no such event (very old rows) so callers can fall back.
+// moved to its terminal state (Completed/Closed) by a direct status change,
+// or, when an admin approved a completion request, the day that request was
+// made, so time spent waiting for approval does not count as lateness.
+// Returns null when the history has no such event (very old rows) so callers
+// can fall back.
 const completionFromHistory = (timeline, finalStatus) => {
   const escaped = String(finalStatus).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -54,22 +65,23 @@ const completionFromHistory = (timeline, finalStatus) => {
         e.type === "status" &&
         new RegExp(`to ${escaped}\\b`, "i").test(e.action || "")
     );
-  if (statusEntry) return dstr(statusEntry.created_at);
+  if (statusEntry) return istDay(statusEntry.created_at);
 
-  // 2. Approval flow: a completion request an admin later approved. The
-  //    "Ticket approved" entry is the moment the ticket actually completed.
-  const wasRequested = timeline.some(
-    (e) =>
-      e.type === "approval" &&
-      new RegExp(`Approval requested for ${escaped}`, "i").test(e.action || "")
-  );
-  if (wasRequested) {
-    const approvedEntry = [...timeline]
-      .reverse()
-      .find((e) => e.type === "approval" && /Ticket approved/i.test(e.action || ""));
-    if (approvedEntry) return dstr(approvedEntry.created_at);
+  // 2. Approval flow: the last completion request before the approval that
+  //    closed the ticket is when the work was handed in.
+  const requestRx = new RegExp(`^Approval requested for ${escaped}\\b`, "i");
+  let request = null;
+  let submitted = null;
+  for (const e of timeline) {
+    if (e.type !== "approval") continue;
+    if (/^Approval requested for/i.test(e.action || "")) request = requestRx.test(e.action || "") ? e : null;
+    else if (/^Ticket rejected/i.test(e.action || "")) request = null;
+    else if (/^Ticket approved/i.test(e.action || "") && request) {
+      submitted = request;
+      request = null;
+    }
   }
-  return null;
+  return submitted ? istDay(submitted.created_at) : null;
 };
 
 // Reconstruct the due-date journey of a ticket from its timeline
@@ -152,6 +164,12 @@ function OnTimeBadge({ ok }) {
 }
 
 export default function CompletionReport() {
+  // Ram's quality scorecard is a second tab of this page, for the reviewer only.
+  const reviewer = useScorecardAccess();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = reviewer && searchParams.get("tab") === "scorecard" ? "scorecard" : "completion";
+  const setTab = (t) => setSearchParams(t === "scorecard" ? { tab: "scorecard" } : {}, { replace: true });
+
   const [tickets, setTickets] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -272,11 +290,33 @@ export default function CompletionReport() {
           <TrendingUp className="text-[#9b2423]" size={28} /> Completion Report
         </h1>
         <p className="text-sm text-gray-500 mt-1">
-          Completed work vs the original commitment — due date moves, punctuality and allotted time
+          {tab === "scorecard"
+            ? "Quality of each person's work — on time, first-time pass and your ratings"
+            : "Completed work vs the original commitment — due date moves, punctuality and allotted time"}
         </p>
+        {reviewer && (
+          <div className="mt-4 inline-flex bg-white rounded-2xl p-1 shadow-sm">
+            {[
+              ["completion", "Completion", TrendingUp],
+              ["scorecard", "Quality scorecard", Award],
+            ].map(([k, label, Icon]) => (
+              <button
+                key={k}
+                onClick={() => setTab(k)}
+                className={`px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2 transition ${
+                  tab === k ? "bg-[#9b2423] text-white shadow" : "text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                <Icon size={15} /> {label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {loading ? (
+      {tab === "scorecard" ? (
+        <ScorecardView />
+      ) : loading ? (
         <div className="flex items-center justify-center py-24 text-gray-400 gap-2">
           <Loader2 size={20} className="animate-spin" /> Crunching completions…
         </div>
@@ -481,7 +521,7 @@ export default function CompletionReport() {
                   </tbody>
                 </table>
                 <p className="text-[11px] text-gray-400 px-5 py-3 border-t border-gray-50">
-                  * final due date differs from the original commitment · "Days Pushed" = final due − original due
+                  * final due date differs from the original commitment · "Days Pushed" = final due − original due · "Completed on" is the day the work was submitted; time waiting for approval doesn't count
                 </p>
               </div>
             </>

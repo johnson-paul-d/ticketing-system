@@ -12,6 +12,9 @@ import {
 import MainLayout from "../layouts/MainLayout";
 import api from "../services/api";
 import socket from "../services/socket";
+import RatingDialog from "../components/scorecard/RatingDialog";
+import SendBackDialog from "../components/scorecard/SendBackDialog";
+import { useScorecardAccess } from "../components/scorecard/ScoreBits";
 
 const priorityStyles = {
   Critical: "bg-red-600 text-white",
@@ -103,6 +106,8 @@ export default function PendingApprovals() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null); // "<ticketId>:<action>"
   const [message, setMessage] = useState(null); // { type, text }
+  const [dialog, setDialog] = useState(null); // { kind: "approve" | "reject", ticket }
+  const reviewer = useScorecardAccess();
 
   const fetchTickets = async () => {
     try {
@@ -159,10 +164,19 @@ export default function PendingApprovals() {
     }
   };
 
+  // The reviewer approves through the score card, so the rating is given at
+  // the moment the work is accepted. A send-back always says why.
   const approveCompletion = (t) =>
-    run(t, "approve", () => api.put(`/tickets/${t.id}/approve`));
-  const rejectCompletion = (t) =>
-    run(t, "reject", () => api.put(`/tickets/${t.id}/reject`));
+    reviewer
+      ? setDialog({ kind: "approve", ticket: t })
+      : run(t, "approve", () => api.put(`/tickets/${t.id}/approve`));
+  const rejectCompletion = (t) => setDialog({ kind: "reject", ticket: t });
+  const dialogDone = (action) => () => {
+    const t = dialog.ticket;
+    setTickets((prev) => prev.filter((x) => x.id !== t.id));
+    flash("success", `"${t.title}" ${action}`);
+    fetchTickets();
+  };
   const approveDueDate = (t) =>
     run(t, "approve", () =>
       api.put(`/tickets/${t.id}`, { due_date_change_status: "Approved" })
@@ -332,6 +346,17 @@ export default function PendingApprovals() {
             )}
           </section>
         </div>
+      )}
+      {dialog?.kind === "approve" && (
+        <RatingDialog
+          ticketId={dialog.ticket.id}
+          mode="approve"
+          onClose={() => setDialog(null)}
+          onDone={dialogDone("approved")}
+        />
+      )}
+      {dialog?.kind === "reject" && (
+        <SendBackDialog ticket={dialog.ticket} onClose={() => setDialog(null)} onDone={dialogDone("sent back")} />
       )}
     </MainLayout>
   );

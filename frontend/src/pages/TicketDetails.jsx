@@ -9,6 +9,10 @@ import { categoryOptions, standardCategory, UNCATEGORISED } from "../constants/c
 import { divisionOptions, standardDivision, NO_DIVISION } from "../constants/divisions";
 import { TICKET_STATUSES } from "../constants/statuses";
 import { isAdmin as isAdminRole, getTeam } from "../constants/roles";
+import RatingDialog from "../components/scorecard/RatingDialog";
+import SendBackDialog from "../components/scorecard/SendBackDialog";
+import TicketScorePanel from "../components/scorecard/TicketScorePanel";
+import { useScorecardAccess } from "../components/scorecard/ScoreBits";
 
 export default function TicketDetails() {
   const { id } = useParams();
@@ -41,8 +45,10 @@ export default function TicketDetails() {
   const [requestDueDate, setRequestDueDate] = useState("");
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [closeReason, setCloseReason] = useState("");
+  const [approvalDialog, setApprovalDialog] = useState(null); // "approve" | "reject"
 
   const isAdmin = isAdminRole(user);
+  const reviewer = useScorecardAccess();
 
   const fetchTicket = useCallback(async () => {
     try {
@@ -269,7 +275,10 @@ export default function TicketDetails() {
     }
   };
 
+  // The reviewer approves through the score card, so the rating is given at
+  // the moment the work is accepted. A send-back always says why.
   const approveTicket = async () => {
+    if (reviewer) return setApprovalDialog("approve");
     try {
       await api.put(`/tickets/${ticket.id}/approve`);
       fetchTicket();
@@ -280,16 +289,7 @@ export default function TicketDetails() {
     }
   };
 
-  const rejectTicket = async () => {
-    try {
-      await api.put(`/tickets/${ticket.id}/reject`);
-      fetchTicket();
-      alert("Ticket rejected");
-    } catch (err) {
-      console.error(err);
-      alert("Reject failed");
-    }
-  };
+  const rejectTicket = () => setApprovalDialog("reject");
 
   const logTime = async () => {
     try {
@@ -483,6 +483,8 @@ export default function TicketDetails() {
             </div>
           </div>
         )}
+
+        <TicketScorePanel ticketId={ticket.id} status={ticket.status} />
 
         {/* NEW: Admin approval UI for due date change */}
         {isAdmin && ticket.due_date_change_status === "Pending" && (
@@ -1016,6 +1018,18 @@ export default function TicketDetails() {
           </div>
         </div>
       </div>
+    )}
+
+    {approvalDialog === "approve" && (
+      <RatingDialog
+        ticketId={ticket.id}
+        mode="approve"
+        onClose={() => setApprovalDialog(null)}
+        onDone={fetchTicket}
+      />
+    )}
+    {approvalDialog === "reject" && (
+      <SendBackDialog ticket={ticket} onClose={() => setApprovalDialog(null)} onDone={fetchTicket} />
     )}
     </>
   );

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { connectSocket, disconnectSocket } from "../services/socket";
+import { resetScorecardAccess } from "../components/scorecard/ScoreBits";
 
 const useAuthStore = create((set) => ({
   user: JSON.parse(localStorage.getItem("user")) || null,
@@ -14,6 +15,7 @@ const useAuthStore = create((set) => ({
     // opens it with the clean token.
     if (user?.mustChangePassword) disconnectSocket();
     else connectSocket();
+    resetScorecardAccess();
     set({ user });
   },
 
@@ -23,6 +25,7 @@ const useAuthStore = create((set) => ({
     // Without this the socket stays open on a shared machine and the next user
     // keeps receiving the previous session's events.
     disconnectSocket();
+    resetScorecardAccess();
     set({ user: null });
   },
 }));

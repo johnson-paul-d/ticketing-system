@@ -99,6 +99,52 @@ const timeWindow = ({ work_date: workDate, duration_minutes: minutes, start_time
   };
 };
 
+const RATING_FIELDS = {
+  accuracy: { type: 'integer', minimum: 1, maximum: 5, description: 'Accuracy & quality, 1–5 stars.' },
+  quality: { type: 'integer', minimum: 1, maximum: 5, description: 'Quality (finish, completeness, ready to use), 1–5 stars.' },
+  remarks: { type: 'string', description: 'Optional note on the work.' },
+  completed_on: { type: 'string', description: 'Correct the completed date (YYYY-MM-DD) used for on time. Empty string puts the automatic date back.' },
+  times_sent_back: { type: 'integer', minimum: 0, description: 'Correct how many times it was sent back for correction.' },
+  time_taken_hours: { type: 'number', minimum: 0, description: 'Correct the time taken, in hours.' },
+  time_allowed_hours: { type: 'number', minimum: 0, description: 'Set or correct the time allowed, in hours.' },
+};
+
+// A correction given in the call, else the one already saved (null = automatic).
+const kept = (current, key, given, convert = (v) => v) => {
+  if (given === '') return null;
+  if (given !== undefined && given !== null) return convert(given);
+  return current.edited?.[key] ? current[key] : null;
+};
+
+// Saves a scorecard rating, keeping whatever the call leaves out.
+const rate = async (ctx, args) => {
+  const path = `/scorecard/tasks/${encodeURIComponent(args.id)}`;
+  const current = (await portal.get(ctx.credential, path)).task;
+  const card = await portal.mutate(ctx.credential, 'PUT', path, {
+    accuracy: args.accuracy ?? current.stars.accuracy,
+    quality: args.quality ?? current.stars.quality,
+    remarks: args.remarks ?? current.remarks,
+    excluded: typeof args.exclude === 'boolean' ? args.exclude : current.excludedChoice,
+    submitted_on: kept(current, 'submittedOn', args.completed_on),
+    corrections: kept(current, 'corrections', args.times_sent_back),
+    spent_minutes: kept(current, 'spent', args.time_taken_hours, (h) => Math.round(h * 60)),
+    allotted_minutes: kept(current, 'allotted', args.time_allowed_hours, (h) => Math.round(h * 60)),
+  });
+  const t = card.task;
+  return {
+    score: t.score,
+    state: t.state,
+    parts: t.parts,
+    pending: t.pending,
+    message:
+      t.state === 'final'
+        ? `Scored ${t.score} (${t.grade?.label}).`
+        : t.state === 'excluded'
+          ? 'Left off the scorecard.'
+          : `Rating saved; score pending: ${t.pending.join(', ')}.`,
+  };
+};
+
 const tools = [
   {
     name: 'create_ticket',
@@ -281,11 +327,15 @@ const tools = [
     title: 'Approve a ticket',
     description:
       'Approves a ticket that is waiting on it, releasing it to the status that was requested. ' +
-      'Admins only, and only on their own team. This notifies the person who raised it.',
+      'Admins only, and only on their own team. This notifies the person who raised it. The ' +
+      'scorecard reviewer can rate the work in the same call (accuracy and quality, 1–5 stars).',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     inputSchema: {
       type: 'object',
-      properties: { id: { type: 'string', description: 'The ticket id.' } },
+      properties: {
+        id: { type: 'string', description: 'The ticket id.' },
+        ...RATING_FIELDS,
+      },
       required: ['id'],
     },
     handler: async (args, ctx) => {
@@ -295,7 +345,13 @@ const tools = [
         'PUT',
         `/tickets/${encodeURIComponent(args.id)}/approve`
       );
-      return { approved: summarise(updated?.ticket || updated), message: `Approved ticket ${args.id}.` };
+      const result = { approved: summarise(updated?.ticket || updated), message: `Approved ticket ${args.id}.` };
+      if (args.accuracy != null || args.quality != null || args.remarks) {
+        const rated = await rate(ctx, args);
+        result.score = rated.score;
+        result.message += ` ${rated.message}`;
+      }
+      return result;
     },
   },
 
@@ -303,16 +359,18 @@ const tools = [
     name: 'reject_ticket',
     title: 'Reject a ticket',
     description:
-      'Refuses a ticket waiting on approval. Admins only, and only on their own team. This ' +
-      'notifies the person who raised it, so say why in reason.',
+      'Sends a ticket waiting on approval back for correction. Admins only, and only on their own ' +
+      'team. This notifies the person who raised it, so say why in reason. Set scope_change when ' +
+      'the brief itself changed: then it does not count against their first-time pass on the scorecard.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     inputSchema: {
       type: 'object',
       properties: {
         id: { type: 'string', description: 'The ticket id.' },
-        reason: { type: 'string', description: 'Why it was refused.' },
+        reason: { type: 'string', description: 'What needs to change.' },
+        scope_change: { type: 'boolean', description: 'True when the brief changed rather than the work falling short.' },
       },
-      required: ['id'],
+      required: ['id', 'reason'],
     },
     handler: async (args, ctx) => {
       requireWrite(ctx);
@@ -320,9 +378,35 @@ const tools = [
         ctx.credential,
         'PUT',
         `/tickets/${encodeURIComponent(args.id)}/reject`,
-        given({ reason: args.reason, comment: args.reason })
+        given({ reason: args.reason, comment: args.reason, scope_change: args.scope_change === true || undefined })
       );
-      return { rejected: summarise(updated?.ticket || updated), message: `Rejected ticket ${args.id}.` };
+      return { rejected: summarise(updated?.ticket || updated), message: `Sent ticket ${args.id} back.` };
+    },
+  },
+
+  {
+    name: 'rate_ticket',
+    title: 'Rate a task on the scorecard',
+    description:
+      "The scorecard reviewer's rating of submitted or completed work: accuracy & quality and " +
+      'quality, 1–5 stars each, with optional remarks. On time, first-time pass and time within the ' +
+      'time allowed are worked out automatically; this can correct the completed date, the times sent ' +
+      'back, the time taken and the time allowed. Set exclude to leave something that is not a ' +
+      'deliverable off the scorecard. ' +
+      'For the reviewer (Ram) only; anyone else is refused.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'The ticket id.' },
+        ...RATING_FIELDS,
+        exclude: { type: 'boolean', description: 'True to leave it off the scorecard, false to include it.' },
+      },
+      required: ['id'],
+    },
+    handler: async (args, ctx) => {
+      requireWrite(ctx);
+      return rate(ctx, args);
     },
   },
 

@@ -134,7 +134,8 @@ the web app.
 | `search` / `fetch` | Free-text across everything, then pull one record |
 | `create_ticket` · `update_ticket` · `assign_ticket` | Raise and change work |
 | `log_time` | Record time against a ticket |
-| `approve_ticket` · `reject_ticket` | Clear or refuse work waiting on approval |
+| `approve_ticket` · `reject_ticket` | Clear or send back work waiting on approval (the reviewer can rate while approving; a send-back can be marked as a scope change) |
+| `get_scorecard` · `rate_ticket` | The quality scorecard and its ratings — the reviewer (Ram) only |
 | `create_project` · `update_project` | Manage projects |
 | `update_time_entry` · `delete_time_entry` | Correct or remove logged time |
 | `create_expense_claim` · `add_expense_line` · `submit_expense_claim` | File a claim |
