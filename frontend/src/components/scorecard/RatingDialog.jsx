@@ -147,7 +147,7 @@ export default function RatingDialog({ ticketId, mode = "rate", onClose, onDone 
     }
   };
 
-  const locked = card?.setupNeeded || excluded;
+  const locked = card?.setupNeeded || excluded || card?.task?.rateable === false;
   const lateText = () => {
     if (!t.finalDue) return "No due date set";
     if (preview.late == null) return "Not submitted yet";
@@ -282,6 +282,12 @@ export default function RatingDialog({ ticketId, mode = "rate", onClose, onDone 
           </div>
         ) : (
           <div className="p-5 sm:p-6 space-y-3">
+            {!t.rateable && (
+              <div className="flex gap-2 items-start text-xs bg-gray-50 text-gray-600 border border-gray-200 rounded-xl px-3 py-2">
+                <AlertTriangle size={15} className="flex-shrink-0 mt-0.5" />
+                Completed {fmtDay(t.submittedOn)}, before rating began on {fmtDay(card.ratingFrom)}: shown for reference, not rated.
+              </div>
+            )}
             {card.setupNeeded && (
               <div className="flex gap-2 items-start text-xs bg-amber-50 text-amber-800 border border-amber-200 rounded-xl px-3 py-2">
                 <AlertTriangle size={15} className="flex-shrink-0 mt-0.5" />
@@ -389,7 +395,7 @@ export default function RatingDialog({ ticketId, mode = "rate", onClose, onDone 
           </button>
           <button
             onClick={submit}
-            disabled={saving || loading || (mode === "rate" && (!changed || card?.setupNeeded))}
+            disabled={saving || loading || (mode === "rate" && (!changed || locked))}
             className="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-[#9b2423] hover:bg-[#7f1d1c] disabled:opacity-40 flex items-center gap-2 shadow-sm"
           >
             {saving ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}

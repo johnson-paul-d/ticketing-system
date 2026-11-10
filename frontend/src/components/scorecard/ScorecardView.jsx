@@ -47,7 +47,7 @@ const PERIODS = [
 const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const monthName = (ym) => `${MONTHS_SHORT[Number(ym.slice(5, 7)) - 1]} ${ym.slice(0, 4)}`;
 
-// Months from the day scoring began to now, newest first.
+// Months from the portal's first ticket to now, newest first.
 const monthsSince = (from) => {
   if (!from) return [];
   const out = [];
@@ -143,7 +143,7 @@ function PersonCard({ p, parts, weights, active, onSelect }) {
     >
       {p.rank && p.rank <= 3 && <span className="absolute top-3 right-4 text-xl">{MEDALS[p.rank]}</span>}
       <div className="flex items-center gap-4">
-        <ScoreRing score={p.score} grade={p.grade} size={78} stroke={7} caption={p.score == null ? "pending" : "score"} />
+        <ScoreRing score={p.score} grade={p.grade} size={78} stroke={7} caption={p.score != null ? "score" : p.pending ? "pending" : "not rated"} />
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className={`w-7 h-7 rounded-full text-[11px] font-bold flex items-center justify-center ${avatarOf(p.name)}`}>
@@ -320,7 +320,7 @@ export default function ScorecardView() {
 
   useEffect(load, [load]);
 
-  const months = useMemo(() => monthsSince(data?.scoringFrom), [data?.scoringFrom]);
+  const months = useMemo(() => monthsSince(data?.firstMonth), [data?.firstMonth]);
 
   // The month range picked, when the period is one month or a run of months.
   const span = useMemo(() => {
@@ -344,7 +344,7 @@ export default function ScorecardView() {
   }, [data, person, state]);
 
   const counts = useMemo(() => {
-    const c = { all: 0, final: 0, pending: 0, excluded: 0 };
+    const c = { all: 0, final: 0, pending: 0, before: 0, excluded: 0 };
     (data?.tasks || [])
       .filter((t) => !person || (t.personId || t.person) === person)
       .forEach((t) => {
@@ -461,7 +461,13 @@ export default function ScorecardView() {
           </div>
 
           <div className="grid grid-cols-2 gap-2 lg:w-72">
-            <HeroStat icon={ClipboardCheck} value={`${team.scored}/${team.tasks}`} label="Scored" sub={team.pending ? `${team.pending} pending` : "all scored"} />
+            <HeroStat icon={ClipboardCheck} value={`${team.scored}/${team.tasks}`} label="Scored"
+              sub={
+                [team.pending && `${team.pending} pending`, team.before && `${team.before} before ${fmtDay(data.ratingFrom)}`]
+                  .filter(Boolean)
+                  .join(" · ") || "all scored"
+              }
+            />
             <HeroStat icon={Clock} value={pctText(team.onTimePct)} label="On time" sub={team.late ? `${team.late} late` : "none late"} />
             <HeroStat icon={RotateCcw} value={pctText(team.firstPassPct)} label="1st pass" sub={`${team.sentBack} sent back`} />
             <HeroStat
@@ -490,7 +496,7 @@ export default function ScorecardView() {
         </div>
         {data.people.length === 0 ? (
           <div className="bg-white rounded-3xl p-10 text-center text-gray-400 text-sm shadow-sm">
-            No work was submitted in this period{data.scoringFrom > data.period.to ? ` (scoring starts ${fmtDay(data.scoringFrom)})` : ""}.
+            No work was completed in this period.
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -583,8 +589,11 @@ export default function ScorecardView() {
               ["all", "All"],
               ["final", "Scored"],
               ["pending", "Pending"],
+              ["before", `Before ${fmtDay(data.ratingFrom)}`],
               ["excluded", "Left out"],
-            ].map(([k, l]) => (
+            ]
+              .filter(([k]) => k !== "before" || counts.before > 0)
+              .map(([k, l]) => (
               <button
                 key={k}
                 onClick={() => setState(k)}
@@ -592,7 +601,7 @@ export default function ScorecardView() {
               >
                 {l} <span className="text-gray-400">{counts[k]}</span>
               </button>
-            ))}
+              ))}
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -651,20 +660,29 @@ export default function ScorecardView() {
                         <ScorePill score={t.score} />
                       ) : t.state === "excluded" ? (
                         <span className="text-[10px] font-semibold text-gray-400">Left out</span>
+                      ) : t.state === "before" ? (
+                        <span
+                          className="text-[10px] font-semibold text-gray-500 bg-gray-100 px-2 py-1 rounded-full whitespace-nowrap"
+                          title={`Rating covers work completed from ${fmtDay(data.ratingFrom)}`}
+                        >
+                          Before {fmtDay(data.ratingFrom)}
+                        </span>
                       ) : (
                         <PendingBadge reasons={t.pending} />
                       )}
                     </td>
                     <td className="px-3 py-3 text-right">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setRating(t.id);
-                        }}
-                        className="text-xs font-bold text-[#9b2423] hover:underline whitespace-nowrap"
-                      >
-                        {t.stars.accuracy ? "Edit" : "Rate"}
-                      </button>
+                      {t.rateable && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRating(t.id);
+                          }}
+                          className="text-xs font-bold text-[#9b2423] hover:underline whitespace-nowrap"
+                        >
+                          {t.stars.accuracy ? "Edit" : "Rate"}
+                        </button>
+                      )}
                     </td>
                   </tr>
                   {open === t.id && (
@@ -736,7 +754,7 @@ export default function ScorecardView() {
             allowed {weights.withinTime}% (time logged within the time allotted 100 · up to ¼ over 75 · up to ½ over 50 · more 0; no time
             allowed or none logged = full marks). You can correct the completed date, times sent back, time taken and time allowed on any
             task. A task without a due date, an approval or both ratings stays pending — never zero. Monthly activity buckets (MISC, MEETINGS…) are left out unless you
-            include them. Scoring covers work completed from {fmtDay(data.scoringFrom)}.
+            include them. You rate work completed from {fmtDay(data.ratingFrom)}; earlier work shows its automatic results only.
           </p>
         </div>
       </div>

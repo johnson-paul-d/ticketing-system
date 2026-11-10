@@ -190,6 +190,20 @@ const cases = [
     expect: { lateDays: 1, onTime: 75, score: 91.3 },
   },
   {
+    name: 'Completed before rating began: automatic results shown, never rated or scored',
+    t: ticket({ id: 'B0', due_date: '2026-09-28', timeline: [request('2026-09-30'), approve('2026-09-30')] }),
+    r: stars(5, 5),
+    rateFrom: '2026-10-02',
+    expect: { state: 'before', rateable: false, score: null, onTime: 75, firstPass: 100 },
+  },
+  {
+    name: 'Completed on the first rating day is rated',
+    t: ticket({ id: 'B1', due_date: '2026-10-02', timeline: [request('2026-10-02'), approve('2026-10-03')] }),
+    r: stars(5, 5),
+    rateFrom: '2026-10-02',
+    expect: { state: 'final', rateable: true, score: 100 },
+  },
+  {
     name: 'Reviewer corrects the completed date (delivered on the 10th, marked done on the 16th)',
     t: ticket({ id: 'Y1', timeline: [request('2026-11-16'), approve('2026-11-16')] }),
     r: stars(5, 5, { submitted_on: '2026-11-10' }),
@@ -220,7 +234,7 @@ const cases = [
 let failed = 0;
 const results = [];
 for (const c of cases) {
-  const a = analyseTicket(c.t, c.r, c.spent ?? 180);
+  const a = analyseTicket(c.t, c.r, c.spent ?? 180, c.rateFrom || '2026-10-02');
   results.push(a);
   const problems = [];
   for (const [k, v] of Object.entries(c.expect)) {
@@ -244,9 +258,9 @@ for (const c of cases) {
 const s = summarise(results);
 const finals = results.filter((r) => r.state === 'final').map((r) => r.score);
 const expectAvg = Math.round((finals.reduce((x, y) => x + y, 0) / finals.length) * 10) / 10;
-const rollOk = s.score === expectAvg && s.excluded === 1 && s.scored === finals.length;
+const rollOk = s.score === expectAvg && s.excluded === 1 && s.scored === finals.length && s.before === 1;
 if (!rollOk) failed++;
-console.log(`${rollOk ? 'PASS' : 'FAIL'}  Team average uses final scores only → ${s.score} (${s.scored} scored, ${s.pending} pending, ${s.excluded} left out)`);
+console.log(`${rollOk ? 'PASS' : 'FAIL'}  Team average uses final scores only → ${s.score} (${s.scored} scored, ${s.pending} pending, ${s.before} before rating began, ${s.excluded} left out)`);
 
 console.log(failed ? `\n${failed} check(s) failed` : `\nAll ${cases.length + 1} checks pass`);
 process.exit(failed ? 1 : 0);

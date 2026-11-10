@@ -37,9 +37,10 @@ const PARTS = [
   { key: 'withinTime', label: 'Within time allowed', auto: true },
 ];
 
-// Work submitted before this day is not scored: the reviewer is never asked to
-// rate a backlog. Overridable for testing against older data.
-const scoringFrom = () => process.env.SCORECARD_FROM || '2026-10-02';
+// The reviewer rates work completed on or after this day. Earlier work still
+// shows on the scorecard with its automatic results (on time, first-time pass,
+// time), but is never rated, so the reviewer is not asked to rate a backlog.
+const ratingFrom = () => process.env.SCORECARD_FROM || '2026-10-02';
 
 const reviewerEmails = () =>
   (process.env.SCORECARD_REVIEWERS || 'ramenaathan@siegerglobal.net')
@@ -233,7 +234,7 @@ function readHistory(t) {
 
 const intOrNull = (v) => (Number.isInteger(v) ? v : null);
 
-function analyseTicket(t, rating = null, spent = 0) {
+function analyseTicket(t, rating = null, spent = 0, rateFrom = ratingFrom()) {
   const h = readHistory(t);
   const terminal = TERMINAL.has(t.status);
   const waiting = t.status === 'Waiting For Approval' && Boolean(h.request);
@@ -252,6 +253,9 @@ function analyseTicket(t, rating = null, spent = 0) {
     spent: spent || 0,
     allotted: t.allotted_minutes || 0,
   };
+  // Completed before rating began: automatic results only, never rated.
+  const rateable = !auto.submittedOn || auto.submittedOn >= rateFrom;
+  if (!rateable) rating = null;
   const set = {
     submittedOn: istDay(rating?.submitted_on),
     corrections: intOrNull(rating?.corrections),
@@ -294,7 +298,7 @@ function analyseTicket(t, rating = null, spent = 0) {
 
   const autoExcluded = isActivityBucket(t);
   const excluded = rating?.excluded === true || (rating?.excluded == null && autoExcluded);
-  const complete = terminal && PARTS.every(({ key }) => parts[key] !== null);
+  const complete = rateable && terminal && PARTS.every(({ key }) => parts[key] !== null);
   const score = complete ? round1(PARTS.reduce((s, { key }) => s + contributions[key], 0)) : null;
 
   return {
@@ -321,8 +325,9 @@ function analyseTicket(t, rating = null, spent = 0) {
     contributions,
     score,
     grade: grade(score),
-    state: excluded ? 'excluded' : complete ? 'final' : 'pending',
-    pending: excluded ? [] : pending,
+    state: excluded ? 'excluded' : !rateable ? 'before' : complete ? 'final' : 'pending',
+    pending: excluded || !rateable ? [] : pending,
+    rateable,
     excluded,
     autoExcluded,
     // the reviewer's own choice: true / false, or null when left automatic
@@ -349,6 +354,7 @@ function summarise(tasks) {
   const counted = tasks.filter((t) => t.state !== 'excluded');
   const accepted = counted.filter((t) => TERMINAL.has(t.status));
   const final = counted.filter((t) => t.state === 'final');
+  const known = (key) => accepted.map((t) => t.parts[key]).filter((v) => v !== null);
   const dated = accepted.filter((t) => t.lateDays !== null);
   const rated = accepted.filter((t) => t.stars.accuracy !== null && t.stars.quality !== null);
   const withAllot = accepted.filter((t) => t.allotted > 0);
@@ -356,15 +362,18 @@ function summarise(tasks) {
   return {
     tasks: counted.length,
     scored: final.length,
-    pending: counted.length - final.length,
+    pending: counted.filter((t) => t.state === 'pending').length,
+    // completed before rating began: automatic results only
+    before: counted.filter((t) => t.state === 'before').length,
     // accepted work still missing something only the reviewer can give
-    toRate: accepted.filter((t) => t.pending.length > 0).length,
+    toRate: accepted.filter((t) => t.state === 'pending').length,
     noDueDate: accepted.filter((t) => !t.finalDue).length,
     excluded: tasks.length - counted.length,
     score,
     grade: grade(score),
-    // Averages over the scored tasks, so the parts add up to the score.
-    parts: Object.fromEntries(PARTS.map(({ key }) => [key, avg(final.map((t) => t.parts[key]))])),
+    // Each part averaged over the completed work where it is known, so work
+    // from before rating began still shows its automatic results.
+    parts: Object.fromEntries(PARTS.map(({ key }) => [key, avg(known(key))])),
     onTimePct: pct(dated.filter((t) => t.lateDays <= 0).length, dated.length),
     late: dated.filter((t) => t.lateDays > 0).length,
     avgDaysLate: avg(dated.filter((t) => t.lateDays > 0).map((t) => t.lateDays)),
@@ -512,6 +521,13 @@ async function loadScope(viewer, sinceDay) {
   };
 }
 
+// The month the portal's first ticket was raised: the earliest month worth
+// offering in the period picker.
+async function firstTicketMonth() {
+  const { data } = await supabase.from('tickets').select('created_at').order('created_at', { ascending: true }).limit(1);
+  return istDay(data?.[0]?.created_at)?.slice(0, 7) || ratingFrom().slice(0, 7);
+}
+
 const byPerson = (tasks) => {
   const map = new Map();
   for (const t of tasks) {
@@ -525,12 +541,11 @@ const byPerson = (tasks) => {
 // The scorecard for one period, as the reviewer sees it.
 async function buildScorecard(viewer, periodKey = 'this-month') {
   const period = periodRange(periodKey);
-  const from = scoringFrom();
+  const from = ratingFrom();
   const since = [period.prev.from, from].sort()[0];
-  const scope = await loadScope(viewer, since);
+  const [scope, firstMonth] = await Promise.all([loadScope(viewer, since), firstTicketMonth()]);
 
-  const scoredFrom = (t) => t.submittedOn && t.submittedOn >= from;
-  const within = (t, a, b) => scoredFrom(t) && t.submittedOn >= a && t.submittedOn <= b;
+  const within = (t, a, b) => t.submittedOn && t.submittedOn >= a && t.submittedOn <= b;
   const done = scope.tasks.filter((t) => TERMINAL.has(t.status));
   const tasks = done.filter((t) => within(t, period.from, period.to));
   const prevTasks = done.filter((t) => within(t, period.prev.from, period.prev.to));
@@ -560,7 +575,7 @@ async function buildScorecard(viewer, periodKey = 'this-month') {
   // Accepted work still waiting on the reviewer (a rating, a due date),
   // whatever period it falls in.
   const toRate = done
-    .filter((t) => scoredFrom(t) && t.state === 'pending')
+    .filter((t) => t.state === 'pending')
     .sort((a, b) => (a.submittedOn < b.submittedOn ? -1 : 1));
   const awaitingApproval = scope.tasks
     // submittedOn is set only for a completion request, not one for another status
@@ -570,7 +585,8 @@ async function buildScorecard(viewer, periodKey = 'this-month') {
   return {
     reviewer: viewer.name,
     period,
-    scoringFrom: from,
+    ratingFrom: from,
+    firstMonth,
     weights: WEIGHTS,
     parts: PARTS,
     setupNeeded: scope.setupNeeded,
@@ -600,7 +616,7 @@ async function taskScore(viewer, ticketId) {
     setupNeeded,
     weights: WEIGHTS,
     parts: PARTS,
-    scoringFrom: scoringFrom(),
+    ratingFrom: ratingFrom(),
     task: analyseTicket(t, rating, spent.get(t.id) || 0),
     history: Array.isArray(rating?.history) ? rating.history : [],
   };
@@ -611,14 +627,16 @@ const RATEABLE = new Set(['Completed', 'Closed', 'Waiting For Approval']);
 // Saves the reviewer's stars, remarks and include/exclude choice, keeping
 // every earlier version in the row's history.
 async function saveRating(viewer, ticketId, input) {
-  const { data: t, error } = await supabase
-    .from('tickets').select('id,status,assigned_to,created_by').eq('id', ticketId).maybeSingle();
+  const { data: t, error } = await supabase.from('tickets').select(TICKET_COLS).eq('id', ticketId).maybeSingle();
   if (error) throw error;
   if (!t) return { status: 404, message: 'Ticket not found' };
   const users = await loadUsers();
   if (!teamFilter(viewer, users)(t)) return { status: 403, message: 'Access denied' };
   if (isOwnWork(viewer, users, t)) return { status: 400, message: 'Your own work is not rated on your scorecard' };
   if (!RATEABLE.has(t.status)) return { status: 400, message: 'Only submitted or completed work can be rated' };
+  if (!analyseTicket(t).rateable) {
+    return { status: 400, message: `Only work completed from ${fmtDay(ratingFrom())} can be rated` };
+  }
 
   const star = (v) => {
     if (v === null || v === undefined || v === '') return null;
@@ -687,7 +705,7 @@ async function saveRating(viewer, ticketId, input) {
 module.exports = {
   WEIGHTS,
   PARTS,
-  scoringFrom,
+  ratingFrom,
   reviewerEmails,
   isReviewer,
   periodRange,

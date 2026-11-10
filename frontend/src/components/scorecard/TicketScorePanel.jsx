@@ -24,8 +24,8 @@ export default function TicketScorePanel({ ticketId, status }) {
 
   if (!reviewer || !done || !card) return null;
   const t = card.task;
-  // Work handed in before scoring began is not on the scorecard.
-  if (!t.submittedOn || t.submittedOn < card.scoringFrom) return null;
+  // Work completed before rating began is never rated.
+  if (!t.rateable) return null;
 
   return (
     <div className="mt-8 bg-white rounded-3xl shadow-sm p-6 flex items-center gap-5 flex-wrap">
