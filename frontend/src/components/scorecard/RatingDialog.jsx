@@ -336,7 +336,7 @@ export default function RatingDialog({ ticketId, mode = "rate", onClose, onDone 
             <textarea
               value={remarks}
               onChange={(e) => setRemarks(e.target.value)}
-              disabled={card.setupNeeded}
+              disabled={card.setupNeeded || !t.rateable}
               rows={2}
               placeholder="Remarks (optional) — what was good, what to improve, why a value was corrected"
               className="w-full bg-white rounded-2xl shadow-sm px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#9b2423]/20 resize-none"
@@ -347,7 +347,7 @@ export default function RatingDialog({ ticketId, mode = "rate", onClose, onDone 
                 <input
                   type="checkbox"
                   checked={Boolean(excluded)}
-                  disabled={card.setupNeeded}
+                  disabled={card.setupNeeded || !t.rateable}
                   onChange={(e) => setExcluded(e.target.checked)}
                   className="accent-[#9b2423]"
                 />
