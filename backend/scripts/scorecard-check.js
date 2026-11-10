@@ -22,6 +22,7 @@ const reject = (day, extra = {}) => ({ type: 'approval', action: 'Ticket rejecte
 const ticket = (over) => ({
   id: over.id,
   title: over.title || over.id,
+  created_at: '2026-11-01T05:00:00.000Z',
   status: 'Completed',
   assigned_to: 'u1',
   assigned_to_name: 'Vimal',
@@ -190,18 +191,19 @@ const cases = [
     expect: { lateDays: 1, onTime: 75, score: 91.3 },
   },
   {
-    name: 'Completed before rating began: automatic results shown, never rated or scored',
-    t: ticket({ id: 'B0', due_date: '2026-09-28', timeline: [request('2026-09-30'), approve('2026-09-30')] }),
+    name: 'Raised before rating began, completed after: automatic results shown, never rated',
+    t: ticket({ id: 'B0', created_at: '2026-09-25T05:00:00.000Z', due_date: '2026-10-03', timeline: [request('2026-10-05'), approve('2026-10-05')] }),
     r: stars(5, 5),
     rateFrom: '2026-10-02',
-    expect: { state: 'before', rateable: false, score: null, onTime: 75, firstPass: 100 },
+    expect: { state: 'before', rateable: false, raisedOn: '2026-09-25', score: null, onTime: 75, firstPass: 100 },
   },
   {
-    name: 'Completed on the first rating day is rated',
-    t: ticket({ id: 'B1', due_date: '2026-10-02', timeline: [request('2026-10-02'), approve('2026-10-03')] }),
+    name: 'Raised on the first rating day (IST) is rated',
+    // 20:00Z on 1 Oct is 1:30 am IST on 2 Oct
+    t: ticket({ id: 'B1', created_at: '2026-10-01T20:00:00.000Z', due_date: '2026-10-06', timeline: [request('2026-10-06'), approve('2026-10-07')] }),
     r: stars(5, 5),
     rateFrom: '2026-10-02',
-    expect: { state: 'final', rateable: true, score: 100 },
+    expect: { state: 'final', rateable: true, raisedOn: '2026-10-02', score: 100 },
   },
   {
     name: 'Reviewer corrects the completed date (delivered on the 10th, marked done on the 16th)',

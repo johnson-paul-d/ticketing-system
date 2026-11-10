@@ -37,9 +37,10 @@ const PARTS = [
   { key: 'withinTime', label: 'Within time allowed', auto: true },
 ];
 
-// The reviewer rates work completed on or after this day. Earlier work still
-// shows on the scorecard with its automatic results (on time, first-time pass,
-// time), but is never rated, so the reviewer is not asked to rate a backlog.
+// The reviewer rates tickets raised on or after this day. Older tickets still
+// show on the scorecard with their automatic results (on time, first-time
+// pass, time), but are never rated, so the reviewer is not asked to rate a
+// backlog.
 const ratingFrom = () => process.env.SCORECARD_FROM || '2026-10-02';
 
 const reviewerEmails = () =>
@@ -253,8 +254,9 @@ function analyseTicket(t, rating = null, spent = 0, rateFrom = ratingFrom()) {
     spent: spent || 0,
     allotted: t.allotted_minutes || 0,
   };
-  // Completed before rating began: automatic results only, never rated.
-  const rateable = !auto.submittedOn || auto.submittedOn >= rateFrom;
+  // Raised before rating began: automatic results only, never rated.
+  const raisedOn = istDay(t.created_at);
+  const rateable = !raisedOn || raisedOn >= rateFrom;
   if (!rateable) rating = null;
   const set = {
     submittedOn: istDay(rating?.submitted_on),
@@ -309,6 +311,7 @@ function analyseTicket(t, rating = null, spent = 0, rateFrom = ratingFrom()) {
     division: t.division || null,
     projectId: t.project_id || null,
     status: t.status,
+    raisedOn,
     originalDue,
     finalDue,
     dueChanges: h.dueChanges,
@@ -419,7 +422,7 @@ const MISSING_TABLE = new Set(['PGRST205', '42P01', 'PGRST200']);
 const isMissingTable = (err) => MISSING_TABLE.has(err?.code);
 
 const TICKET_COLS =
-  'id,title,status,assigned_to,assigned_to_name,created_by,division,project_id,due_date,timeline,completed_date,approved_at,approved_by,updated_at,allotted_minutes,is_recurring,recurrence_base_title';
+  'id,title,created_at,status,assigned_to,assigned_to_name,created_by,division,project_id,due_date,timeline,completed_date,approved_at,approved_by,updated_at,allotted_minutes,is_recurring,recurrence_base_title';
 
 async function loadUsers() {
   const { data, error } = await supabase.from('users').select('id,name,email,role,active');
@@ -635,7 +638,7 @@ async function saveRating(viewer, ticketId, input) {
   if (isOwnWork(viewer, users, t)) return { status: 400, message: 'Your own work is not rated on your scorecard' };
   if (!RATEABLE.has(t.status)) return { status: 400, message: 'Only submitted or completed work can be rated' };
   if (!analyseTicket(t).rateable) {
-    return { status: 400, message: `Only work completed from ${fmtDay(ratingFrom())} can be rated` };
+    return { status: 400, message: `Only tickets raised from ${fmtDay(ratingFrom())} can be rated` };
   }
 
   const star = (v) => {

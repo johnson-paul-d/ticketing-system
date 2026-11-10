@@ -380,9 +380,9 @@ sent back, the time taken and the time allowed — from the rating card; the
 corrected value is marked as such and the automatic one stays visible. A task
 with no due date, no approval or a missing rating is pending, never zero. Monthly activity buckets ("MISC -
 SEP", "MEETINGS - SEP"…) are left out unless Ram includes them; so is the
-reviewer's own work. Every period can be viewed, but Ram rates only work
-completed from 2 Oct 2026; earlier work shows its automatic results (on time,
-first-time pass, time) and "Before 2 Oct" instead of a score. Every change is
+reviewer's own work. Every period can be viewed, but Ram rates only tickets
+raised from 2 Oct 2026; older tickets show their automatic results (on time,
+first-time pass, time) and "Raised before 2 Oct" instead of a score. Every change is
 kept in `ticket_scores.history`. The arithmetic is checked by
 `node backend/scripts/scorecard-check.js`.
 
@@ -396,7 +396,7 @@ tab's **Monday email** / **Monthly email** buttons preview them and send a
 | --- | --- | --- |
 | `SCORECARD_REVIEWERS` | `ramenaathan@siegerglobal.net` | Comma-separated portal logins (admins) who see and rate the scorecard and get the emails |
 | `SCORECARD_EMAILS` | off | `on` sends the Monday and 2nd emails. Leave unset on a laptop |
-| `SCORECARD_FROM` | `2026-10-02` | First completion day that can be rated; earlier work is shown, not rated |
+| `SCORECARD_FROM` | `2026-10-02` | Tickets raised on or after this day can be rated; older ones are shown, not rated |
 
 To turn it on:
 

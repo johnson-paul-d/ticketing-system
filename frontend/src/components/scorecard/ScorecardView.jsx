@@ -463,7 +463,7 @@ export default function ScorecardView() {
           <div className="grid grid-cols-2 gap-2 lg:w-72">
             <HeroStat icon={ClipboardCheck} value={`${team.scored}/${team.tasks}`} label="Scored"
               sub={
-                [team.pending && `${team.pending} pending`, team.before && `${team.before} before ${fmtDay(data.ratingFrom)}`]
+                [team.pending && `${team.pending} pending`, team.before && `${team.before} raised before ${fmtDay(data.ratingFrom)}`]
                   .filter(Boolean)
                   .join(" · ") || "all scored"
               }
@@ -589,7 +589,7 @@ export default function ScorecardView() {
               ["all", "All"],
               ["final", "Scored"],
               ["pending", "Pending"],
-              ["before", `Before ${fmtDay(data.ratingFrom)}`],
+              ["before", `Raised before ${fmtDay(data.ratingFrom)}`],
               ["excluded", "Left out"],
             ]
               .filter(([k]) => k !== "before" || counts.before > 0)
@@ -663,9 +663,9 @@ export default function ScorecardView() {
                       ) : t.state === "before" ? (
                         <span
                           className="text-[10px] font-semibold text-gray-500 bg-gray-100 px-2 py-1 rounded-full whitespace-nowrap"
-                          title={`Rating covers work completed from ${fmtDay(data.ratingFrom)}`}
+                          title={`Raised ${fmtDay(t.raisedOn)}; you rate tickets raised from ${fmtDay(data.ratingFrom)}`}
                         >
-                          Before {fmtDay(data.ratingFrom)}
+                          Raised before {fmtDay(data.ratingFrom)}
                         </span>
                       ) : (
                         <PendingBadge reasons={t.pending} />
@@ -754,7 +754,7 @@ export default function ScorecardView() {
             allowed {weights.withinTime}% (time logged within the time allotted 100 · up to ¼ over 75 · up to ½ over 50 · more 0; no time
             allowed or none logged = full marks). You can correct the completed date, times sent back, time taken and time allowed on any
             task. A task without a due date, an approval or both ratings stays pending — never zero. Monthly activity buckets (MISC, MEETINGS…) are left out unless you
-            include them. You rate work completed from {fmtDay(data.ratingFrom)}; earlier work shows its automatic results only.
+            include them. You rate tickets raised from {fmtDay(data.ratingFrom)}; older tickets show their automatic results only.
           </p>
         </div>
       </div>

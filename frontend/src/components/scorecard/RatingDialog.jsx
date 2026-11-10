@@ -285,7 +285,7 @@ export default function RatingDialog({ ticketId, mode = "rate", onClose, onDone 
             {!t.rateable && (
               <div className="flex gap-2 items-start text-xs bg-gray-50 text-gray-600 border border-gray-200 rounded-xl px-3 py-2">
                 <AlertTriangle size={15} className="flex-shrink-0 mt-0.5" />
-                Completed {fmtDay(t.submittedOn)}, before rating began on {fmtDay(card.ratingFrom)}: shown for reference, not rated.
+                Raised {fmtDay(t.raisedOn)}, before rating began on {fmtDay(card.ratingFrom)}: shown for reference, not rated.
               </div>
             )}
             {card.setupNeeded && (
